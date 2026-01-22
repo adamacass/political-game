@@ -285,9 +285,7 @@ const hostSkipToNextRound = useCallback(() => {
           onCancelOffer={cancelOffer}
           onNegotiationReady={negotiationReady}
 	  onSelectNewAgenda={selectNewAgenda}
-          onHostSkipCampaign={hostSkipCampaign}
-          onHostSkipToPolicy={hostSkipToPolicy}
-          onHostSkipToNextRound={hostSkipToNextRound}
+                    
         />
       )}
     </div>

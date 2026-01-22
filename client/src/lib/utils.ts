@@ -25,6 +25,9 @@ export const PHASE_LABELS: Record<Phase, string> = {
   policy_resolution: 'Resolving Policy',
   wildcard_resolution: 'Wildcard Event',
   game_over: 'Game Over',
+  negotiation: 'Negotiation',
+  campaign_targeting: 'Select Target',
+  agenda_selection: 'Select Agenda',
 };
 
 export const PHASE_DESCRIPTIONS: Record<Phase, string> = {
@@ -36,6 +39,9 @@ export const PHASE_DESCRIPTIONS: Record<Phase, string> = {
   policy_resolution: 'Resolving policy effects',
   wildcard_resolution: 'A wildcard event is occurring',
   game_over: 'The election is over!',
+  negotiation: 'Negotiation',
+  campaign_targeting: 'Select Target',
+  agenda_selection: 'Select Agenda',
 };
 
 export function isCampaignCard(card: CampaignCard | PolicyCard): card is CampaignCard {
