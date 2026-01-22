@@ -363,8 +363,7 @@ export function WormGraph({ history, players, totalSeats, currentRound }: WormGr
           )}
           
               
-          )}
-        </div>
+          </div>
       )}
     </div>
   );
