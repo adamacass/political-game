@@ -12,7 +12,9 @@ import {
 import { Lobby } from './components/Lobby';
 import { GameBoard } from './components/GameBoard';
 
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3001';
+const SOCKET_URL = import.meta.env.PROD 
+  ? 'https://political-game-1.onrender.com'
+  : 'http://localhost:3001';
 
 function App() {
   const [socket, setSocket] = useState<Socket | null>(null);
