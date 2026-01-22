@@ -362,8 +362,7 @@ export function WormGraph({ history, players, totalSeats, currentRound }: WormGr
             </div>
           )}
           
-               Agenda changed: {formatIssue(activeSnapshot.issueAdjustment.from)} → {formatIssue(activeSnapshot.issueAdjustment.to)}
-            </div>
+              
           )}
         </div>
       )}
