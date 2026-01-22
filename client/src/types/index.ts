@@ -363,7 +363,7 @@ export type GameEvent =
   | { type: 'policy_proposed'; timestamp: number; playerId: string; cardId: string }
   | { type: 'vote_cast'; timestamp: number; playerId: string; vote: 'yes' | 'no'; seatWeight: number }
   | { type: 'policy_resolved'; timestamp: number; passed: boolean; yesVotes: number; noVotes: number }
-  | { type: 'pcap_awarded'; timestamp: number; playerId: string; type: PCapType; value: number; reason: string }
+  | { type: 'pcap_awarded'; timestamp: number; playerId: string; pCapType: PCapType; value: number; reason: string }
   | { type: 'wildcard_drawn'; timestamp: number; playerId: string; cardId: string }
   | { type: 'wildcard_resolved'; timestamp: number; cardId: string; effects: { playerId: string; seatDelta: number }[] }
   | { type: 'seats_changed'; timestamp: number; playerId: string; delta: number; newTotal: number; reason: string }
@@ -376,7 +376,11 @@ export type GameEvent =
   | { type: 'trade_completed'; timestamp: number; offerId: string; fromPlayerId: string; toPlayerId: string; cardsExchanged: number }
   | { type: 'ideology_updated'; timestamp: number; playerId: string; profile: IdeologyProfile }
   | { type: 'negotiation_ready'; timestamp: number; playerId: string }
-  | { type: 'game_ended'; timestamp: number; winner: string; scores: Record<string, number> };
+  | { type: 'game_ended'; timestamp: number; winner: string; scores: Record<string, number> }
+  | { type: 'phase_skipped'; timestamp: number; fromPhase: Phase }
+  | { type: 'speaker_tiebreak'; timestamp: number; speakerId: string; decision: 'passed' | 'failed' }
+  | { type: 'agenda_selection_triggered'; timestamp: number; playerId: string; reason: string }
+  | { type: 'policy_synergy'; timestamp: number; playerId: string; campaignId: string; policyId: string };
 
 // ============================================================
 // GAME CONFIGURATION
@@ -442,9 +446,9 @@ export interface ClientToServerEvents {
   'start_game': () => void;
   'draw_card': (data: { deckType: 'campaign' | 'policy' }) => void;
   'play_campaign': (data: { cardId: string }) => void;
-  'select_campaign_target': (data: { targetPlayerId: string }) => void;  // NEW
+  'select_campaign_target': (data: { targetPlayerId: string }) => void;
   'skip_campaign': () => void;
-  'skip_and_replace': (data: { cardId: string }) => void;  // NEW
+  'skip_and_replace': (data: { cardId: string }) => void;
   'propose_policy': (data: { cardId: string }) => void;
   'skip_proposal': () => void;
   'cast_vote': (data: { vote: 'yes' | 'no' }) => void;
@@ -454,6 +458,8 @@ export interface ClientToServerEvents {
   'request_state': () => void;
   'export_game': () => void;
   'send_chat': (data: { content: string; recipientId: string | null }) => void;
+  'select_new_agenda': (data: { issue: Issue }) => void;
+  'force_advance_phase': () => void;
   
   // Negotiation
   'make_trade_offer': (data: { toPlayerId: string; offeredCardIds: string[]; requestedCardIds: string[] }) => void;

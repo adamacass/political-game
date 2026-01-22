@@ -328,7 +328,7 @@ export class GameEngine {
   // HOST EMERGENCY SKIP - forces game to next phase
   forceAdvancePhase(): boolean {
     if (this.state.phase === 'game_over' || this.state.phase === 'waiting') return false;
-    this.logEvent({ type: 'phase_skipped' as any, timestamp: Date.now(), fromPhase: this.state.phase });
+    this.logEvent({ type: 'phase_skipped', timestamp: Date.now(), fromPhase: this.state.phase });
     switch (this.state.phase) {
       case 'draw':
         this.state.playersDrawn = this.state.players.map(p => p.id);
@@ -460,7 +460,7 @@ export class GameEngine {
       const speakerId = this.state.turnOrder[this.state.speakerIndex];
       const speakerVote = this.state.votes.find(v => v.playerId === speakerId);
       passed = speakerVote?.vote === 'yes';
-      this.logEvent({ type: 'speaker_tiebreak' as any, timestamp: Date.now(), speakerId, decision: passed ? 'passed' : 'failed' });
+      this.logEvent({ type: 'speaker_tiebreak', timestamp: Date.now(), speakerId, decision: passed ? 'passed' : 'failed' });
     }
     this.logEvent({ type: 'policy_resolved', timestamp: Date.now(), passed, yesVotes, noVotes });
     if (this.state.proposedPolicy && this.state.proposerId) {
@@ -496,7 +496,7 @@ export class GameEngine {
     if (policy.issue === this.state.activeIssue) {
       this.state.proposedPolicy = null;
       this.state.phase = 'agenda_selection';
-      this.logEvent({ type: 'agenda_selection_triggered' as any, timestamp: Date.now(), playerId: proposerId, reason: `Policy matched agenda` });
+      this.logEvent({ type: 'agenda_selection_triggered', timestamp: Date.now(), playerId: proposerId, reason: `Policy matched agenda` });
     } else {
       this.state.proposedPolicy = null; this.state.proposerId = null;
       if (this.config.wildcardOnPolicyPass) this.drawWildcard(proposerId);
@@ -523,19 +523,19 @@ export class GameEngine {
         if (pc.includes(cid)) {
           this.awardPCap(player.id, 'ideological_credibility', 2, `Promise kept: ${policy.name}`);
           this.applySeatChange(player.id, 1, `Promise delivered: ${policy.name}`);
-          this.logEvent({ type: 'policy_synergy' as any, timestamp: Date.now(), playerId: player.id, campaignId: cid, policyId: policy.id });
+          this.logEvent({ type: 'policy_synergy', timestamp: Date.now(), playerId: player.id, campaignId: cid, policyId: policy.id });
           break;
         }
       }
     }
   }
 
-  private awardPCap(playerId: string, type: PCapCard['type'], value: number, reason: string): void {
+  private awardPCap(playerId: string, pCapType: PCapCard['type'], value: number, reason: string): void {
     const player = this.state.players.find(p => p.id === playerId); if (!player) return;
     const names: Record<PCapCard['type'], string> = { mandate: 'Electoral Mandate', prime_ministership: 'Prime Ministership', landmark_reform: 'Landmark Reform', policy_win: 'Policy Victory', ideological_credibility: 'Ideological Credibility' };
-    player.pCapCards.push({ type, value, name: names[type], source: reason, roundAwarded: this.state.round });
+    player.pCapCards.push({ type: pCapType, value, name: names[pCapType], source: reason, roundAwarded: this.state.round });
     this.logPCapChange(playerId, value, 0, reason, 'award');
-    this.logEvent({ type: 'pcap_awarded', timestamp: Date.now(), playerId, type, value, reason });
+    this.logEvent({ type: 'pcap_awarded', timestamp: Date.now(), playerId, pCapType, value, reason });
   }
 
   private logPCapChange(playerId: string, pCapDelta: number, seatDelta: number, reason: string, changeType: 'award' | 'penalty'): void {

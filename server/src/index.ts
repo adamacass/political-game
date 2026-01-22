@@ -541,44 +541,42 @@ io.on('connection', (socket) => {
   // ADD THESE NEW ONES HERE:
   // =====================
 
-  // Agenda selection
-  socket.on('select_new_agenda', ({ issue }: { issue: string }) => {
-    if (!currentRoomId || !currentPlayerId) return socket.emit('error', { message: 'Not in a room' });
-    const room = roomManager.getRoom(currentRoomId);
-    if (!room) return socket.emit('error', { message: 'Room not found' });
-    const success = room.engine.selectNewAgenda(currentPlayerId, issue as any);
-    if (success) broadcastState(currentRoomId);
-    else socket.emit('error', { message: 'Cannot select agenda' });
+// Agenda selection
+  socket.on('select_new_agenda', ({ issue }) => {
+    if (!currentRoomId || !currentPlayerId) {
+      socket.emit('error', { message: 'Not in a room' });
+      return;
+    }
+    try {
+      const success = roomManager.selectNewAgenda(currentRoomId, currentPlayerId, issue);
+      if (success) {
+        broadcastState(currentRoomId);
+      } else {
+        socket.emit('error', { message: 'Cannot select agenda' });
+      }
+    } catch (error) {
+      console.error('Error selecting agenda:', error);
+      socket.emit('error', { message: 'Server error' });
+    }
   });
 
-  // Host skip campaign turn
-  socket.on('host_skip_campaign', () => {
-    if (!currentRoomId || !currentPlayerId) return socket.emit('error', { message: 'Not in a room' });
-    const room = roomManager.getRoom(currentRoomId);
-    if (!room) return socket.emit('error', { message: 'Room not found' });
-    const success = room.engine.hostSkipCampaignTurn(currentPlayerId);
-    if (success) broadcastState(currentRoomId);
-    else socket.emit('error', { message: 'Cannot skip' });
-  });
-
-  // Host skip to policy phase
-  socket.on('host_skip_to_policy', () => {
-    if (!currentRoomId || !currentPlayerId) return socket.emit('error', { message: 'Not in a room' });
-    const room = roomManager.getRoom(currentRoomId);
-    if (!room) return socket.emit('error', { message: 'Room not found' });
-    const success = room.engine.hostSkipToPolicyPhase(currentPlayerId);
-    if (success) broadcastState(currentRoomId);
-    else socket.emit('error', { message: 'Cannot skip' });
-  });
-
-  // Host skip to next round
-  socket.on('host_skip_to_next_round', () => {
-    if (!currentRoomId || !currentPlayerId) return socket.emit('error', { message: 'Not in a room' });
-    const room = roomManager.getRoom(currentRoomId);
-    if (!room) return socket.emit('error', { message: 'Room not found' });
-    const success = room.engine.hostSkipToNextRound(currentPlayerId);
-    if (success) broadcastState(currentRoomId);
-    else socket.emit('error', { message: 'Cannot skip' });
+  // Force advance phase (host only)
+  socket.on('force_advance_phase', () => {
+    if (!currentRoomId || !currentPlayerId) {
+      socket.emit('error', { message: 'Not in a room' });
+      return;
+    }
+    try {
+      const success = roomManager.forceAdvancePhase(currentRoomId, currentPlayerId);
+      if (success) {
+        broadcastState(currentRoomId);
+      } else {
+        socket.emit('error', { message: 'Cannot advance phase' });
+      }
+    } catch (error) {
+      console.error('Error advancing phase:', error);
+      socket.emit('error', { message: 'Server error' });
+    }
   });
 
   // =====================
