@@ -1,0 +1,409 @@
+[
+  {
+    "id": "campaign_001",
+    "name": "Tax Cuts for Workers",
+    "description": "Promise income tax relief for middle Australia.",
+    "seatDelta": 2,
+    "issue": "economy",
+    "policyLink": "policy_tax_relief",
+    "stanceTable": {
+      "progressive": "neutral",
+      "conservative": "favoured",
+      "market": "favoured",
+      "interventionist": "opposed"
+    }
+  },
+  {
+    "id": "campaign_002",
+    "name": "Climate Action Now",
+    "description": "Commit to net zero and renewable investment.",
+    "seatDelta": 2,
+    "issue": "climate",
+    "policyLink": "policy_carbon_tax",
+    "stanceTable": {
+      "progressive": "favoured",
+      "conservative": "opposed",
+      "market": "neutral",
+      "interventionist": "favoured"
+    }
+  },
+  {
+    "id": "campaign_003",
+    "name": "Stop the Boats",
+    "description": "Tough border protection messaging.",
+    "seatDelta": 2,
+    "issue": "security",
+    "policyLink": "policy_border_security",
+    "stanceTable": {
+      "progressive": "opposed",
+      "conservative": "favoured",
+      "market": "neutral",
+      "interventionist": "neutral"
+    }
+  },
+  {
+    "id": "campaign_004",
+    "name": "Medicare Guarantee",
+    "description": "Promise to protect and expand Medicare.",
+    "seatDelta": 2,
+    "issue": "cost_of_living",
+    "policyLink": "policy_medicare_expansion",
+    "stanceTable": {
+      "progressive": "favoured",
+      "conservative": "neutral",
+      "market": "opposed",
+      "interventionist": "favoured"
+    }
+  },
+  {
+    "id": "campaign_005",
+    "name": "Housing Affordability",
+    "description": "First home buyer support and supply promises.",
+    "seatDelta": 2,
+    "issue": "housing",
+    "policyLink": "policy_first_home_buyer",
+    "stanceTable": {
+      "progressive": "favoured",
+      "conservative": "neutral",
+      "market": "neutral",
+      "interventionist": "favoured"
+    }
+  },
+  {
+    "id": "campaign_006",
+    "name": "Small Business Champion",
+    "description": "Cut red tape and support local business.",
+    "seatDelta": 2,
+    "issue": "economy",
+    "policyLink": "policy_small_business",
+    "stanceTable": {
+      "progressive": "neutral",
+      "conservative": "favoured",
+      "market": "favoured",
+      "interventionist": "opposed"
+    }
+  },
+  {
+    "id": "campaign_007",
+    "name": "Cost of Living Relief",
+    "description": "Promise direct support for struggling families.",
+    "seatDelta": 2,
+    "issue": "cost_of_living",
+    "policyLink": "policy_grocery_caps",
+    "stanceTable": {
+      "progressive": "favoured",
+      "conservative": "neutral",
+      "market": "opposed",
+      "interventionist": "favoured"
+    }
+  },
+  {
+    "id": "campaign_008",
+    "name": "Law and Order",
+    "description": "Crack down on crime, more police funding.",
+    "seatDelta": 2,
+    "issue": "security",
+    "policyLink": "policy_police_funding",
+    "stanceTable": {
+      "progressive": "opposed",
+      "conservative": "favoured",
+      "market": "neutral",
+      "interventionist": "neutral"
+    }
+  },
+  {
+    "id": "campaign_009",
+    "name": "Negative Gearing Reform",
+    "description": "Campaign to reform property tax concessions.",
+    "seatDelta": 1,
+    "issue": "housing",
+    "policyLink": "policy_neg_gearing",
+    "stanceTable": {
+      "progressive": "favoured",
+      "conservative": "opposed",
+      "market": "opposed",
+      "interventionist": "favoured"
+    }
+  },
+  {
+    "id": "campaign_010",
+    "name": "Nuclear Future",
+    "description": "Advocate for nuclear energy investment.",
+    "seatDelta": 1,
+    "issue": "climate",
+    "policyLink": "policy_nuclear",
+    "stanceTable": {
+      "progressive": "opposed",
+      "conservative": "favoured",
+      "market": "favoured",
+      "interventionist": "neutral"
+    }
+  },
+  {
+    "id": "campaign_011",
+    "name": "Wage Growth Promise",
+    "description": "Commit to real wage increases for workers.",
+    "seatDelta": 2,
+    "issue": "economy",
+    "policyLink": "policy_minimum_wage",
+    "stanceTable": {
+      "progressive": "favoured",
+      "conservative": "opposed",
+      "market": "opposed",
+      "interventionist": "favoured"
+    }
+  },
+  {
+    "id": "campaign_012",
+    "name": "Defence Spending",
+    "description": "Commit to AUKUS and increased military budget.",
+    "seatDelta": 2,
+    "issue": "security",
+    "policyLink": "policy_aukus",
+    "stanceTable": {
+      "progressive": "neutral",
+      "conservative": "favoured",
+      "market": "neutral",
+      "interventionist": "neutral"
+    }
+  },
+  {
+    "id": "campaign_013",
+    "name": "Supermarket Inquiry",
+    "description": "Promise to investigate grocery price gouging.",
+    "seatDelta": 1,
+    "issue": "cost_of_living",
+    "policyLink": "policy_grocery_caps",
+    "stanceTable": {
+      "progressive": "favoured",
+      "conservative": "neutral",
+      "market": "opposed",
+      "interventionist": "favoured"
+    }
+  },
+  {
+    "id": "campaign_014",
+    "name": "Regional Investment",
+    "description": "Infrastructure and services for the bush.",
+    "seatDelta": 1,
+    "issue": "economy",
+    "stanceTable": {
+      "progressive": "neutral",
+      "conservative": "favoured",
+      "market": "neutral",
+      "interventionist": "favoured"
+    }
+  },
+  {
+    "id": "campaign_015",
+    "name": "Childcare Subsidy",
+    "description": "Make childcare more affordable for families.",
+    "seatDelta": 2,
+    "issue": "cost_of_living",
+    "policyLink": "policy_childcare",
+    "stanceTable": {
+      "progressive": "favoured",
+      "conservative": "neutral",
+      "market": "opposed",
+      "interventionist": "favoured"
+    }
+  },
+  {
+    "id": "campaign_016",
+    "name": "Renewable Jobs",
+    "description": "Green jobs and energy transition for workers.",
+    "seatDelta": 2,
+    "issue": "climate",
+    "policyLink": "policy_renewables",
+    "stanceTable": {
+      "progressive": "favoured",
+      "conservative": "opposed",
+      "market": "neutral",
+      "interventionist": "favoured"
+    }
+  },
+  {
+    "id": "campaign_017",
+    "name": "Religious Freedom",
+    "description": "Protect religious institutions and values.",
+    "seatDelta": 1,
+    "issue": "security",
+    "stanceTable": {
+      "progressive": "opposed",
+      "conservative": "favoured",
+      "market": "neutral",
+      "interventionist": "neutral"
+    }
+  },
+  {
+    "id": "campaign_018",
+    "name": "Public Housing Build",
+    "description": "Massive investment in social housing.",
+    "seatDelta": 2,
+    "issue": "housing",
+    "policyLink": "policy_public_housing",
+    "stanceTable": {
+      "progressive": "favoured",
+      "conservative": "opposed",
+      "market": "opposed",
+      "interventionist": "favoured"
+    }
+  },
+  {
+    "id": "campaign_019",
+    "name": "Immigration Boost",
+    "description": "Increase skilled migration to grow economy.",
+    "seatDelta": 1,
+    "issue": "economy",
+    "stanceTable": {
+      "progressive": "favoured",
+      "conservative": "opposed",
+      "market": "favoured",
+      "interventionist": "neutral"
+    }
+  },
+  {
+    "id": "campaign_020",
+    "name": "Cut Immigration",
+    "description": "Reduce migration to ease housing pressure.",
+    "seatDelta": 1,
+    "issue": "housing",
+    "stanceTable": {
+      "progressive": "opposed",
+      "conservative": "favoured",
+      "market": "opposed",
+      "interventionist": "neutral"
+    }
+  },
+  {
+    "id": "campaign_021",
+    "name": "University Promise",
+    "description": "Free TAFE and cheaper university.",
+    "seatDelta": 1,
+    "issue": "economy",
+    "stanceTable": {
+      "progressive": "favoured",
+      "conservative": "opposed",
+      "market": "opposed",
+      "interventionist": "favoured"
+    }
+  },
+  {
+    "id": "campaign_022",
+    "name": "Pensioner Support",
+    "description": "Increase the aged pension.",
+    "seatDelta": 2,
+    "issue": "cost_of_living",
+    "stanceTable": {
+      "progressive": "favoured",
+      "conservative": "neutral",
+      "market": "opposed",
+      "interventionist": "favoured"
+    }
+  },
+  {
+    "id": "campaign_023",
+    "name": "Media Blitz",
+    "description": "Broad advertising campaign across all channels.",
+    "seatDelta": 2,
+    "stanceTable": {
+      "progressive": "neutral",
+      "conservative": "neutral",
+      "market": "neutral",
+      "interventionist": "neutral"
+    }
+  },
+  {
+    "id": "campaign_024",
+    "name": "Celebrity Endorsement",
+    "description": "High-profile backing boosts visibility.",
+    "seatDelta": 2,
+    "stanceTable": {
+      "progressive": "neutral",
+      "conservative": "neutral",
+      "market": "neutral",
+      "interventionist": "neutral"
+    }
+  },
+  {
+    "id": "campaign_025",
+    "name": "Grassroots Doorknock",
+    "description": "Community-level voter contact campaign.",
+    "seatDelta": 1,
+    "stanceTable": {
+      "progressive": "neutral",
+      "conservative": "neutral",
+      "market": "neutral",
+      "interventionist": "neutral"
+    }
+  },
+  {
+    "id": "campaign_026",
+    "name": "Social Media Push",
+    "description": "Viral content targets younger voters.",
+    "seatDelta": 1,
+    "stanceTable": {
+      "progressive": "favoured",
+      "conservative": "neutral",
+      "market": "neutral",
+      "interventionist": "neutral"
+    }
+  },
+  {
+    "id": "campaign_027",
+    "name": "Underdog Rally",
+    "description": "Momentum builds for the challenger.",
+    "seatDelta": 1,
+    "conditional": {
+      "type": "underdog_bonus",
+      "modifier": 2
+    },
+    "stanceTable": {
+      "progressive": "neutral",
+      "conservative": "neutral",
+      "market": "neutral",
+      "interventionist": "neutral"
+    }
+  },
+  {
+    "id": "campaign_028",
+    "name": "Front-Runner Stumble",
+    "description": "Leader faces scrutiny, others gain.",
+    "seatDelta": 2,
+    "conditional": {
+      "type": "leader_penalty",
+      "modifier": -1
+    },
+    "stanceTable": {
+      "progressive": "neutral",
+      "conservative": "neutral",
+      "market": "neutral",
+      "interventionist": "neutral"
+    }
+  },
+  {
+    "id": "campaign_029",
+    "name": "Gas Price Attack",
+    "description": "Blame opponents for energy costs.",
+    "seatDelta": 1,
+    "issue": "cost_of_living",
+    "stanceTable": {
+      "progressive": "neutral",
+      "conservative": "favoured",
+      "market": "favoured",
+      "interventionist": "neutral"
+    }
+  },
+  {
+    "id": "campaign_030",
+    "name": "Scare Campaign",
+    "description": "Fear-based messaging about opponent's plans.",
+    "seatDelta": 2,
+    "stanceTable": {
+      "progressive": "opposed",
+      "conservative": "favoured",
+      "market": "neutral",
+      "interventionist": "neutral"
+    }
+  }
+]

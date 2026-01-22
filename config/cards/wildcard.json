@@ -1,0 +1,182 @@
+[
+  {
+    "id": "wildcard_001",
+    "name": "Voter Fatigue",
+    "description": "The electorate tires of the frontrunner",
+    "type": "wildcard",
+    "effect": "leader_erosion",
+    "magnitude": 2,
+    "condition": null
+  },
+  {
+    "id": "wildcard_002",
+    "name": "Preference Flows",
+    "description": "Minor party preferences shake up the race",
+    "type": "wildcard",
+    "effect": "leader_erosion",
+    "magnitude": 1,
+    "condition": null
+  },
+  {
+    "id": "wildcard_003",
+    "name": "Poll Bounce",
+    "description": "Media momentum for the challenger",
+    "type": "wildcard",
+    "effect": "leader_erosion",
+    "magnitude": 1,
+    "condition": null
+  },
+  {
+    "id": "wildcard_004",
+    "name": "Economic Shock",
+    "description": "Market turmoil affects the incumbent",
+    "type": "wildcard",
+    "effect": "leader_erosion",
+    "magnitude": 2,
+    "condition": { "activeIssue": "economy" }
+  },
+  {
+    "id": "wildcard_005",
+    "name": "Housing Crisis Worsens",
+    "description": "Prices surge, blame falls on the leader",
+    "type": "wildcard",
+    "effect": "leader_erosion",
+    "magnitude": 2,
+    "condition": { "activeIssue": "housing" }
+  },
+  {
+    "id": "wildcard_006",
+    "name": "Climate Disaster",
+    "description": "Extreme weather event shifts the debate",
+    "type": "wildcard",
+    "effect": "leader_erosion",
+    "magnitude": 2,
+    "condition": { "activeIssue": "climate" }
+  },
+  {
+    "id": "wildcard_007",
+    "name": "Security Breach",
+    "description": "Intelligence failure embarrasses the leader",
+    "type": "wildcard",
+    "effect": "leader_erosion",
+    "magnitude": 2,
+    "condition": { "activeIssue": "security" }
+  },
+  {
+    "id": "wildcard_008",
+    "name": "Cost of Living Crunch",
+    "description": "Inflation spikes, leader takes the blame",
+    "type": "wildcard",
+    "effect": "leader_erosion",
+    "magnitude": 2,
+    "condition": { "activeIssue": "cost_of_living" }
+  },
+  {
+    "id": "wildcard_009",
+    "name": "Frontrunner Stumble",
+    "description": "A gaffe goes viral",
+    "type": "wildcard",
+    "effect": "leader_erosion",
+    "magnitude": 1,
+    "condition": null
+  },
+  {
+    "id": "wildcard_010",
+    "name": "Media Scrutiny",
+    "description": "Investigative journalism targets the top",
+    "type": "wildcard",
+    "effect": "leader_erosion",
+    "magnitude": 2,
+    "condition": null
+  },
+  {
+    "id": "wildcard_011",
+    "name": "Swing Voter Shift",
+    "description": "Undecideds break against the favourite",
+    "type": "wildcard",
+    "effect": "leader_erosion",
+    "magnitude": 1,
+    "condition": null
+  },
+  {
+    "id": "wildcard_012",
+    "name": "Grassroots Surge",
+    "description": "Community movements challenge power",
+    "type": "wildcard",
+    "effect": "leader_erosion",
+    "magnitude": 1,
+    "condition": null
+  },
+  {
+    "id": "wildcard_013",
+    "name": "Policy Backfire",
+    "description": "A signature initiative proves unpopular",
+    "type": "wildcard",
+    "effect": "proposer",
+    "magnitude": -1,
+    "condition": null
+  },
+  {
+    "id": "wildcard_014",
+    "name": "Reform Momentum",
+    "description": "Public appetite for change grows",
+    "type": "wildcard",
+    "effect": "proposer",
+    "magnitude": 1,
+    "condition": null
+  },
+  {
+    "id": "wildcard_015",
+    "name": "All Bets Are Off",
+    "description": "A chaotic news cycle reshuffles support",
+    "type": "wildcard",
+    "effect": "all_players",
+    "magnitude": -1,
+    "condition": null
+  },
+  {
+    "id": "wildcard_016",
+    "name": "Incumbency Blues",
+    "description": "Time in office breeds contempt",
+    "type": "wildcard",
+    "effect": "leader_erosion",
+    "magnitude": 2,
+    "condition": null
+  },
+  {
+    "id": "wildcard_017",
+    "name": "Anti-Establishment Wave",
+    "description": "Voters reject the political class",
+    "type": "wildcard",
+    "effect": "leader_erosion",
+    "magnitude": 1,
+    "condition": null
+  },
+  {
+    "id": "wildcard_018",
+    "name": "Teal Surge",
+    "description": "Independents capture disaffected moderates",
+    "type": "wildcard",
+    "effect": "all_players",
+    "magnitude": -1,
+    "condition": null
+  },
+  {
+    "id": "wildcard_019",
+    "name": "Leadership Speculation",
+    "description": "Internal rivals eye the frontrunner's position",
+    "type": "wildcard",
+    "effect": "leader_erosion",
+    "magnitude": 1,
+    "condition": null
+  },
+  {
+    "id": "wildcard_020",
+    "name": "Electoral Volatility",
+    "description": "The race tightens unpredictably",
+    "type": "wildcard",
+    "effect": "leader_erosion",
+    "magnitude": 1,
+    "condition": null
+  }
+]

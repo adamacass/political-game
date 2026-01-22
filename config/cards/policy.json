@@ -1,0 +1,297 @@
+[
+  {
+    "id": "policy_tax_relief",
+    "name": "Stage 3 Tax Cuts",
+    "description": "Implement income tax relief for all brackets.",
+    "issue": "economy",
+    "proposerReward": "policy_win",
+    "proposerRewardValue": 2,
+    "campaignLinks": ["campaign_001"],
+    "stanceTable": {
+      "progressive": "neutral",
+      "conservative": "favoured",
+      "market": "favoured",
+      "interventionist": "opposed"
+    }
+  },
+  {
+    "id": "policy_carbon_tax",
+    "name": "Emissions Trading Scheme",
+    "description": "Price carbon to reduce emissions.",
+    "issue": "climate",
+    "proposerReward": "landmark_reform",
+    "proposerRewardValue": 3,
+    "campaignLinks": ["campaign_002", "campaign_016"],
+    "stanceTable": {
+      "progressive": "favoured",
+      "conservative": "opposed",
+      "market": "neutral",
+      "interventionist": "favoured"
+    }
+  },
+  {
+    "id": "policy_border_security",
+    "name": "Operation Sovereign Borders",
+    "description": "Military-led border protection operations.",
+    "issue": "security",
+    "proposerReward": "policy_win",
+    "proposerRewardValue": 2,
+    "campaignLinks": ["campaign_003"],
+    "stanceTable": {
+      "progressive": "opposed",
+      "conservative": "favoured",
+      "market": "neutral",
+      "interventionist": "neutral"
+    }
+  },
+  {
+    "id": "policy_medicare_expansion",
+    "name": "Medicare Bulk Billing Incentive",
+    "description": "Increase bulk billing rebates for GPs.",
+    "issue": "cost_of_living",
+    "proposerReward": "policy_win",
+    "proposerRewardValue": 2,
+    "campaignLinks": ["campaign_004"],
+    "stanceTable": {
+      "progressive": "favoured",
+      "conservative": "neutral",
+      "market": "opposed",
+      "interventionist": "favoured"
+    }
+  },
+  {
+    "id": "policy_first_home_buyer",
+    "name": "Help to Buy Scheme",
+    "description": "Government co-ownership for first home buyers.",
+    "issue": "housing",
+    "proposerReward": "policy_win",
+    "proposerRewardValue": 2,
+    "campaignLinks": ["campaign_005"],
+    "stanceTable": {
+      "progressive": "favoured",
+      "conservative": "neutral",
+      "market": "opposed",
+      "interventionist": "favoured"
+    }
+  },
+  {
+    "id": "policy_small_business",
+    "name": "Instant Asset Write-Off",
+    "description": "Tax deductions for small business investment.",
+    "issue": "economy",
+    "proposerReward": "policy_win",
+    "proposerRewardValue": 2,
+    "campaignLinks": ["campaign_006"],
+    "stanceTable": {
+      "progressive": "neutral",
+      "conservative": "favoured",
+      "market": "favoured",
+      "interventionist": "opposed"
+    }
+  },
+  {
+    "id": "policy_grocery_caps",
+    "name": "Supermarket Code of Conduct",
+    "description": "Mandatory code to ensure fair pricing.",
+    "issue": "cost_of_living",
+    "proposerReward": "policy_win",
+    "proposerRewardValue": 2,
+    "campaignLinks": ["campaign_007", "campaign_013"],
+    "stanceTable": {
+      "progressive": "favoured",
+      "conservative": "neutral",
+      "market": "opposed",
+      "interventionist": "favoured"
+    }
+  },
+  {
+    "id": "policy_police_funding",
+    "name": "Police Resources Package",
+    "description": "Increase funding for state police forces.",
+    "issue": "security",
+    "proposerReward": "policy_win",
+    "proposerRewardValue": 2,
+    "campaignLinks": ["campaign_008"],
+    "stanceTable": {
+      "progressive": "neutral",
+      "conservative": "favoured",
+      "market": "neutral",
+      "interventionist": "neutral"
+    }
+  },
+  {
+    "id": "policy_neg_gearing",
+    "name": "Negative Gearing Reform",
+    "description": "Limit tax concessions for property investors.",
+    "issue": "housing",
+    "proposerReward": "landmark_reform",
+    "proposerRewardValue": 3,
+    "campaignLinks": ["campaign_009"],
+    "stanceTable": {
+      "progressive": "favoured",
+      "conservative": "opposed",
+      "market": "opposed",
+      "interventionist": "favoured"
+    }
+  },
+  {
+    "id": "policy_nuclear",
+    "name": "Nuclear Energy Act",
+    "description": "Lift the moratorium on nuclear power.",
+    "issue": "climate",
+    "proposerReward": "landmark_reform",
+    "proposerRewardValue": 3,
+    "campaignLinks": ["campaign_010"],
+    "stanceTable": {
+      "progressive": "opposed",
+      "conservative": "favoured",
+      "market": "favoured",
+      "interventionist": "neutral"
+    }
+  },
+  {
+    "id": "policy_minimum_wage",
+    "name": "Living Wage Increase",
+    "description": "Substantial increase to minimum wage.",
+    "issue": "economy",
+    "proposerReward": "policy_win",
+    "proposerRewardValue": 2,
+    "campaignLinks": ["campaign_011"],
+    "stanceTable": {
+      "progressive": "favoured",
+      "conservative": "opposed",
+      "market": "opposed",
+      "interventionist": "favoured"
+    }
+  },
+  {
+    "id": "policy_aukus",
+    "name": "AUKUS Implementation",
+    "description": "Proceed with nuclear submarine acquisition.",
+    "issue": "security",
+    "proposerReward": "landmark_reform",
+    "proposerRewardValue": 3,
+    "campaignLinks": ["campaign_012"],
+    "stanceTable": {
+      "progressive": "neutral",
+      "conservative": "favoured",
+      "market": "neutral",
+      "interventionist": "neutral"
+    }
+  },
+  {
+    "id": "policy_childcare",
+    "name": "Childcare Subsidy Boost",
+    "description": "Increase childcare subsidies to 90%.",
+    "issue": "cost_of_living",
+    "proposerReward": "policy_win",
+    "proposerRewardValue": 2,
+    "campaignLinks": ["campaign_015"],
+    "stanceTable": {
+      "progressive": "favoured",
+      "conservative": "neutral",
+      "market": "opposed",
+      "interventionist": "favoured"
+    }
+  },
+  {
+    "id": "policy_renewables",
+    "name": "Renewable Energy Target",
+    "description": "82% renewables by 2030.",
+    "issue": "climate",
+    "proposerReward": "landmark_reform",
+    "proposerRewardValue": 3,
+    "campaignLinks": ["campaign_002", "campaign_016"],
+    "stanceTable": {
+      "progressive": "favoured",
+      "conservative": "opposed",
+      "market": "neutral",
+      "interventionist": "favoured"
+    }
+  },
+  {
+    "id": "policy_public_housing",
+    "name": "Housing Australia Future Fund",
+    "description": "Build 30,000 new social housing units.",
+    "issue": "housing",
+    "proposerReward": "landmark_reform",
+    "proposerRewardValue": 3,
+    "campaignLinks": ["campaign_018"],
+    "stanceTable": {
+      "progressive": "favoured",
+      "conservative": "opposed",
+      "market": "opposed",
+      "interventionist": "favoured"
+    }
+  },
+  {
+    "id": "policy_corporate_tax",
+    "name": "Corporate Tax Cut",
+    "description": "Reduce company tax rate to 25%.",
+    "issue": "economy",
+    "proposerReward": "policy_win",
+    "proposerRewardValue": 2,
+    "stanceTable": {
+      "progressive": "opposed",
+      "conservative": "favoured",
+      "market": "favoured",
+      "interventionist": "opposed"
+    }
+  },
+  {
+    "id": "policy_dental_medicare",
+    "name": "Dental into Medicare",
+    "description": "Add dental services to Medicare coverage.",
+    "issue": "cost_of_living",
+    "proposerReward": "landmark_reform",
+    "proposerRewardValue": 3,
+    "stanceTable": {
+      "progressive": "favoured",
+      "conservative": "opposed",
+      "market": "opposed",
+      "interventionist": "favoured"
+    }
+  },
+  {
+    "id": "policy_rent_freeze",
+    "name": "Rent Increase Cap",
+    "description": "Limit annual rent increases to CPI.",
+    "issue": "housing",
+    "proposerReward": "policy_win",
+    "proposerRewardValue": 2,
+    "stanceTable": {
+      "progressive": "favoured",
+      "conservative": "opposed",
+      "market": "opposed",
+      "interventionist": "favoured"
+    }
+  },
+  {
+    "id": "policy_coal_support",
+    "name": "Coal Industry Support",
+    "description": "Subsidies for coal mining jobs.",
+    "issue": "economy",
+    "proposerReward": "policy_win",
+    "proposerRewardValue": 2,
+    "stanceTable": {
+      "progressive": "opposed",
+      "conservative": "favoured",
+      "market": "favoured",
+      "interventionist": "neutral"
+    }
+  },
+  {
+    "id": "policy_cyber_security",
+    "name": "Critical Infrastructure Act",
+    "description": "Strengthen cybersecurity requirements.",
+    "issue": "security",
+    "proposerReward": "policy_win",
+    "proposerRewardValue": 2,
+    "stanceTable": {
+      "progressive": "neutral",
+      "conservative": "neutral",
+      "market": "neutral",
+      "interventionist": "favoured"
+    }
+  }
+]

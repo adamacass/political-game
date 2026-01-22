@@ -1,0 +1,362 @@
+[
+  {
+    "id": "campaign_001",
+    "name": "Media Blitz",
+    "description": "Blanket advertising across all major networks",
+    "type": "campaign",
+    "seatDelta": 2,
+    "issue": null,
+    "conditional": null
+  },
+  {
+    "id": "campaign_002",
+    "name": "Grassroots Rally",
+    "description": "Community organizing in key marginal seats",
+    "type": "campaign",
+    "seatDelta": 1,
+    "issue": "economy",
+    "conditional": null
+  },
+  {
+    "id": "campaign_003",
+    "name": "Economic Summit",
+    "description": "High-profile forum with business leaders",
+    "type": "campaign",
+    "seatDelta": 2,
+    "issue": "economy",
+    "conditional": null
+  },
+  {
+    "id": "campaign_004",
+    "name": "Cost of Living Relief Tour",
+    "description": "Visiting struggling families in suburbs",
+    "type": "campaign",
+    "seatDelta": 1,
+    "issue": "cost_of_living",
+    "conditional": null
+  },
+  {
+    "id": "campaign_005",
+    "name": "Housing Crisis Forum",
+    "description": "Town hall on affordability",
+    "type": "campaign",
+    "seatDelta": 1,
+    "issue": "housing",
+    "conditional": null
+  },
+  {
+    "id": "campaign_006",
+    "name": "Climate Action March",
+    "description": "Leading environmental protesters through the city",
+    "type": "campaign",
+    "seatDelta": 1,
+    "issue": "climate",
+    "conditional": null
+  },
+  {
+    "id": "campaign_007",
+    "name": "Border Security Address",
+    "description": "Hardline speech on national defense",
+    "type": "campaign",
+    "seatDelta": 1,
+    "issue": "security",
+    "conditional": null
+  },
+  {
+    "id": "campaign_008",
+    "name": "Celebrity Endorsement",
+    "description": "A-list support for your party",
+    "type": "campaign",
+    "seatDelta": 2,
+    "issue": null,
+    "conditional": null
+  },
+  {
+    "id": "campaign_009",
+    "name": "Gaffe Recovery",
+    "description": "Damage control after a PR disaster",
+    "type": "campaign",
+    "seatDelta": -1,
+    "issue": null,
+    "conditional": null
+  },
+  {
+    "id": "campaign_010",
+    "name": "Scandal Erupts",
+    "description": "Past misdeeds come to light",
+    "type": "campaign",
+    "seatDelta": -2,
+    "issue": null,
+    "conditional": null
+  },
+  {
+    "id": "campaign_011",
+    "name": "Pensioner Promise",
+    "description": "Pledging better retirement benefits",
+    "type": "campaign",
+    "seatDelta": 1,
+    "issue": "cost_of_living",
+    "conditional": null
+  },
+  {
+    "id": "campaign_012",
+    "name": "First Home Buyer Scheme",
+    "description": "Announcing deposit assistance program",
+    "type": "campaign",
+    "seatDelta": 2,
+    "issue": "housing",
+    "conditional": null
+  },
+  {
+    "id": "campaign_013",
+    "name": "Mining Lobby Support",
+    "description": "Backing from resource industry",
+    "type": "campaign",
+    "seatDelta": 1,
+    "issue": "economy",
+    "conditional": null
+  },
+  {
+    "id": "campaign_014",
+    "name": "Union Backing",
+    "description": "Labour movement endorsement",
+    "type": "campaign",
+    "seatDelta": 1,
+    "issue": "economy",
+    "conditional": null
+  },
+  {
+    "id": "campaign_015",
+    "name": "Leader's Debate Win",
+    "description": "Decisive victory in televised debate",
+    "type": "campaign",
+    "seatDelta": 2,
+    "issue": null,
+    "conditional": null
+  },
+  {
+    "id": "campaign_016",
+    "name": "Regional Outreach",
+    "description": "Bush and rural community visits",
+    "type": "campaign",
+    "seatDelta": 1,
+    "issue": null,
+    "conditional": null
+  },
+  {
+    "id": "campaign_017",
+    "name": "Youth Engagement",
+    "description": "TikTok campaign goes viral",
+    "type": "campaign",
+    "seatDelta": 1,
+    "issue": "climate",
+    "conditional": null
+  },
+  {
+    "id": "campaign_018",
+    "name": "Military Parade Attendance",
+    "description": "Patriotic photo opportunity",
+    "type": "campaign",
+    "seatDelta": 1,
+    "issue": "security",
+    "conditional": null
+  },
+  {
+    "id": "campaign_019",
+    "name": "Incumbent Fatigue",
+    "description": "Voters tired of the leading party",
+    "type": "campaign",
+    "seatDelta": 1,
+    "issue": null,
+    "conditional": { "type": "underdog_bonus", "value": 1 }
+  },
+  {
+    "id": "campaign_020",
+    "name": "Tall Poppy Syndrome",
+    "description": "The frontrunner faces backlash",
+    "type": "campaign",
+    "seatDelta": -1,
+    "issue": null,
+    "conditional": { "type": "leader_penalty", "value": -1 }
+  },
+  {
+    "id": "campaign_021",
+    "name": "Policy Clarity",
+    "description": "Clear messaging resonates with voters",
+    "type": "campaign",
+    "seatDelta": 1,
+    "issue": null,
+    "conditional": null
+  },
+  {
+    "id": "campaign_022",
+    "name": "Hospital Visit",
+    "description": "Addressing healthcare concerns",
+    "type": "campaign",
+    "seatDelta": 1,
+    "issue": "cost_of_living",
+    "conditional": null
+  },
+  {
+    "id": "campaign_023",
+    "name": "Infrastructure Promise",
+    "description": "Big spending on roads and rail",
+    "type": "campaign",
+    "seatDelta": 1,
+    "issue": "economy",
+    "conditional": null
+  },
+  {
+    "id": "campaign_024",
+    "name": "Solar Suburbs Initiative",
+    "description": "Green energy for every home",
+    "type": "campaign",
+    "seatDelta": 1,
+    "issue": "climate",
+    "conditional": null
+  },
+  {
+    "id": "campaign_025",
+    "name": "Navy Announcement",
+    "description": "New submarine contract",
+    "type": "campaign",
+    "seatDelta": 1,
+    "issue": "security",
+    "conditional": null
+  },
+  {
+    "id": "campaign_026",
+    "name": "Rent Freeze Proposal",
+    "description": "Bold housing policy announcement",
+    "type": "campaign",
+    "seatDelta": 2,
+    "issue": "housing",
+    "conditional": null
+  },
+  {
+    "id": "campaign_027",
+    "name": "Tax Cut Promise",
+    "description": "Lower taxes for middle Australia",
+    "type": "campaign",
+    "seatDelta": 2,
+    "issue": "cost_of_living",
+    "conditional": null
+  },
+  {
+    "id": "campaign_028",
+    "name": "Business Council Speech",
+    "description": "Addressing corporate Australia",
+    "type": "campaign",
+    "seatDelta": 1,
+    "issue": "economy",
+    "conditional": null
+  },
+  {
+    "id": "campaign_029",
+    "name": "Internal Division",
+    "description": "Party infighting goes public",
+    "type": "campaign",
+    "seatDelta": -1,
+    "issue": null,
+    "conditional": null
+  },
+  {
+    "id": "campaign_030",
+    "name": "Leadership Speculation",
+    "description": "Rumours of a challenge",
+    "type": "campaign",
+    "seatDelta": -1,
+    "issue": null,
+    "conditional": null
+  },
+  {
+    "id": "campaign_031",
+    "name": "Emissions Target",
+    "description": "Ambitious climate commitment",
+    "type": "campaign",
+    "seatDelta": 1,
+    "issue": "climate",
+    "conditional": null
+  },
+  {
+    "id": "campaign_032",
+    "name": "Immigration Crackdown",
+    "description": "Tough border policy announcement",
+    "type": "campaign",
+    "seatDelta": 1,
+    "issue": "security",
+    "conditional": null
+  },
+  {
+    "id": "campaign_033",
+    "name": "Public Housing Pledge",
+    "description": "Building 50,000 new homes",
+    "type": "campaign",
+    "seatDelta": 1,
+    "issue": "housing",
+    "conditional": null
+  },
+  {
+    "id": "campaign_034",
+    "name": "Supermarket Inquiry",
+    "description": "Taking on grocery duopoly",
+    "type": "campaign",
+    "seatDelta": 1,
+    "issue": "cost_of_living",
+    "conditional": null
+  },
+  {
+    "id": "campaign_035",
+    "name": "Jobs Creation Plan",
+    "description": "Major employment initiative",
+    "type": "campaign",
+    "seatDelta": 1,
+    "issue": "economy",
+    "conditional": null
+  },
+  {
+    "id": "campaign_036",
+    "name": "Net Zero By 2040",
+    "description": "Radical environmental timeline",
+    "type": "campaign",
+    "seatDelta": 2,
+    "issue": "climate",
+    "conditional": null
+  },
+  {
+    "id": "campaign_037",
+    "name": "AUKUS Support",
+    "description": "Nuclear submarine alliance",
+    "type": "campaign",
+    "seatDelta": 1,
+    "issue": "security",
+    "conditional": null
+  },
+  {
+    "id": "campaign_038",
+    "name": "Rental Assistance",
+    "description": "Commonwealth rent support increase",
+    "type": "campaign",
+    "seatDelta": 1,
+    "issue": "housing",
+    "conditional": null
+  },
+  {
+    "id": "campaign_039",
+    "name": "Medicare Expansion",
+    "description": "Free dental and mental health",
+    "type": "campaign",
+    "seatDelta": 2,
+    "issue": "cost_of_living",
+    "conditional": null
+  },
+  {
+    "id": "campaign_040",
+    "name": "Budget Surplus Announcement",
+    "description": "Economic management credentials",
+    "type": "campaign",
+    "seatDelta": 1,
+    "issue": "economy",
+    "conditional": null
+  }
+]

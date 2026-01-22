@@ -1,0 +1,601 @@
+[
+  {
+    "id": "policy_001",
+    "name": "Carbon Tax",
+    "description": "Price on pollution to fund green transition",
+    "issue": "climate",
+    "proposerReward": "landmark_reform",
+    "proposerRewardValue": 3,
+    "stanceTable": {
+      "progressive": "favoured",
+      "conservative": "opposed",
+      "market": "neutral",
+      "interventionist": "favoured"
+    }
+  },
+  {
+    "id": "policy_002",
+    "name": "Corporate Tax Cut",
+    "description": "Reduce company tax rate to attract investment",
+    "type": "policy",
+    "issue": "economy",
+    "proposerReward": { "type": "policy_win", "value": 2 },
+    "stanceTable": {
+      "progressive": "opposed",
+      "conservative": "favoured",
+      "market": "favoured",
+      "interventionist": "opposed"
+    },
+    "ongoingEffect": null
+  },
+  {
+    "id": "policy_003",
+    "name": "Rent Control Act",
+    "description": "Cap annual rent increases at 2%",
+    "type": "policy",
+    "issue": "housing",
+    "proposerReward": { "type": "landmark_reform", "value": 3 },
+    "stanceTable": {
+      "progressive": "favoured",
+      "conservative": "opposed",
+      "market": "opposed",
+      "interventionist": "favoured"
+    },
+    "ongoingEffect": null
+  },
+  {
+    "id": "policy_004",
+    "name": "Defence Budget Increase",
+    "description": "Expand military spending by 20%",
+    "type": "policy",
+    "issue": "security",
+    "proposerReward": { "type": "policy_win", "value": 2 },
+    "stanceTable": {
+      "progressive": "opposed",
+      "conservative": "favoured",
+      "market": "neutral",
+      "interventionist": "neutral"
+    },
+    "ongoingEffect": null
+  },
+  {
+    "id": "policy_005",
+    "name": "Universal Basic Income Trial",
+    "description": "Pilot UBI in selected communities",
+    "type": "policy",
+    "issue": "cost_of_living",
+    "proposerReward": { "type": "landmark_reform", "value": 3 },
+    "stanceTable": {
+      "progressive": "favoured",
+      "conservative": "opposed",
+      "market": "opposed",
+      "interventionist": "favoured"
+    },
+    "ongoingEffect": null
+  },
+  {
+    "id": "policy_006",
+    "name": "Mining Expansion Act",
+    "description": "Open new coal and gas extraction zones",
+    "type": "policy",
+    "issue": "economy",
+    "proposerReward": { "type": "policy_win", "value": 2 },
+    "stanceTable": {
+      "progressive": "opposed",
+      "conservative": "favoured",
+      "market": "favoured",
+      "interventionist": "neutral"
+    },
+    "ongoingEffect": null
+  },
+  {
+    "id": "policy_007",
+    "name": "Negative Gearing Reform",
+    "description": "Phase out tax breaks for property investors",
+    "type": "policy",
+    "issue": "housing",
+    "proposerReward": { "type": "landmark_reform", "value": 3 },
+    "stanceTable": {
+      "progressive": "favoured",
+      "conservative": "opposed",
+      "market": "opposed",
+      "interventionist": "favoured"
+    },
+    "ongoingEffect": null
+  },
+  {
+    "id": "policy_008",
+    "name": "Refugee Intake Increase",
+    "description": "Double humanitarian visa program",
+    "type": "policy",
+    "issue": "security",
+    "proposerReward": { "type": "policy_win", "value": 2 },
+    "stanceTable": {
+      "progressive": "favoured",
+      "conservative": "opposed",
+      "market": "neutral",
+      "interventionist": "neutral"
+    },
+    "ongoingEffect": null
+  },
+  {
+    "id": "policy_009",
+    "name": "Energy Price Cap",
+    "description": "Government intervention in electricity market",
+    "type": "policy",
+    "issue": "cost_of_living",
+    "proposerReward": { "type": "policy_win", "value": 2 },
+    "stanceTable": {
+      "progressive": "favoured",
+      "conservative": "neutral",
+      "market": "opposed",
+      "interventionist": "favoured"
+    },
+    "ongoingEffect": null
+  },
+  {
+    "id": "policy_010",
+    "name": "Nuclear Power Legislation",
+    "description": "Lift ban on nuclear energy development",
+    "type": "policy",
+    "issue": "climate",
+    "proposerReward": { "type": "landmark_reform", "value": 3 },
+    "stanceTable": {
+      "progressive": "opposed",
+      "conservative": "favoured",
+      "market": "favoured",
+      "interventionist": "neutral"
+    },
+    "ongoingEffect": null
+  },
+  {
+    "id": "policy_011",
+    "name": "Public Bank Establishment",
+    "description": "Create government-owned retail bank",
+    "type": "policy",
+    "issue": "economy",
+    "proposerReward": { "type": "landmark_reform", "value": 3 },
+    "stanceTable": {
+      "progressive": "favoured",
+      "conservative": "opposed",
+      "market": "opposed",
+      "interventionist": "favoured"
+    },
+    "ongoingEffect": null
+  },
+  {
+    "id": "policy_012",
+    "name": "First Home Guarantee Expansion",
+    "description": "Government-backed deposits for buyers",
+    "type": "policy",
+    "issue": "housing",
+    "proposerReward": { "type": "policy_win", "value": 2 },
+    "stanceTable": {
+      "progressive": "neutral",
+      "conservative": "neutral",
+      "market": "neutral",
+      "interventionist": "favoured"
+    },
+    "ongoingEffect": null
+  },
+  {
+    "id": "policy_013",
+    "name": "Offshore Detention Expansion",
+    "description": "Build new processing facilities",
+    "type": "policy",
+    "issue": "security",
+    "proposerReward": { "type": "policy_win", "value": 2 },
+    "stanceTable": {
+      "progressive": "opposed",
+      "conservative": "favoured",
+      "market": "neutral",
+      "interventionist": "neutral"
+    },
+    "ongoingEffect": null
+  },
+  {
+    "id": "policy_014",
+    "name": "Medicare Dental Inclusion",
+    "description": "Free dental care under Medicare",
+    "type": "policy",
+    "issue": "cost_of_living",
+    "proposerReward": { "type": "landmark_reform", "value": 3 },
+    "stanceTable": {
+      "progressive": "favoured",
+      "conservative": "opposed",
+      "market": "opposed",
+      "interventionist": "favoured"
+    },
+    "ongoingEffect": null
+  },
+  {
+    "id": "policy_015",
+    "name": "Renewable Energy Target 100%",
+    "description": "Mandate all-renewable grid by 2035",
+    "type": "policy",
+    "issue": "climate",
+    "proposerReward": { "type": "landmark_reform", "value": 3 },
+    "stanceTable": {
+      "progressive": "favoured",
+      "conservative": "opposed",
+      "market": "neutral",
+      "interventionist": "favoured"
+    },
+    "ongoingEffect": null
+  },
+  {
+    "id": "policy_016",
+    "name": "Industrial Relations Reform",
+    "description": "Weaken union bargaining rights",
+    "type": "policy",
+    "issue": "economy",
+    "proposerReward": { "type": "policy_win", "value": 2 },
+    "stanceTable": {
+      "progressive": "opposed",
+      "conservative": "favoured",
+      "market": "favoured",
+      "interventionist": "opposed"
+    },
+    "ongoingEffect": null
+  },
+  {
+    "id": "policy_017",
+    "name": "Social Housing Investment Fund",
+    "description": "Build 100,000 public homes",
+    "type": "policy",
+    "issue": "housing",
+    "proposerReward": { "type": "landmark_reform", "value": 3 },
+    "stanceTable": {
+      "progressive": "favoured",
+      "conservative": "opposed",
+      "market": "opposed",
+      "interventionist": "favoured"
+    },
+    "ongoingEffect": null
+  },
+  {
+    "id": "policy_018",
+    "name": "Anti-Encryption Laws",
+    "description": "Mandate backdoors for law enforcement",
+    "type": "policy",
+    "issue": "security",
+    "proposerReward": { "type": "policy_win", "value": 2 },
+    "stanceTable": {
+      "progressive": "opposed",
+      "conservative": "favoured",
+      "market": "opposed",
+      "interventionist": "neutral"
+    },
+    "ongoingEffect": null
+  },
+  {
+    "id": "policy_019",
+    "name": "Childcare Subsidy Expansion",
+    "description": "90% rebate for working families",
+    "type": "policy",
+    "issue": "cost_of_living",
+    "proposerReward": { "type": "policy_win", "value": 2 },
+    "stanceTable": {
+      "progressive": "favoured",
+      "conservative": "neutral",
+      "market": "neutral",
+      "interventionist": "favoured"
+    },
+    "ongoingEffect": null
+  },
+  {
+    "id": "policy_020",
+    "name": "Electric Vehicle Mandate",
+    "description": "Ban new petrol cars from 2030",
+    "type": "policy",
+    "issue": "climate",
+    "proposerReward": { "type": "landmark_reform", "value": 3 },
+    "stanceTable": {
+      "progressive": "favoured",
+      "conservative": "opposed",
+      "market": "opposed",
+      "interventionist": "favoured"
+    },
+    "ongoingEffect": null
+  },
+  {
+    "id": "policy_021",
+    "name": "Superannuation Expansion",
+    "description": "Increase compulsory super to 15%",
+    "type": "policy",
+    "issue": "economy",
+    "proposerReward": { "type": "policy_win", "value": 2 },
+    "stanceTable": {
+      "progressive": "favoured",
+      "conservative": "neutral",
+      "market": "neutral",
+      "interventionist": "favoured"
+    },
+    "ongoingEffect": null
+  },
+  {
+    "id": "policy_022",
+    "name": "Planning Reform Act",
+    "description": "Override local zoning to enable density",
+    "type": "policy",
+    "issue": "housing",
+    "proposerReward": { "type": "policy_win", "value": 2 },
+    "stanceTable": {
+      "progressive": "neutral",
+      "conservative": "neutral",
+      "market": "favoured",
+      "interventionist": "neutral"
+    },
+    "ongoingEffect": null
+  },
+  {
+    "id": "policy_023",
+    "name": "National Security Powers",
+    "description": "Expand ASIO surveillance authority",
+    "type": "policy",
+    "issue": "security",
+    "proposerReward": { "type": "policy_win", "value": 2 },
+    "stanceTable": {
+      "progressive": "opposed",
+      "conservative": "favoured",
+      "market": "neutral",
+      "interventionist": "neutral"
+    },
+    "ongoingEffect": null
+  },
+  {
+    "id": "policy_024",
+    "name": "Grocery Code Enforcement",
+    "description": "Break up supermarket duopoly",
+    "type": "policy",
+    "issue": "cost_of_living",
+    "proposerReward": { "type": "policy_win", "value": 2 },
+    "stanceTable": {
+      "progressive": "favoured",
+      "conservative": "neutral",
+      "market": "opposed",
+      "interventionist": "favoured"
+    },
+    "ongoingEffect": null
+  },
+  {
+    "id": "policy_025",
+    "name": "Great Barrier Reef Fund",
+    "description": "Massive conservation investment",
+    "type": "policy",
+    "issue": "climate",
+    "proposerReward": { "type": "policy_win", "value": 2 },
+    "stanceTable": {
+      "progressive": "favoured",
+      "conservative": "neutral",
+      "market": "neutral",
+      "interventionist": "favoured"
+    },
+    "ongoingEffect": null
+  },
+  {
+    "id": "policy_026",
+    "name": "Free Trade Agreement",
+    "description": "New bilateral deal with major partner",
+    "type": "policy",
+    "issue": "economy",
+    "proposerReward": { "type": "policy_win", "value": 2 },
+    "stanceTable": {
+      "progressive": "neutral",
+      "conservative": "favoured",
+      "market": "favoured",
+      "interventionist": "opposed"
+    },
+    "ongoingEffect": null
+  },
+  {
+    "id": "policy_027",
+    "name": "Build-to-Rent Incentives",
+    "description": "Tax breaks for institutional landlords",
+    "type": "policy",
+    "issue": "housing",
+    "proposerReward": { "type": "policy_win", "value": 2 },
+    "stanceTable": {
+      "progressive": "neutral",
+      "conservative": "favoured",
+      "market": "favoured",
+      "interventionist": "opposed"
+    },
+    "ongoingEffect": null
+  },
+  {
+    "id": "policy_028",
+    "name": "Cyber Defence Strategy",
+    "description": "Major investment in digital security",
+    "type": "policy",
+    "issue": "security",
+    "proposerReward": { "type": "policy_win", "value": 2 },
+    "stanceTable": {
+      "progressive": "neutral",
+      "conservative": "favoured",
+      "market": "neutral",
+      "interventionist": "neutral"
+    },
+    "ongoingEffect": null
+  },
+  {
+    "id": "policy_029",
+    "name": "Pharmaceutical Benefits Expansion",
+    "description": "Add more drugs to PBS",
+    "type": "policy",
+    "issue": "cost_of_living",
+    "proposerReward": { "type": "policy_win", "value": 2 },
+    "stanceTable": {
+      "progressive": "favoured",
+      "conservative": "neutral",
+      "market": "neutral",
+      "interventionist": "favoured"
+    },
+    "ongoingEffect": null
+  },
+  {
+    "id": "policy_030",
+    "name": "Agriculture Emissions Standards",
+    "description": "Regulate farm methane output",
+    "type": "policy",
+    "issue": "climate",
+    "proposerReward": { "type": "policy_win", "value": 2 },
+    "stanceTable": {
+      "progressive": "favoured",
+      "conservative": "opposed",
+      "market": "neutral",
+      "interventionist": "favoured"
+    },
+    "ongoingEffect": null
+  },
+  {
+    "id": "policy_031",
+    "name": "Minimum Wage Increase",
+    "description": "Lift the wage floor by 10%",
+    "type": "policy",
+    "issue": "economy",
+    "proposerReward": { "type": "policy_win", "value": 2 },
+    "stanceTable": {
+      "progressive": "favoured",
+      "conservative": "opposed",
+      "market": "opposed",
+      "interventionist": "favoured"
+    },
+    "ongoingEffect": null
+  },
+  {
+    "id": "policy_032",
+    "name": "Foreign Buyer Ban",
+    "description": "Prohibit overseas property purchases",
+    "type": "policy",
+    "issue": "housing",
+    "proposerReward": { "type": "policy_win", "value": 2 },
+    "stanceTable": {
+      "progressive": "neutral",
+      "conservative": "favoured",
+      "market": "opposed",
+      "interventionist": "favoured"
+    },
+    "ongoingEffect": null
+  },
+  {
+    "id": "policy_033",
+    "name": "Counter-Terrorism Laws",
+    "description": "Expand preventive detention powers",
+    "type": "policy",
+    "issue": "security",
+    "proposerReward": { "type": "policy_win", "value": 2 },
+    "stanceTable": {
+      "progressive": "opposed",
+      "conservative": "favoured",
+      "market": "neutral",
+      "interventionist": "neutral"
+    },
+    "ongoingEffect": null
+  },
+  {
+    "id": "policy_034",
+    "name": "Education Funding Boost",
+    "description": "Major increase in public school funding",
+    "type": "policy",
+    "issue": "cost_of_living",
+    "proposerReward": { "type": "policy_win", "value": 2 },
+    "stanceTable": {
+      "progressive": "favoured",
+      "conservative": "neutral",
+      "market": "neutral",
+      "interventionist": "favoured"
+    },
+    "ongoingEffect": null
+  },
+  {
+    "id": "policy_035",
+    "name": "Safeguard Mechanism Expansion",
+    "description": "Tighten industrial emissions caps",
+    "type": "policy",
+    "issue": "climate",
+    "proposerReward": { "type": "policy_win", "value": 2 },
+    "stanceTable": {
+      "progressive": "favoured",
+      "conservative": "opposed",
+      "market": "neutral",
+      "interventionist": "favoured"
+    },
+    "ongoingEffect": null
+  },
+  {
+    "id": "policy_036",
+    "name": "Innovation Investment Fund",
+    "description": "Government-backed startup capital",
+    "type": "policy",
+    "issue": "economy",
+    "proposerReward": { "type": "policy_win", "value": 2 },
+    "stanceTable": {
+      "progressive": "neutral",
+      "conservative": "neutral",
+      "market": "favoured",
+      "interventionist": "favoured"
+    },
+    "ongoingEffect": null
+  },
+  {
+    "id": "policy_037",
+    "name": "Stamp Duty Abolition",
+    "description": "Replace with annual land tax",
+    "type": "policy",
+    "issue": "housing",
+    "proposerReward": { "type": "landmark_reform", "value": 3 },
+    "stanceTable": {
+      "progressive": "neutral",
+      "conservative": "neutral",
+      "market": "favoured",
+      "interventionist": "neutral"
+    },
+    "ongoingEffect": null
+  },
+  {
+    "id": "policy_038",
+    "name": "Pacific Security Pact",
+    "description": "New regional defence alliance",
+    "type": "policy",
+    "issue": "security",
+    "proposerReward": { "type": "landmark_reform", "value": 3 },
+    "stanceTable": {
+      "progressive": "neutral",
+      "conservative": "favoured",
+      "market": "neutral",
+      "interventionist": "neutral"
+    },
+    "ongoingEffect": null
+  },
+  {
+    "id": "policy_039",
+    "name": "HECS Debt Forgiveness",
+    "description": "Write off student loans",
+    "type": "policy",
+    "issue": "cost_of_living",
+    "proposerReward": { "type": "landmark_reform", "value": 3 },
+    "stanceTable": {
+      "progressive": "favoured",
+      "conservative": "opposed",
+      "market": "opposed",
+      "interventionist": "favoured"
+    },
+    "ongoingEffect": null
+  },
+  {
+    "id": "policy_040",
+    "name": "Nature Positive Legislation",
+    "description": "Mandate biodiversity protection",
+    "type": "policy",
+    "issue": "climate",
+    "proposerReward": { "type": "policy_win", "value": 2 },
+    "stanceTable": {
+      "progressive": "favoured",
+      "conservative": "neutral",
+      "market": "neutral",
+      "interventionist": "favoured"
+    },
+    "ongoingEffect": null
+  }
+]

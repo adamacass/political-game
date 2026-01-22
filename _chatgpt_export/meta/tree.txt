@@ -1,0 +1,56 @@
+﻿ROOT: C:\political-game
+
+client\
+config\
+server\
+{server\
+export-for-chatgpt.ps1 (7.1 KB)
+New Text Document.txt (0 KB)
+package-lock.json (13.2 KB)
+package.json (0.6 KB)
+  src\
+  index.html (0.6 KB)
+  package-lock.json (90.9 KB)
+  package.json (0.6 KB)
+  postcss.config.js (0.1 KB)
+  tailwind.config.js (0.7 KB)
+  tsconfig.json (0.6 KB)
+  tsconfig.node.json (0.2 KB)
+  vite.config.ts (0.5 KB)
+    components\
+    hooks\
+    lib\
+    types\
+    App.tsx (4 KB)
+    index.css (1.1 KB)
+    main.tsx (0.2 KB)
+      ChatPanel.tsx (5.7 KB)
+      GameBoard.tsx (30.8 KB)
+      Lobby.tsx (13.2 KB)
+      SeatLayout.tsx (7.7 KB)
+      useSocket.ts (6.9 KB)
+      utils.ts (2.9 KB)
+      index.ts (5.4 KB)
+  cards\
+    campaign.json (8.5 KB)
+    policy.json (16.4 KB)
+    wildcard.json (4.5 KB)
+  src\
+  package-lock.json (59.3 KB)
+  package.json (0.6 KB)
+  tsconfig.json (0.4 KB)
+    config\
+    game\
+    rooms\
+    types\
+    index.ts (12.8 KB)
+      loader.ts (10.2 KB)
+      GameEngine.ts (31.1 KB)
+      rng.ts (0.9 KB)
+      RoomManager.ts (7.6 KB)
+      index.ts (9.2 KB)
+  src\
+    {game,config,rooms,types},client\
+      src\
+        {components,hooks,types,lib},config\
+          cards}\
