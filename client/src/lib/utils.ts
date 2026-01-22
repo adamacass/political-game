@@ -24,7 +24,6 @@ export const PHASE_LABELS: Record<Phase, string> = {
   policy_vote: 'Policy Vote',
   policy_resolution: 'Resolving Policy',
   wildcard_resolution: 'Wildcard Event',
-  issue_adjustment: 'Issue Adjustment',
   game_over: 'Game Over',
 };
 
@@ -36,7 +35,6 @@ export const PHASE_DESCRIPTIONS: Record<Phase, string> = {
   policy_vote: 'Vote on the proposed policy',
   policy_resolution: 'Resolving policy effects',
   wildcard_resolution: 'A wildcard event is occurring',
-  issue_adjustment: 'Adjust the active issue',
   game_over: 'The election is over!',
 };
 

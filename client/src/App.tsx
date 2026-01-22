@@ -278,7 +278,6 @@ const hostSkipToNextRound = useCallback(() => {
           onSkipProposal={skipProposal}
           onCastVote={castVote}
           onAcknowledgeWildcard={acknowledgeWildcard}
-          onAdjustIssue={adjustIssue}
           onExportGame={exportGame}
           onSendChat={sendChat}
           onMakeTradeOffer={makeTradeOffer}
