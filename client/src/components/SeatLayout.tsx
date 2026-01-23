@@ -2,6 +2,16 @@ import React, { useMemo } from 'react';
 import { Player } from '../types';
 import { Star } from 'lucide-react';
 
+// Design tokens - ballot paper aesthetic
+const colors = {
+  paper1: '#F4F1E8',
+  paper2: '#EEEBE2',
+  paper3: '#E8E5DC',
+  ink: '#111111',
+  inkSecondary: '#3A3A3A',
+  rule: '#1A1A1A',
+};
+
 interface SeatLayoutProps {
   players: Player[];
   totalSeats: number;
@@ -59,26 +69,26 @@ export function SeatLayout({ players, totalSeats, speakerId }: SeatLayoutProps) 
   const speaker = players.find(p => p.id === speakerId);
 
   return (
-    <div className="bg-white rounded-lg shadow p-4">
+    <div className="rounded-lg p-4" style={{ backgroundColor: colors.paper1, border: `2px solid ${colors.rule}` }}>
       <div className="flex items-center justify-between mb-2">
-        <h3 className="font-semibold">Parliament</h3>
+        <h3 className="font-semibold" style={{ color: colors.ink }}>Parliament</h3>
         {speaker && (
-          <div className="flex items-center gap-1 text-xs text-gray-500">
-            <Star className="w-3 h-3 text-yellow-500" />
+          <div className="flex items-center gap-1 text-xs" style={{ color: colors.inkSecondary }}>
+            <Star className="w-3 h-3" style={{ color: colors.ink }} />
             <span>Speaker: {speaker.name}</span>
           </div>
         )}
       </div>
-      
+
       <svg viewBox="0 0 300 140" className="w-full">
         {/* Background arc */}
         <path
           d="M 20 130 A 130 130 0 0 1 280 130"
           fill="none"
-          stroke="#f3f4f6"
+          stroke={colors.paper3}
           strokeWidth="80"
         />
-        
+
         {/* Seats */}
         {seatPositions.map((seat, idx) => (
           <circle
@@ -87,20 +97,20 @@ export function SeatLayout({ players, totalSeats, speakerId }: SeatLayoutProps) 
             cy={seat.y}
             r={4}
             fill={seat.color}
-            stroke="#fff"
+            stroke={colors.rule}
             strokeWidth={0.5}
           />
         ))}
-        
+
         {/* Center podium */}
-        <rect x="140" y="120" width="20" height="15" fill="#374151" rx="2" />
+        <rect x="140" y="120" width="20" height="15" fill={colors.ink} rx="2" />
       </svg>
-      
+
       {/* Legend */}
-      <div className="flex flex-wrap gap-2 mt-2 justify-center">
+      <div className="flex flex-wrap gap-2 mt-2 justify-center" style={{ borderTop: `1px solid ${colors.rule}`, paddingTop: '0.5rem' }}>
         {players.map(player => (
-          <div key={player.id} className="flex items-center gap-1 text-xs">
-            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: player.color }} />
+          <div key={player.id} className="flex items-center gap-1 text-xs" style={{ color: colors.ink }}>
+            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: player.color, border: `1px solid ${colors.rule}` }} />
             <span>{player.seats}</span>
           </div>
         ))}
