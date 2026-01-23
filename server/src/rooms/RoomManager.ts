@@ -272,6 +272,14 @@ class RoomManager {
     return room.engine.markNegotiationReady(playerId);
   }
 
+  // NEW: Resolve seat capture (Australian map)
+  resolveCaptureSeat(roomId: string, playerId: string, seatId: string): boolean {
+    const room = this.rooms.get(roomId.toUpperCase());
+    if (!room) return false;
+    room.lastActivity = Date.now();
+    return room.engine.resolveCaptureSeat(playerId, seatId);
+  }
+
   // Update config
   updateConfig(roomId: string, config: Partial<GameConfig>): boolean {
     const room = this.rooms.get(roomId.toUpperCase());

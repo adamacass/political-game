@@ -58,7 +58,7 @@ export function useSocket(): UseSocketReturn {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const socket = io(SERVER_URL, {
+    const socket = io(SOCKET_URL, {
       transports: ['websocket', 'polling'],
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,

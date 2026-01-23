@@ -231,6 +231,14 @@ const selectNewAgenda = useCallback((issue: string) => {
   socket?.emit('select_new_agenda', { issue });
 }, [socket]);
 
+const captureSeat = useCallback((seatId: string) => {
+  socket?.emit('resolve_capture_seat', { seatId });
+}, [socket]);
+
+const forceAdvancePhase = useCallback(() => {
+  socket?.emit('force_advance_phase');
+}, [socket]);
+
 const hostSkipCampaign = useCallback(() => {
   socket?.emit('host_skip_campaign');
 }, [socket]);
@@ -286,8 +294,9 @@ const hostSkipToNextRound = useCallback(() => {
           onRespondToOffer={respondToOffer}
           onCancelOffer={cancelOffer}
           onNegotiationReady={negotiationReady}
-	  onSelectNewAgenda={selectNewAgenda}
-                    
+          onSelectNewAgenda={selectNewAgenda}
+          onCaptureSeat={captureSeat}
+          onForceAdvance={forceAdvancePhase}
         />
       )}
     </div>

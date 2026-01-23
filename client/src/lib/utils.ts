@@ -27,6 +27,7 @@ export const PHASE_LABELS: Record<Phase, string> = {
   game_over: 'Game Over',
   negotiation: 'Negotiation',
   campaign_targeting: 'Select Target',
+  seat_capture: 'Capture Seats',
   agenda_selection: 'Select Agenda',
 };
 
@@ -41,6 +42,7 @@ export const PHASE_DESCRIPTIONS: Record<Phase, string> = {
   game_over: 'The election is over!',
   negotiation: 'Negotiation',
   campaign_targeting: 'Select Target',
+  seat_capture: 'Select seats to capture on the map',
   agenda_selection: 'Select Agenda',
 };
 
