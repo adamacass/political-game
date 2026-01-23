@@ -8,18 +8,19 @@ import {
   SocialIdeology,
   EconomicIdeology,
 } from '../types';
-import { 
-  Users, 
-  Play, 
-  Settings, 
-  Copy, 
-  Check, 
+import {
+  Users,
+  Play,
+  Settings,
+  Copy,
+  Check,
   Palette,
   Star,
   GitMerge,
   Target,
   RefreshCw,
   Brain,
+  Map,
 } from 'lucide-react';
 
 interface LobbyProps {
@@ -372,7 +373,27 @@ function SettingsPanel({ config, onUpdate }: { config: GameConfig; onUpdate: (c:
           <option value="random">Random Assignment</option>
         </select>
       </div>
-      
+
+      <div>
+        <label className="font-medium flex items-center gap-2">
+          <Map className="w-4 h-4" />
+          Seat Ideology Distribution
+        </label>
+        <select
+          value={config.seatIdeologyMode || 'random'}
+          onChange={e => onUpdate({ seatIdeologyMode: e.target.value as 'random' | 'realistic' })}
+          className="w-full mt-1 px-3 py-2 border rounded-lg"
+        >
+          <option value="random">Random (grouped by state)</option>
+          <option value="realistic">Realistic (voting patterns)</option>
+        </select>
+        <p className="text-xs text-gray-500 mt-1">
+          {config.seatIdeologyMode === 'realistic'
+            ? 'Inner city = progressive, rural = conservative'
+            : 'Randomly distributed with state-based grouping'}
+        </p>
+      </div>
+
       <div className="flex items-center justify-between">
         <label className="font-medium flex items-center gap-2">
           <GitMerge className="w-4 h-4" />
@@ -452,6 +473,10 @@ function SettingsDisplay({ config }: { config: GameConfig | null }) {
       <div className="flex justify-between">
         <span className="text-gray-500">Ideology:</span>
         <span className="font-medium capitalize">{config.ideologyMode}</span>
+      </div>
+      <div className="flex justify-between">
+        <span className="text-gray-500">Seat Distribution:</span>
+        <span className="font-medium capitalize">{config.seatIdeologyMode || 'random'}</span>
       </div>
       <div className="flex justify-between">
         <span className="text-gray-500">Negotiation:</span>
