@@ -17,80 +17,73 @@ interface AustraliaMapProps {
   onCaptureSeat?: (seatId: SeatId) => void;
 }
 
-// State label positions (approximate centers within states)
+// State label positions (centers within each state region)
 const STATE_LABELS: Record<StateCode, { x: number; y: number }> = {
-  WA:  { x: 25, y: 48 },
-  NT:  { x: 52, y: 28 },
-  SA:  { x: 48, y: 58 },
-  QLD: { x: 75, y: 40 },
-  NSW: { x: 75, y: 60 },
-  VIC: { x: 66, y: 70 },
-  TAS: { x: 76, y: 88 },
-  ACT: { x: 80, y: 66 },
+  WA:  { x: 22, y: 45 },
+  NT:  { x: 50, y: 30 },
+  SA:  { x: 48, y: 55 },
+  QLD: { x: 78, y: 35 },
+  NSW: { x: 78, y: 58 },
+  VIC: { x: 70, y: 66 },
+  TAS: { x: 80, y: 83 },
+  ACT: { x: 82, y: 62 },
 };
 
-// Geographically accurate Australia mainland outline
-// Key features:
-// - Kimberley/NW coast (jagged, inlets)
+// Simplified but recognizable Australia outline
+// Scaled to fit viewBox 0-100, with key geographic features:
+// - Straight western coast
+// - Kimberley bulge (NW)
 // - Gulf of Carpentaria (large northern indent)
-// - Cape York Peninsula (pointing NE)
-// - East coast (curves down from Cape York to Victoria)
-// - Great Australian Bight (southern indentation)
-// - SW corner of WA
+// - Cape York (NE peninsula)
+// - Curved eastern coast
+// - Southeast corner (Victoria)
+// - Great Australian Bight (southern curve)
 const AUSTRALIA_PATH = `
-  M 12,42
-  L 12,38 L 11,34 L 10,30
-  C 10,26 12,22 15,18
-  L 17,16 L 20,15 L 22,16 L 21,19 L 23,17 L 26,16 L 28,18 L 27,21 L 29,19
-  L 32,17 L 34,15 L 37,14
-  L 40,13 L 43,14 L 45,16 L 44,18 L 46,17 L 48,15 L 50,14
-  L 52,15 L 54,18 L 53,21 L 55,23
-  L 54,28 L 52,32 L 50,35 L 51,38 L 54,36 L 56,33 L 58,30
-  L 60,28 L 62,30 L 63,33 L 65,31 L 68,28 L 70,25
-  L 73,22 L 76,20 L 79,19 L 82,20
-  L 85,23 L 87,27 L 88,31
-  L 89,35 L 90,40 L 90,45
-  L 89,50 L 87,55 L 85,59
-  L 82,63 L 79,66 L 76,68
-  L 73,71 L 70,73 L 67,74
-  L 64,74 L 61,73 L 59,71
-  L 57,73 L 54,74 L 50,73
-  L 46,72 L 42,73 L 38,75
-  C 34,76 30,75 26,73
-  L 22,70 L 18,66 L 15,61 L 13,55 L 12,50 L 12,46 L 12,42
+  M 10,65
+  L 10,55 L 10,45 L 11,35 L 13,28
+  L 16,22 L 20,18 L 25,16 L 30,17 L 33,20
+  L 36,18 L 40,15 L 45,14 L 48,16
+  L 50,20 L 48,26 L 45,30 L 46,34 L 50,32 L 54,28
+  L 58,24 L 62,22 L 66,24 L 68,28
+  L 72,24 L 76,20 L 80,17 L 84,15
+  L 88,18 L 90,24 L 91,32 L 90,40
+  L 88,48 L 85,55 L 82,60 L 78,64
+  L 74,67 L 70,68 L 66,67 L 63,65
+  L 58,66 L 52,68 L 46,68 L 40,67
+  L 34,68 L 28,70 L 22,70 L 16,68
+  L 12,65 L 10,65
   Z
 `;
 
-// Tasmania - distinctive triangular/heart shape south of Victoria
+// Tasmania - island south of Victoria
 const TASMANIA_PATH = `
-  M 72,84
-  L 75,82 L 79,82 L 82,84
-  L 83,87 L 82,91 L 79,94 L 75,95
-  L 71,93 L 69,89 L 70,86 L 72,84
+  M 74,78
+  L 78,76 L 83,77 L 86,80
+  L 86,85 L 83,89 L 78,90
+  L 74,88 L 72,84 L 73,80 L 74,78
   Z
 `;
 
-// State boundary paths (following actual borders)
-// Using proper coordinates that align with the new accurate outline
+// State boundary paths matching the simplified outline
 const STATE_BOUNDARIES = [
-  // WA-NT border (129°E longitude - vertical line from north coast to SA border)
-  { d: 'M 40,14 L 40,48', stroke: '#1A1A1A', strokeWidth: '0.4' },
-  // WA-SA border (continues south from 26°S to southern coast)
-  { d: 'M 40,48 L 40,73', stroke: '#1A1A1A', strokeWidth: '0.4' },
-  // NT-SA border (26°S - horizontal segment from WA border to QLD border)
-  { d: 'M 40,48 L 60,48', stroke: '#1A1A1A', strokeWidth: '0.4' },
-  // NT-QLD border (138°E - vertical from Gulf of Carpentaria down to SA border)
-  { d: 'M 60,30 L 60,48', stroke: '#1A1A1A', strokeWidth: '0.4' },
-  // SA-QLD border (short vertical segment)
-  { d: 'M 60,48 L 60,52', stroke: '#1A1A1A', strokeWidth: '0.4' },
-  // QLD-NSW border (approximately 29°S - runs east to coast)
-  { d: 'M 60,52 L 86,52', stroke: '#1A1A1A', strokeWidth: '0.4' },
-  // SA-NSW border (141°E from QLD corner down to VIC)
-  { d: 'M 60,52 L 60,66', stroke: '#1A1A1A', strokeWidth: '0.4' },
-  // NSW-VIC border (Murray River - follows a curve east to coast)
-  { d: 'M 60,66 Q 66,68 70,73', stroke: '#1A1A1A', strokeWidth: '0.4' },
-  // SA-VIC border (141°E short segment to coast)
-  { d: 'M 60,66 L 56,73', stroke: '#1A1A1A', strokeWidth: '0.4' },
+  // WA-NT border (vertical from top)
+  { d: 'M 38,16 L 38,46', stroke: '#1A1A1A', strokeWidth: '0.4' },
+  // WA-SA border (continues south)
+  { d: 'M 38,46 L 38,68', stroke: '#1A1A1A', strokeWidth: '0.4' },
+  // NT-SA border (horizontal)
+  { d: 'M 38,46 L 62,46', stroke: '#1A1A1A', strokeWidth: '0.4' },
+  // NT-QLD border (vertical)
+  { d: 'M 62,28 L 62,46', stroke: '#1A1A1A', strokeWidth: '0.4' },
+  // SA-QLD border (short vertical)
+  { d: 'M 62,46 L 62,50', stroke: '#1A1A1A', strokeWidth: '0.4' },
+  // QLD-NSW border (east to coast)
+  { d: 'M 62,50 L 86,50', stroke: '#1A1A1A', strokeWidth: '0.4' },
+  // SA-NSW border (141°E down to VIC)
+  { d: 'M 62,50 L 62,63', stroke: '#1A1A1A', strokeWidth: '0.4' },
+  // NSW-VIC border (Murray River curve)
+  { d: 'M 62,63 Q 68,65 74,67', stroke: '#1A1A1A', strokeWidth: '0.4' },
+  // SA-VIC border (short segment)
+  { d: 'M 62,63 L 58,66', stroke: '#1A1A1A', strokeWidth: '0.4' },
 ];
 
 // Extended seat data for rendering
