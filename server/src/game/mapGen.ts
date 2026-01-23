@@ -101,17 +101,18 @@ interface BoundingBox {
   height: number;
 }
 
-// State bounding boxes aligned with AustraliaMap.tsx SVG coordinate system
-// Matches simplified Australia outline (viewBox 0-100)
+// State bounding boxes aligned with static australia-map.svg (viewBox 200x180)
+// Coordinates are in 0-100 system, scaled by 2x and 1.8x when rendered
+// Adjusted to fit within the accurate Australia outline
 const STATE_BOUNDS: Record<StateCode, BoundingBox> = {
-  WA:  { x: 12, y: 20, width: 24, height: 46 },  // Western third
-  NT:  { x: 40, y: 18, width: 20, height: 26 },  // Top center
-  SA:  { x: 40, y: 48, width: 20, height: 18 },  // Center-south
-  QLD: { x: 64, y: 22, width: 24, height: 26 },  // Northeast
-  NSW: { x: 66, y: 52, width: 20, height: 12 },  // Southeast coast
-  VIC: { x: 60, y: 63, width: 14, height: 6 },   // Bottom right corner
-  TAS: { x: 73, y: 77, width: 12, height: 12 },  // Island south of VIC
-  ACT: { x: 78, y: 58, width: 6,  height: 5 },   // Small region in NSW
+  WA:  { x: 12, y: 26, width: 24, height: 48 },  // Western third (map x: 20-76)
+  NT:  { x: 40, y: 22, width: 20, height: 26 },  // Top center (map x: 76-124, y: 32-92)
+  SA:  { x: 40, y: 54, width: 20, height: 18 },  // Center-south (map x: 76-124, y: 92-130)
+  QLD: { x: 65, y: 24, width: 22, height: 30 },  // Northeast (map x: 124-175, y: 34-100)
+  NSW: { x: 66, y: 58, width: 20, height: 12 },  // Southeast coast (map x: 124-172, y: 100-128)
+  VIC: { x: 62, y: 72, width: 14, height: 5 },   // Bottom corner (map x: 114-150, y: 124-134)
+  TAS: { x: 75, y: 86, width: 10, height: 8 },   // Island (map x: 144-172, y: 148-176)
+  ACT: { x: 78, y: 66, width: 5,  height: 4 },   // Small region in NSW
 };
 
 // State ideology biases (subtle flavor)

@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 180" fill="none">
+  <!-- Ballot paper aesthetic: paper fill with ink stroke -->
+
+  <!-- Australia Mainland - accurate simplified outline -->
+  <path
+    d="M 20,120
+       L 20,105 L 20,90 L 22,75 L 25,62
+       L 30,50 L 38,42 L 48,38 L 58,40 L 65,45
+       L 70,40 L 78,35 L 88,32 L 95,36
+       L 98,44 L 94,54 L 88,62 L 90,70 L 98,65 L 106,58
+       L 115,50 L 124,46 L 132,50 L 136,58
+       L 142,52 L 150,44 L 158,38 L 166,34
+       L 175,40 L 180,52 L 182,66 L 180,82
+       L 175,98 L 168,112 L 160,122 L 150,130
+       L 140,135 L 130,136 L 122,132 L 114,128
+       L 104,130 L 92,134 L 80,134 L 68,132
+       L 56,134 L 44,138 L 32,136 L 22,130
+       L 20,125 L 20,120
+       Z"
+    fill="#EEEBE2"
+    stroke="#1A1A1A"
+    stroke-width="1.5"
+  />
+
+  <!-- Tasmania -->
+  <path
+    d="M 148,152
+       L 156,148 L 166,150 L 172,156
+       L 172,166 L 166,174 L 156,176
+       L 148,172 L 144,164 L 146,156 L 148,152
+       Z"
+    fill="#EEEBE2"
+    stroke="#1A1A1A"
+    stroke-width="1.5"
+  />
+
+  <!-- State Borders -->
+  <!-- WA-NT border -->
+  <line x1="76" y1="34" x2="76" y2="92" stroke="#1A1A1A" stroke-width="0.75" />
+  <!-- WA-SA border -->
+  <line x1="76" y1="92" x2="76" y2="134" stroke="#1A1A1A" stroke-width="0.75" />
+  <!-- NT-SA border -->
+  <line x1="76" y1="92" x2="124" y2="92" stroke="#1A1A1A" stroke-width="0.75" />
+  <!-- NT-QLD border -->
+  <line x1="124" y1="58" x2="124" y2="92" stroke="#1A1A1A" stroke-width="0.75" />
+  <!-- SA-QLD border -->
+  <line x1="124" y1="92" x2="124" y2="100" stroke="#1A1A1A" stroke-width="0.75" />
+  <!-- QLD-NSW border -->
+  <line x1="124" y1="100" x2="172" y2="100" stroke="#1A1A1A" stroke-width="0.75" />
+  <!-- SA-NSW border -->
+  <line x1="124" y1="100" x2="124" y2="124" stroke="#1A1A1A" stroke-width="0.75" />
+  <!-- NSW-VIC border -->
+  <path d="M 124,124 Q 136,128 148,135" stroke="#1A1A1A" stroke-width="0.75" fill="none" />
+  <!-- SA-VIC border -->
+  <line x1="124" y1="124" x2="114" y2="130" stroke="#1A1A1A" stroke-width="0.75" />
+
+  <!-- State Labels -->
+  <text x="45" y="90" font-family="system-ui, sans-serif" font-size="8" fill="#3A3A3A" text-anchor="middle">WA</text>
+  <text x="100" y="65" font-family="system-ui, sans-serif" font-size="8" fill="#3A3A3A" text-anchor="middle">NT</text>
+  <text x="98" y="112" font-family="system-ui, sans-serif" font-size="8" fill="#3A3A3A" text-anchor="middle">SA</text>
+  <text x="155" y="75" font-family="system-ui, sans-serif" font-size="8" fill="#3A3A3A" text-anchor="middle">QLD</text>
+  <text x="155" y="115" font-family="system-ui, sans-serif" font-size="8" fill="#3A3A3A" text-anchor="middle">NSW</text>
+  <text x="140" y="132" font-family="system-ui, sans-serif" font-size="7" fill="#3A3A3A" text-anchor="middle">VIC</text>
+  <text x="160" y="164" font-family="system-ui, sans-serif" font-size="7" fill="#3A3A3A" text-anchor="middle">TAS</text>
+</svg>
