@@ -17,67 +17,116 @@ interface AustraliaMapProps {
   onCaptureSeat?: (seatId: SeatId) => void;
 }
 
-// State label positions (approximate centers)
+// State label positions (approximate centers within states)
 const STATE_LABELS: Record<StateCode, { x: number; y: number }> = {
-  WA:  { x: 18, y: 45 },
-  NT:  { x: 44, y: 20 },
-  SA:  { x: 44, y: 55 },
-  QLD: { x: 70, y: 25 },
-  NSW: { x: 72, y: 60 },
-  VIC: { x: 66, y: 82 },
-  TAS: { x: 76, y: 96 },
-  ACT: { x: 82, y: 62 },
+  WA:  { x: 20, y: 50 },
+  NT:  { x: 47, y: 32 },
+  SA:  { x: 47, y: 62 },
+  QLD: { x: 75, y: 38 },
+  NSW: { x: 75, y: 62 },
+  VIC: { x: 68, y: 76 },
+  TAS: { x: 77, y: 93 },
+  ACT: { x: 82, y: 68 },
 };
 
-// Simplified Australia outline path (recognizable silhouette)
+// Geographically accurate Australia mainland outline
+// Key features: Kimberley (NW), Gulf of Carpentaria (N), Cape York (NE),
+// Great Barrier Reef coast (E), Victoria (SE), Great Australian Bight (S), SW corner
 const AUSTRALIA_PATH = `
   M 5,35
-  Q 8,25 15,22
-  L 25,20
-  Q 30,18 33,18
+  L 6,30
+  L 8,25
+  L 12,20
+  L 15,17
+  L 20,15
+  L 25,14
+  L 30,13
+  L 35,14
+  L 38,15
+  L 42,14
+  L 46,12
   L 50,10
-  Q 55,8 60,10
+  L 54,9
+  L 58,10
+  L 60,12
+  L 58,16
+  L 55,20
+  L 54,24
+  L 56,26
+  L 60,24
+  L 65,22
+  L 70,18
   L 75,15
-  Q 85,18 90,25
-  Q 92,35 88,50
-  L 85,60
-  Q 82,70 78,75
-  L 70,82
-  Q 65,88 60,88
-  L 55,85
-  Q 50,82 45,80
-  L 38,75
-  Q 30,72 25,65
-  L 18,55
-  Q 12,48 10,42
-  Q 8,38 5,35
+  L 80,14
+  L 85,16
+  L 88,20
+  L 90,25
+  L 91,30
+  L 92,36
+  L 91,42
+  L 89,48
+  L 87,54
+  L 84,60
+  L 80,66
+  L 76,72
+  L 72,76
+  L 68,79
+  L 64,80
+  L 60,79
+  L 56,77
+  L 52,76
+  L 48,78
+  L 44,80
+  L 40,81
+  L 35,80
+  L 30,78
+  L 25,75
+  L 20,70
+  L 15,64
+  L 10,56
+  L 7,48
+  L 5,42
+  L 5,35
   Z
 `;
 
-// Tasmania path (small island)
+// Tasmania - heart-shaped island south of Victoria
 const TASMANIA_PATH = `
-  M 68,92
-  Q 70,90 75,90
-  Q 80,92 78,96
-  Q 75,99 70,98
-  Q 66,96 68,92
+  M 73,88
+  L 76,86
+  L 80,86
+  L 83,88
+  L 84,91
+  L 83,95
+  L 80,98
+  L 76,99
+  L 72,97
+  L 70,94
+  L 70,90
+  L 73,88
   Z
 `;
 
-// State boundary hints (simplified internal lines)
+// State boundary paths (following actual borders)
 const STATE_BOUNDARIES = [
-  // WA-SA-NT boundary
-  { d: 'M 33,18 L 33,75', stroke: '#e5e7eb' },
-  // NT-QLD boundary
-  { d: 'M 50,10 L 50,42', stroke: '#e5e7eb' },
-  // SA-QLD boundary
-  { d: 'M 50,42 L 33,42', stroke: '#e5e7eb' },
-  // SA-NSW boundary
-  { d: 'M 50,42 L 50,75', stroke: '#e5e7eb' },
-  // NSW-VIC boundary
-  { d: 'M 50,75 L 78,75', stroke: '#e5e7eb' },
-  // NSW-QLD boundary
-  { d: 'M 50,42 L 85,42', stroke: '#e5e7eb' },
+  // WA-NT border (129°E longitude - vertical from top)
+  { d: 'M 38,14 L 38,48', stroke: '#64748b', strokeWidth: '0.6' },
+  // WA-SA border (continues south to coast)
+  { d: 'M 38,48 L 38,81', stroke: '#64748b', strokeWidth: '0.6' },
+  // NT-SA border (26°S - horizontal segment)
+  { d: 'M 38,48 L 56,48', stroke: '#64748b', strokeWidth: '0.6' },
+  // NT-QLD border (138°E - vertical from Gulf)
+  { d: 'M 56,26 L 56,48', stroke: '#64748b', strokeWidth: '0.6' },
+  // SA-QLD corner (small vertical)
+  { d: 'M 56,48 L 56,55', stroke: '#64748b', strokeWidth: '0.6' },
+  // QLD-NSW border (29°S - diagonal to coast)
+  { d: 'M 56,55 L 87,55', stroke: '#64748b', strokeWidth: '0.6' },
+  // SA-NSW border (east from SA-QLD corner)
+  { d: 'M 56,55 L 56,70 L 60,72', stroke: '#64748b', strokeWidth: '0.6' },
+  // NSW-VIC border (Murray River - curved)
+  { d: 'M 60,72 Q 68,74 72,76', stroke: '#64748b', strokeWidth: '0.6' },
+  // SA-VIC border (141°E down to coast)
+  { d: 'M 56,70 L 56,78', stroke: '#64748b', strokeWidth: '0.6' },
 ];
 
 // Extended seat data for rendering
@@ -206,8 +255,8 @@ export function AustraliaMap({
             key={i}
             d={boundary.d}
             stroke={boundary.stroke}
-            strokeWidth="0.3"
-            strokeDasharray="1,1"
+            strokeWidth={boundary.strokeWidth || '0.5'}
+            strokeDasharray="2,1"
             fill="none"
           />
         ))}

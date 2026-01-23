@@ -39,6 +39,10 @@ export const DEFAULT_CONFIG: GameConfig = {
   enableSeatTargeting: true,
   allowSkipReplace: true,
   skipReplacesPerRound: 1,
+
+  // Seat map options
+  seatIdeologyMode: 'random',  // 'random' or 'realistic' (based on voting patterns)
+  stateControlValue: 1,        // PCap value for gaining control of a state
 };
 
 // Card data storage

@@ -20,8 +20,9 @@ export type Phase =
   | 'wildcard_resolution'
   | 'game_over';
 export type CardType = 'campaign' | 'policy' | 'wildcard';
-export type PCapType = 'mandate' | 'prime_ministership' | 'landmark_reform' | 'policy_win' | 'ideological_credibility';
+export type PCapType = 'mandate' | 'prime_ministership' | 'landmark_reform' | 'policy_win' | 'ideological_credibility' | 'state_control';
 export type IdeologyMode = 'random' | 'choose' | 'derived';  // NEW: derived mode
+export type SeatIdeologyMode = 'random' | 'realistic';  // Seat ideology distribution mode
 
 // ============================================================
 // SEAT MAP TYPES (Australian Electoral Map)
@@ -45,6 +46,9 @@ export interface Seat {
   y: number;        // 0-100 relative coordinate on map
   ideology: SeatIdeology;
   ownerPlayerId: string | null;
+  // Artwork (optional)
+  artworkUrl?: string;           // URL to seat artwork/icon
+  thumbnailUrl?: string;         // URL to smaller thumbnail
 }
 
 // Pending seat capture state machine
@@ -56,6 +60,14 @@ export interface PendingSeatCapture {
   ideologyAxis: 'econ' | 'social';
   ideologyBucket: EconBucket | SocialBucket;
   eligibleSeatIds: SeatId[];   // Precomputed eligible seats
+}
+
+// State control tracking (player who has majority of seats in a state)
+export interface StateControl {
+  state: StateCode;
+  controllerId: string | null;  // Player ID who controls the state (null if tied/no majority)
+  seatCount: number;            // Seats owned by controller
+  totalSeats: number;           // Total seats in state
 }
 
 // Party colors available for selection
@@ -98,6 +110,9 @@ export interface CampaignCard {
     econ?: EconBucket;
     social?: SocialBucket;
   };
+  // Artwork (optional)
+  artworkUrl?: string;           // URL to card artwork
+  thumbnailUrl?: string;         // URL to smaller thumbnail
 }
 
 export interface PolicyCard {
@@ -119,6 +134,9 @@ export interface PolicyCard {
     description: string;
     modifier: Record<string, number>;
   };
+  // Artwork (optional)
+  artworkUrl?: string;           // URL to card artwork
+  thumbnailUrl?: string;         // URL to smaller thumbnail
 }
 
 export interface WildcardCard {
@@ -131,6 +149,9 @@ export interface WildcardCard {
     issue?: Issue;
     issueBonus?: number;
   };
+  // Artwork (optional)
+  artworkUrl?: string;           // URL to card artwork
+  thumbnailUrl?: string;         // URL to smaller thumbnail
 }
 
 export interface PCapCard {
@@ -348,6 +369,9 @@ export interface GameState {
   seats: Record<SeatId, Seat>;
   mapSeed: string;
 
+  // State control tracking (for PCap awards)
+  stateControl: Record<StateCode, StateControl>;
+
   // Current round tracking
   playersDrawn: string[];
   playersCampaigned: string[];
@@ -465,6 +489,10 @@ export interface GameConfig {
   enableSeatTargeting: boolean;         // Allow choosing who to take seats from
   allowSkipReplace: boolean;            // Allow skipping turn to replace a card
   skipReplacesPerRound: number;         // Max skip-replaces per player per round
+
+  // Seat map options
+  seatIdeologyMode: SeatIdeologyMode;   // Random vs Realistic seat ideology distribution
+  stateControlValue: number;            // PCap value for gaining control of a state
 }
 
 // ============================================================

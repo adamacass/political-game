@@ -5,7 +5,7 @@
  * with coordinates for SVG rendering, ideology ratings, and ownership.
  */
 
-import { Seat, SeatId, StateCode, EconBucket, SocialBucket, SeatIdeology } from '../types';
+import { Seat, SeatId, StateCode, EconBucket, SocialBucket, SeatIdeology, StateControl } from '../types';
 import { SeededRNG } from './rng';
 
 // ============================================================
@@ -101,15 +101,16 @@ interface BoundingBox {
   height: number;
 }
 
+// State bounding boxes aligned with AustraliaMap.tsx SVG coordinate system
 const STATE_BOUNDS: Record<StateCode, BoundingBox> = {
-  WA:  { x: 5,  y: 15, width: 28, height: 55 },
-  NT:  { x: 35, y: 5,  width: 18, height: 35 },
-  SA:  { x: 35, y: 40, width: 18, height: 30 },
-  QLD: { x: 55, y: 5,  width: 30, height: 40 },
-  NSW: { x: 60, y: 45, width: 25, height: 28 },
-  VIC: { x: 55, y: 73, width: 23, height: 15 },
-  TAS: { x: 70, y: 90, width: 12, height: 8 },
-  ACT: { x: 75, y: 58, width: 6,  height: 6 },
+  WA:  { x: 8,  y: 18, width: 28, height: 58 },  // Western third
+  NT:  { x: 40, y: 14, width: 14, height: 32 },  // Top center (above SA)
+  SA:  { x: 40, y: 50, width: 14, height: 26 },  // Center-south
+  QLD: { x: 58, y: 18, width: 28, height: 35 },  // Northeast
+  NSW: { x: 60, y: 55, width: 25, height: 18 },  // Southeast coast
+  VIC: { x: 58, y: 73, width: 18, height: 8 },   // Bottom right corner
+  TAS: { x: 71, y: 87, width: 12, height: 10 },  // Island south of VIC
+  ACT: { x: 78, y: 62, width: 6,  height: 6 },   // Small region in NSW
 };
 
 // State ideology biases (subtle flavor)
@@ -143,10 +144,11 @@ export interface MapGenConfig {
   seatCount: number;
   seed: string;
   playerIds: string[];
+  ideologyMode: 'random' | 'realistic';  // Seat ideology distribution mode
 }
 
 export function generateSeatMap(config: MapGenConfig): Record<SeatId, Seat> {
-  const { seatCount, seed, playerIds } = config;
+  const { seatCount, seed, playerIds, ideologyMode } = config;
   const rng = new SeededRNG(seed);
   const seats: Record<SeatId, Seat> = {};
 
@@ -179,8 +181,10 @@ export function generateSeatMap(config: MapGenConfig): Record<SeatId, Seat> {
       const pos = generatePosition(bounds, placedPositions, rng);
       placedPositions.push(pos);
 
-      // Generate ideology
-      const ideology = generateIdeology(state, rng);
+      // Generate ideology based on mode
+      const ideology = ideologyMode === 'realistic'
+        ? generateRealisticIdeology(state, name, pos, rng)
+        : generateIdeology(state, rng);
 
       seats[seatId] = {
         id: seatId,
@@ -309,6 +313,104 @@ function generateIdeology(state: StateCode, rng: SeededRNG): SeatIdeology {
   // Convert to buckets
   const econ: EconBucket = econValue < -0.33 ? 'LEFT' : econValue > 0.33 ? 'RIGHT' : 'CENTER';
   const social: SocialBucket = socialValue < -0.33 ? 'CONS' : socialValue > 0.33 ? 'PROG' : 'CENTER';
+
+  return { econ, social };
+}
+
+// Known inner-city progressive seats (simplified patterns based on real voting)
+const INNER_CITY_SEATS = new Set([
+  'Sydney', 'Melbourne', 'Brisbane', 'Grayndler', 'Wills', 'Melbourne Ports',
+  'Griffith', 'Perth', 'Higgins', 'Kooyong', 'Ryan', 'Adelaide',
+  'Cooper', 'Wentworth', 'North Sydney', 'Warringah', 'Canberra', 'Bean', 'Fenner',
+  'Maribyrnong', 'Gellibrand', 'Fremantle', 'Curtin', 'Swan', 'Hindmarsh',
+]);
+
+// Rural/regional conservative seats
+const RURAL_REGIONAL_SEATS = new Set([
+  'Kennedy', 'Maranoa', 'Flynn', 'Dawson', 'Capricornia', 'Hinkler',
+  'O\'Connor', 'Durack', 'Forrest', 'Grey', 'Barker', 'Farrer', 'Riverina',
+  'Parkes', 'New England', 'Lyne', 'Cowper', 'Page', 'Gippsland', 'Murray',
+  'Mallee', 'Nicholls', 'Indi', 'Wannon', 'Braddon', 'Lyons', 'Bass',
+  'Lingiari', 'Wide Bay', 'Calare', 'Hunter',
+]);
+
+// Mining/resource-heavy seats (economically right-leaning)
+const RESOURCE_SEATS = new Set([
+  'Durack', 'O\'Connor', 'Forrest', 'Grey', 'Capricornia', 'Flynn',
+  'Dawson', 'Herbert', 'Kennedy', 'Maranoa', 'Lingiari', 'Solomon',
+]);
+
+// Working-class/industrial seats (economically left-leaning)
+const INDUSTRIAL_SEATS = new Set([
+  'Blaxland', 'Watson', 'Fowler', 'McMahon', 'Chifley', 'Werriwa',
+  'Shortland', 'Newcastle', 'Cunningham', 'Bruce', 'Holt', 'Isaacs',
+  'Scullin', 'Calwell', 'Lalor', 'Gorton', 'Oxley', 'Rankin', 'Forde',
+  'Blair', 'Longman', 'Bonner', 'Moreton', 'Brand', 'Canning', 'Burt',
+  'Stirling', 'Moore', 'Cowan', 'Pearce', 'Hasluck', 'Kingston', 'Wakefield',
+  'Spence', 'Makin', 'Franklin', 'Denison', 'Clark',
+]);
+
+/**
+ * Generate realistic ideology based on actual Australian voting patterns
+ */
+function generateRealisticIdeology(
+  state: StateCode,
+  name: string,
+  pos: { x: number; y: number },
+  rng: SeededRNG
+): SeatIdeology {
+  let econScore = 0;    // -1 = LEFT, 0 = CENTER, 1 = RIGHT
+  let socialScore = 0;  // -1 = CONS, 0 = CENTER, 1 = PROG
+
+  // Base state biases
+  econScore += STATE_ECON_BIAS[state];
+  socialScore += STATE_SOCIAL_BIAS[state];
+
+  // Inner city = more progressive socially
+  if (INNER_CITY_SEATS.has(name)) {
+    socialScore += 0.5;
+    econScore += 0.1;  // Slightly left economically too
+  }
+
+  // Rural/regional = more conservative
+  if (RURAL_REGIONAL_SEATS.has(name)) {
+    socialScore -= 0.4;
+    econScore -= 0.1;  // Often mixed economically (national interests)
+  }
+
+  // Resource/mining seats = right economically
+  if (RESOURCE_SEATS.has(name)) {
+    econScore -= 0.4;  // Pro-mining = often free market
+    socialScore -= 0.2;  // Often conservative
+  }
+
+  // Industrial/working class = left economically
+  if (INDUSTRIAL_SEATS.has(name)) {
+    econScore += 0.3;  // Pro-union, interventionist
+    socialScore += 0.1;  // Slightly progressive
+  }
+
+  // Add position-based adjustment (higher y = more south = slightly more progressive)
+  // Lower y = more north (QLD, NT) = slightly more conservative
+  const latitudeAdjust = (pos.y - 50) / 200;  // Small adjustment
+  socialScore += latitudeAdjust;
+
+  // Eastern seaboard cities vs inland
+  // Lower x = more west = slightly more conservative economically
+  if (pos.x < 40) {
+    econScore -= 0.1;
+  }
+
+  // Add small random variation
+  econScore += (rng.random() - 0.5) * 0.3;
+  socialScore += (rng.random() - 0.5) * 0.3;
+
+  // Convert to buckets (clamp values)
+  econScore = Math.max(-1, Math.min(1, econScore));
+  socialScore = Math.max(-1, Math.min(1, socialScore));
+
+  const econ: EconBucket = econScore < -0.2 ? 'RIGHT' : econScore > 0.2 ? 'LEFT' : 'CENTER';
+  const social: SocialBucket = socialScore < -0.2 ? 'CONS' : socialScore > 0.2 ? 'PROG' : 'CENTER';
 
   return { econ, social };
 }
@@ -444,4 +546,123 @@ export function deriveIdeologyFromCard(card: {
 
   // Mixed or neutral - default to center on economic axis
   return { axis: 'econ', bucket: 'CENTER' };
+}
+
+// ============================================================
+// STATE CONTROL FUNCTIONS
+// ============================================================
+
+const ALL_STATES: StateCode[] = ['NSW', 'VIC', 'QLD', 'WA', 'SA', 'TAS', 'ACT', 'NT'];
+
+/**
+ * Compute state control for all states
+ * A player controls a state if they have more than half the seats in that state
+ */
+export function computeStateControl(seats: Record<SeatId, Seat>): Record<StateCode, StateControl> {
+  const stateControl: Record<StateCode, StateControl> = {} as Record<StateCode, StateControl>;
+
+  // Initialize all states
+  for (const state of ALL_STATES) {
+    stateControl[state] = {
+      state,
+      controllerId: null,
+      seatCount: 0,
+      totalSeats: 0,
+    };
+  }
+
+  // Count seats per state and per player within each state
+  const stateSeatsByPlayer: Record<StateCode, Record<string, number>> = {} as Record<StateCode, Record<string, number>>;
+  for (const state of ALL_STATES) {
+    stateSeatsByPlayer[state] = {};
+  }
+
+  for (const seat of Object.values(seats)) {
+    stateControl[seat.state].totalSeats++;
+
+    if (seat.ownerPlayerId) {
+      if (!stateSeatsByPlayer[seat.state][seat.ownerPlayerId]) {
+        stateSeatsByPlayer[seat.state][seat.ownerPlayerId] = 0;
+      }
+      stateSeatsByPlayer[seat.state][seat.ownerPlayerId]++;
+    }
+  }
+
+  // Determine controller for each state (must have strict majority)
+  for (const state of ALL_STATES) {
+    const total = stateControl[state].totalSeats;
+    const majorityThreshold = Math.floor(total / 2) + 1;  // Strict majority
+
+    let maxSeats = 0;
+    let controllerId: string | null = null;
+    let isTied = false;
+
+    for (const [playerId, count] of Object.entries(stateSeatsByPlayer[state])) {
+      if (count > maxSeats) {
+        maxSeats = count;
+        controllerId = playerId;
+        isTied = false;
+      } else if (count === maxSeats) {
+        isTied = true;
+      }
+    }
+
+    // Only set controller if they have a strict majority and it's not tied
+    if (maxSeats >= majorityThreshold && !isTied) {
+      stateControl[state].controllerId = controllerId;
+      stateControl[state].seatCount = maxSeats;
+    }
+  }
+
+  return stateControl;
+}
+
+/**
+ * Get the states controlled by a specific player
+ */
+export function getPlayerControlledStates(stateControl: Record<StateCode, StateControl>, playerId: string): StateCode[] {
+  return ALL_STATES.filter(state => stateControl[state].controllerId === playerId);
+}
+
+/**
+ * Compare state control between old and new to find changes
+ * Returns states that changed controller (gained or lost)
+ */
+export function compareStateControl(
+  oldControl: Record<StateCode, StateControl>,
+  newControl: Record<StateCode, StateControl>
+): { gained: { playerId: string; state: StateCode }[]; lost: { playerId: string; state: StateCode }[] } {
+  const gained: { playerId: string; state: StateCode }[] = [];
+  const lost: { playerId: string; state: StateCode }[] = [];
+
+  for (const state of ALL_STATES) {
+    const oldControllerId = oldControl[state]?.controllerId;
+    const newControllerId = newControl[state]?.controllerId;
+
+    if (oldControllerId !== newControllerId) {
+      if (oldControllerId) {
+        lost.push({ playerId: oldControllerId, state });
+      }
+      if (newControllerId) {
+        gained.push({ playerId: newControllerId, state });
+      }
+    }
+  }
+
+  return { gained, lost };
+}
+
+/**
+ * Get seats count by player for a specific state
+ */
+export function getStateSeatsByPlayer(seats: Record<SeatId, Seat>, state: StateCode): Record<string, number> {
+  const counts: Record<string, number> = {};
+
+  for (const seat of Object.values(seats)) {
+    if (seat.state === state && seat.ownerPlayerId) {
+      counts[seat.ownerPlayerId] = (counts[seat.ownerPlayerId] || 0) + 1;
+    }
+  }
+
+  return counts;
 }

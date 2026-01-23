@@ -3,14 +3,14 @@ import {
   GameEvent, Vote, SocialIdeology, EconomicIdeology, ChatMessage, HandCard, IdeologyProfile,
   TradeOffer, NegotiationState, PendingCampaign, CampaignPlayedRecord, PolicyResultRecord,
   WildcardRecord, TradeRecord, HistorySnapshot, PartyColorId, PARTY_COLORS,
-  Seat, SeatId, PendingSeatCapture, EconBucket, SocialBucket,
+  Seat, SeatId, PendingSeatCapture, EconBucket, SocialBucket, StateCode, StateControl,
 } from '../types';
 import { SeededRNG } from './rng';
 import { getCampaignCards, getPolicyCards, getWildcardCards, getCampaignCard, getPolicyCard, getWildcardCard, mergeConfig } from '../config/loader';
 import { v4 as uuidv4 } from 'uuid';
 import {
   generateSeatMap, computePlayerSeatCounts, getEligibleSeatsForCapture,
-  transferSeat, deriveIdeologyFromCard, getPlayerSeats,
+  transferSeat, deriveIdeologyFromCard, getPlayerSeats, computeStateControl, compareStateControl,
 } from './mapGen';
 
 const ISSUES: Issue[] = ['economy', 'cost_of_living', 'housing', 'climate', 'security'];
@@ -35,6 +35,8 @@ export class GameEngine {
       // NEW: Australian electoral map seats
       seats: {},
       mapSeed: this.rng.getSeed(),
+      // State control tracking (initialized after seat map generation)
+      stateControl: {} as Record<StateCode, StateControl>,
       playersDrawn: [], playersCampaigned: [],
       proposedPolicy: null, proposerId: null, votes: [], pendingWildcard: null, pendingCampaign: null,
       // NEW: Seat capture pending state
@@ -124,10 +126,14 @@ export class GameEngine {
       seatCount: this.config.totalSeats,
       seed: this.state.mapSeed,
       playerIds: this.state.players.map(p => p.id),
+      ideologyMode: this.config.seatIdeologyMode || 'random',
     });
 
     // Sync player seat counts from seat ownership (seats are authoritative)
     this.syncPlayerSeatCounts();
+
+    // Initialize state control tracking
+    this.state.stateControl = computeStateControl(this.state.seats);
 
     this.state.turnOrder = this.rng.shuffle(this.state.players.map(p => p.id));
     // Deal random starting hands (mix of campaign and policy)
@@ -163,6 +169,57 @@ export class GameEngine {
     for (const player of this.state.players) {
       player.seats = counts[player.id] || 0;
     }
+    // Check for state control changes and award PCap
+    this.checkStateControlChanges();
+  }
+
+  /**
+   * Check for state control changes and award PCap for gaining control of a state
+   */
+  private checkStateControlChanges(): void {
+    const oldControl = this.state.stateControl;
+    const newControl = computeStateControl(this.state.seats);
+
+    // Compare and find changes
+    const changes = compareStateControl(oldControl, newControl);
+
+    // Award PCap for gaining control of a state
+    const stateControlValue = this.config.stateControlValue || 1;
+    for (const { playerId, state } of changes.gained) {
+      const player = this.state.players.find(p => p.id === playerId);
+      if (player) {
+        const pCapCard: PCapCard = {
+          type: 'state_control',
+          value: stateControlValue,
+          name: `${state} Control`,
+          source: `Gained majority in ${state}`,
+          roundAwarded: this.state.round,
+        };
+        player.pCapCards.push(pCapCard);
+        this.logEvent({
+          type: 'pcap_awarded',
+          timestamp: Date.now(),
+          playerId,
+          pCapType: 'state_control',
+          value: stateControlValue,
+          reason: `Gained control of ${state}`,
+        });
+        this.state.roundPCapChanges.push({
+          playerId,
+          pCapDelta: stateControlValue,
+          seatDelta: 0,
+          reason: `Gained control of ${state}`,
+          changeType: 'award',
+          timestamp: Date.now(),
+        });
+      }
+    }
+
+    // Note: We don't remove PCap for losing control (it was already earned)
+    // But we could log the loss for UI purposes
+
+    // Update state control tracking
+    this.state.stateControl = newControl;
   }
 
   private resetRoundTracking(): void {
@@ -655,7 +712,7 @@ export class GameEngine {
 
   private awardPCap(playerId: string, pCapType: PCapCard['type'], value: number, reason: string): void {
     const player = this.state.players.find(p => p.id === playerId); if (!player) return;
-    const names: Record<PCapCard['type'], string> = { mandate: 'Electoral Mandate', prime_ministership: 'Prime Ministership', landmark_reform: 'Landmark Reform', policy_win: 'Policy Victory', ideological_credibility: 'Ideological Credibility' };
+    const names: Record<PCapCard['type'], string> = { mandate: 'Electoral Mandate', prime_ministership: 'Prime Ministership', landmark_reform: 'Landmark Reform', policy_win: 'Policy Victory', ideological_credibility: 'Ideological Credibility', state_control: 'State Control' };
     player.pCapCards.push({ type: pCapType, value, name: names[pCapType], source: reason, roundAwarded: this.state.round });
     this.logPCapChange(playerId, value, 0, reason, 'award');
     this.logEvent({ type: 'pcap_awarded', timestamp: Date.now(), playerId, pCapType, value, reason });
