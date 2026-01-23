@@ -6,21 +6,57 @@ export type Issue = 'economy' | 'cost_of_living' | 'housing' | 'climate' | 'secu
 export type SocialIdeology = 'progressive' | 'conservative';
 export type EconomicIdeology = 'market' | 'interventionist';
 export type IdeologyStance = 'favoured' | 'neutral' | 'opposed';
-export type Phase = 
-  | 'waiting' 
-  | 'draw' 
+export type Phase =
+  | 'waiting'
+  | 'draw'
   | 'negotiation'
-  | 'campaign' 
+  | 'campaign'
   | 'campaign_targeting'
-  | 'policy_proposal' 
-  | 'policy_vote' 
-  | 'policy_resolution' 
+  | 'seat_capture'          // NEW: Player selecting seats to capture
+  | 'policy_proposal'
+  | 'policy_vote'
+  | 'policy_resolution'
   | 'agenda_selection'      // NEW: Proposer picks new agenda after matching policy
-  | 'wildcard_resolution' 
+  | 'wildcard_resolution'
   | 'game_over';
 export type CardType = 'campaign' | 'policy' | 'wildcard';
 export type PCapType = 'mandate' | 'prime_ministership' | 'landmark_reform' | 'policy_win' | 'ideological_credibility';
 export type IdeologyMode = 'random' | 'choose' | 'derived';  // NEW: derived mode
+
+// ============================================================
+// SEAT MAP TYPES (Australian Electoral Map)
+// ============================================================
+
+export type SeatId = string;
+export type StateCode = 'NSW' | 'VIC' | 'QLD' | 'WA' | 'SA' | 'TAS' | 'ACT' | 'NT';
+export type EconBucket = 'LEFT' | 'CENTER' | 'RIGHT';
+export type SocialBucket = 'PROG' | 'CENTER' | 'CONS';
+
+export interface SeatIdeology {
+  econ: EconBucket;
+  social: SocialBucket;
+}
+
+export interface Seat {
+  id: SeatId;
+  name: string;
+  state: StateCode;
+  x: number;        // 0-100 relative coordinate on map
+  y: number;        // 0-100 relative coordinate on map
+  ideology: SeatIdeology;
+  ownerPlayerId: string | null;
+}
+
+// Pending seat capture state machine
+export interface PendingSeatCapture {
+  actorId: string;
+  cardId: string;
+  cardName: string;
+  remaining: number;           // Seats left to capture
+  ideologyAxis: 'econ' | 'social';
+  ideologyBucket: EconBucket | SocialBucket;
+  eligibleSeatIds: SeatId[];   // Precomputed eligible seats
+}
 
 // Party colors available for selection
 export const PARTY_COLORS = [
@@ -56,6 +92,11 @@ export interface CampaignCard {
   conditional?: {
     type: 'leader_penalty' | 'underdog_bonus' | 'issue_match';
     modifier: number;
+  };
+  // NEW: Ideology for seat capture targeting
+  ideology?: {
+    econ?: EconBucket;
+    social?: SocialBucket;
   };
 }
 
@@ -283,13 +324,13 @@ export interface GameState {
   seed: string;
   phase: Phase;
   round: number;
-  
+
   // Players
   players: Player[];
   turnOrder: string[];
   currentPlayerIndex: number;
   speakerIndex: number;
-  
+
   // Decks
   campaignDeck: string[];
   campaignDiscard: string[];
@@ -297,12 +338,16 @@ export interface GameState {
   policyDiscard: string[];
   wildcardDeck: string[];
   wildcardDiscard: string[];
-  
+
   // Board state
   totalSeats: number;
   activeIssue: Issue;
   issueTrack: Issue[];
-  
+
+  // NEW: Australian Electoral Map - Seat ownership is authoritative source of truth
+  seats: Record<SeatId, Seat>;
+  mapSeed: string;
+
   // Current round tracking
   playersDrawn: string[];
   playersCampaigned: string[];
@@ -310,10 +355,13 @@ export interface GameState {
   proposerId: string | null;
   votes: Vote[];
   pendingWildcard: WildcardCard | null;
-  
+
   // NEW: Campaign targeting
   pendingCampaign: PendingCampaign | null;
-  
+
+  // NEW: Seat capture targeting
+  pendingSeatCapture: PendingSeatCapture | null;
+
   // NEW: Negotiation state
   negotiation: NegotiationState;
   
@@ -353,7 +401,7 @@ export interface GameState {
 // EVENTS
 // ============================================================
 
-export type GameEvent = 
+export type GameEvent =
   | { type: 'game_started'; timestamp: number; seed: string; config: string }
   | { type: 'player_joined'; timestamp: number; playerId: string; playerName: string; partyName: string; colorId: PartyColorId }
   | { type: 'round_started'; timestamp: number; round: number; activeIssue: Issue }
@@ -367,6 +415,7 @@ export type GameEvent =
   | { type: 'wildcard_drawn'; timestamp: number; playerId: string; cardId: string }
   | { type: 'wildcard_resolved'; timestamp: number; cardId: string; effects: { playerId: string; seatDelta: number }[] }
   | { type: 'seats_changed'; timestamp: number; playerId: string; delta: number; newTotal: number; reason: string }
+  | { type: 'seat_captured'; timestamp: number; seatId: SeatId; seatName: string; fromPlayerId: string | null; toPlayerId: string; ideology: SeatIdeology }
   | { type: 'issue_changed'; timestamp: number; oldIssue: Issue; newIssue: Issue; changedBy: string }
   | { type: 'chat_message'; timestamp: number; senderId: string; recipientId: string | null; content: string }
   | { type: 'card_refilled'; timestamp: number; playerId: string; cardType: 'campaign' | 'policy'; cardId: string }
@@ -460,7 +509,10 @@ export interface ClientToServerEvents {
   'send_chat': (data: { content: string; recipientId: string | null }) => void;
   'select_new_agenda': (data: { issue: Issue }) => void;
   'force_advance_phase': () => void;
-  
+
+  // Seat capture (Australian map)
+  'resolve_capture_seat': (data: { seatId: SeatId }) => void;
+
   // Negotiation
   'make_trade_offer': (data: { toPlayerId: string; offeredCardIds: string[]; requestedCardIds: string[] }) => void;
   'respond_to_offer': (data: { offerId: string; accept: boolean }) => void;

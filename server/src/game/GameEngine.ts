@@ -1,12 +1,17 @@
-import { 
+import {
   GameState, GameConfig, Player, Issue, Phase, CampaignCard, PolicyCard, WildcardCard, PCapCard,
   GameEvent, Vote, SocialIdeology, EconomicIdeology, ChatMessage, HandCard, IdeologyProfile,
   TradeOffer, NegotiationState, PendingCampaign, CampaignPlayedRecord, PolicyResultRecord,
   WildcardRecord, TradeRecord, HistorySnapshot, PartyColorId, PARTY_COLORS,
+  Seat, SeatId, PendingSeatCapture, EconBucket, SocialBucket,
 } from '../types';
 import { SeededRNG } from './rng';
 import { getCampaignCards, getPolicyCards, getWildcardCards, getCampaignCard, getPolicyCard, getWildcardCard, mergeConfig } from '../config/loader';
 import { v4 as uuidv4 } from 'uuid';
+import {
+  generateSeatMap, computePlayerSeatCounts, getEligibleSeatsForCapture,
+  transferSeat, deriveIdeologyFromCard, getPlayerSeats,
+} from './mapGen';
 
 const ISSUES: Issue[] = ['economy', 'cost_of_living', 'housing', 'climate', 'security'];
 
@@ -26,8 +31,14 @@ export class GameEngine {
       roomId, seed: this.rng.getSeed(), phase: 'waiting', round: 0, players: [], turnOrder: [],
       currentPlayerIndex: 0, speakerIndex: 0, campaignDeck: [], campaignDiscard: [], policyDeck: [],
       policyDiscard: [], wildcardDeck: [], wildcardDiscard: [], totalSeats: this.config.totalSeats,
-      activeIssue: ISSUES[0], issueTrack: [...ISSUES], playersDrawn: [], playersCampaigned: [],
+      activeIssue: ISSUES[0], issueTrack: [...ISSUES],
+      // NEW: Australian electoral map seats
+      seats: {},
+      mapSeed: this.rng.getSeed(),
+      playersDrawn: [], playersCampaigned: [],
       proposedPolicy: null, proposerId: null, votes: [], pendingWildcard: null, pendingCampaign: null,
+      // NEW: Seat capture pending state
+      pendingSeatCapture: null,
       negotiation: { activeOffers: [], completedTrades: [], playersReady: [] },
       campaignsPlayedByPlayer: {}, roundSeatChanges: {}, roundCampaignsPlayed: [], roundPolicyResult: null,
       roundWildcardDrawn: null, roundIssueChangedTo: null, roundTradesCompleted: [], roundPCapChanges: [],
@@ -106,8 +117,18 @@ export class GameEngine {
     this.state.campaignDeck = this.rng.shuffle(getCampaignCards().map(c => c.id));
     this.state.policyDeck = this.rng.shuffle(getPolicyCards().map(c => c.id));
     this.state.wildcardDeck = this.rng.shuffle(getWildcardCards().map(c => c.id));
-    const spp = Math.floor(this.config.totalSeats / this.state.players.length), rem = this.config.totalSeats % this.state.players.length;
-    this.state.players.forEach((p, i) => { p.seats = spp + (i < rem ? 1 : 0); });
+
+    // NEW: Generate Australian electoral map seats
+    this.state.mapSeed = this.rng.getSeed() + '_map';
+    this.state.seats = generateSeatMap({
+      seatCount: this.config.totalSeats,
+      seed: this.state.mapSeed,
+      playerIds: this.state.players.map(p => p.id),
+    });
+
+    // Sync player seat counts from seat ownership (seats are authoritative)
+    this.syncPlayerSeatCounts();
+
     this.state.turnOrder = this.rng.shuffle(this.state.players.map(p => p.id));
     // Deal random starting hands (mix of campaign and policy)
     this.state.players.forEach(p => {
@@ -132,6 +153,16 @@ export class GameEngine {
     this.logEvent({ type: 'game_started', timestamp: Date.now(), seed: this.rng.getSeed(), config: JSON.stringify(this.config) });
     this.logEvent({ type: 'round_started', timestamp: Date.now(), round: this.state.round, activeIssue: this.state.activeIssue });
     return true;
+  }
+
+  /**
+   * Sync player.seats from the authoritative seat map
+   */
+  private syncPlayerSeatCounts(): void {
+    const counts = computePlayerSeatCounts(this.state.seats);
+    for (const player of this.state.players) {
+      player.seats = counts[player.id] || 0;
+    }
   }
 
   private resetRoundTracking(): void {
@@ -261,12 +292,102 @@ export class GameEngine {
     }
     if (!this.state.campaignsPlayedByPlayer[playerId]) this.state.campaignsPlayedByPlayer[playerId] = [];
     this.state.campaignsPlayedByPlayer[playerId].push(card.id);
-    const opponents = this.state.players.filter(p => p.id !== playerId && p.seats > 0);
-    if (this.config.enableSeatTargeting && this.config.seatTransferRule === 'player_choice' && seatDelta > 0 && opponents.length > 1) {
-      this.state.pendingCampaign = { playerId, cardId, card, calculatedDelta: seatDelta, agendaBonus, requiresTarget: true };
-      this.state.phase = 'campaign_targeting'; player.hand.splice(ci, 1); this.state.campaignDiscard.push(card.id); return true;
+
+    // Remove card from hand and discard it
+    player.hand.splice(ci, 1);
+    this.state.campaignDiscard.push(card.id);
+
+    // NEW: Seat capture by ideology - initiate seat capture phase if seats to capture
+    if (seatDelta > 0) {
+      // Derive ideology filter from card
+      const ideologyTarget = deriveIdeologyFromCard(card);
+
+      if (ideologyTarget) {
+        const eligibleSeatIds = getEligibleSeatsForCapture(
+          this.state.seats,
+          playerId,
+          ideologyTarget.axis,
+          ideologyTarget.bucket
+        );
+
+        if (eligibleSeatIds.length > 0) {
+          // Enter seat capture phase
+          this.state.pendingSeatCapture = {
+            actorId: playerId,
+            cardId: card.id,
+            cardName: card.name,
+            remaining: Math.min(seatDelta, eligibleSeatIds.length),
+            ideologyAxis: ideologyTarget.axis,
+            ideologyBucket: ideologyTarget.bucket,
+            eligibleSeatIds,
+          };
+          this.state.phase = 'seat_capture';
+          this.state.roundCampaignsPlayed.push({ playerId, cardId: card.id, cardName: card.name, seatDelta, agendaBonus });
+          this.logEvent({ type: 'campaign_played', timestamp: Date.now(), playerId, cardId: card.id, seatDelta, agendaBonus });
+          return true;
+        }
+        // No eligible seats - award consolation (log shortfall but no penalty)
+        console.log(`[CAMPAIGN] No eligible seats for ${card.name} ideology (${ideologyTarget.axis}:${ideologyTarget.bucket})`);
+      }
     }
-    player.hand.splice(ci, 1); this.executeCampaign(playerId, card, seatDelta, agendaBonus, undefined); return true;
+
+    // Fallback to old system for negative effects or if no ideology capture available
+    this.executeCampaign(playerId, card, seatDelta, agendaBonus, undefined);
+    return true;
+  }
+
+  /**
+   * Resolve a seat capture - player selects a specific seat to capture
+   */
+  resolveCaptureSeat(playerId: string, seatId: SeatId): boolean {
+    if (this.state.phase !== 'seat_capture' || !this.state.pendingSeatCapture) return false;
+    const pending = this.state.pendingSeatCapture;
+    if (pending.actorId !== playerId) return false;
+    if (!pending.eligibleSeatIds.includes(seatId)) return false;
+
+    const seat = this.state.seats[seatId];
+    if (!seat) return false;
+
+    const previousOwner = seat.ownerPlayerId;
+
+    // Transfer the seat
+    transferSeat(this.state.seats, seatId, playerId);
+
+    // Log the seat capture event
+    this.logEvent({
+      type: 'seat_captured',
+      timestamp: Date.now(),
+      seatId,
+      seatName: seat.name,
+      fromPlayerId: previousOwner,
+      toPlayerId: playerId,
+      ideology: seat.ideology,
+    });
+
+    // Update remaining and eligibles
+    pending.remaining--;
+    pending.eligibleSeatIds = pending.eligibleSeatIds.filter(id => id !== seatId);
+
+    // Recompute eligible seats (some may have changed ownership)
+    pending.eligibleSeatIds = getEligibleSeatsForCapture(
+      this.state.seats,
+      playerId,
+      pending.ideologyAxis,
+      pending.ideologyBucket
+    );
+
+    // Sync player seat counts
+    this.syncPlayerSeatCounts();
+
+    // Check if capture is complete
+    if (pending.remaining <= 0 || pending.eligibleSeatIds.length === 0) {
+      this.state.pendingSeatCapture = null;
+      this.state.playersCampaigned.push(playerId);
+      this.state.phase = 'campaign';
+      this.advanceCampaignTurn();
+    }
+
+    return true;
   }
 
   selectCampaignTarget(playerId: string, targetId: string): boolean {
@@ -340,8 +461,10 @@ export class GameEngine {
         break;
       case 'campaign':
       case 'campaign_targeting':
+      case 'seat_capture':
         this.state.playersCampaigned = this.state.players.map(p => p.id);
         this.state.pendingCampaign = null;
+        this.state.pendingSeatCapture = null;
         this.advanceToPolicyPhase();
         break;
       case 'policy_proposal':
@@ -598,17 +721,97 @@ export class GameEngine {
 
   private applySeatChange(playerId: string, delta: number, reason: string): void {
     const player = this.state.players.find(p => p.id === playerId); if (!player) return;
-    if (delta > 0) this.transferSeatsTo(player, delta);
-    else if (delta < 0) { const loss = Math.min(player.seats, Math.abs(delta)); player.seats -= loss; this.redistributeSeats(playerId, loss); }
+
+    if (delta > 0) {
+      // NEW: For positive changes, transfer seats from leader to player
+      this.transferSeatsFromLeaderTo(playerId, delta);
+    } else if (delta < 0) {
+      // For negative changes, lose seats to redistribution
+      const loss = Math.min(player.seats, Math.abs(delta));
+      this.loseSeatsByRedistr(playerId, loss);
+    }
+
+    // Sync seat counts from authoritative seat map
+    this.syncPlayerSeatCounts();
+
     this.state.roundSeatChanges[playerId] = (this.state.roundSeatChanges[playerId] || 0) + delta;
     this.logEvent({ type: 'seats_changed', timestamp: Date.now(), playerId, delta, newTotal: player.seats, reason });
   }
 
+  /**
+   * Transfer N seats from the leader to the recipient using the seat map
+   */
+  private transferSeatsFromLeaderTo(recipientId: string, amount: number): void {
+    let remaining = amount;
+    const leader = this.getSeatLeader();
+
+    // First try to take from leader
+    if (leader && leader.id !== recipientId) {
+      const leaderSeats = getPlayerSeats(this.state.seats, leader.id);
+      for (const seat of leaderSeats) {
+        if (remaining <= 0) break;
+        transferSeat(this.state.seats, seat.id, recipientId);
+        remaining--;
+      }
+    }
+
+    // If still need more, take proportionally from others
+    if (remaining > 0) {
+      const others = this.state.players.filter(p => p.id !== recipientId && p.seats > 0);
+      for (const other of others) {
+        if (remaining <= 0) break;
+        const otherSeats = getPlayerSeats(this.state.seats, other.id);
+        const toTake = Math.min(otherSeats.length, Math.ceil(remaining / others.length));
+        for (let i = 0; i < toTake && remaining > 0; i++) {
+          transferSeat(this.state.seats, otherSeats[i].id, recipientId);
+          remaining--;
+        }
+      }
+    }
+  }
+
+  /**
+   * Player loses seats, redistributed to other players
+   */
+  private loseSeatsByRedistr(playerId: string, amount: number): void {
+    const playerSeats = getPlayerSeats(this.state.seats, playerId);
+    const others = this.state.players.filter(p => p.id !== playerId);
+    if (others.length === 0) return;
+
+    let lost = 0;
+    let otherIndex = 0;
+    for (const seat of playerSeats) {
+      if (lost >= amount) break;
+      // Round-robin redistribution to other players
+      transferSeat(this.state.seats, seat.id, others[otherIndex % others.length].id);
+      otherIndex++;
+      lost++;
+    }
+  }
+
   private applySeatChangeFromTarget(playerId: string, targetId: string, delta: number, reason: string): void {
-    const player = this.state.players.find(p => p.id === playerId), target = this.state.players.find(p => p.id === targetId); if (!player || !target) return;
-    const transfer = Math.min(target.seats, delta); target.seats -= transfer; player.seats += transfer;
-    if (delta - transfer > 0) this.transferSeatsTo(player, delta - transfer);
-    this.normalizeSeats(); this.state.roundSeatChanges[playerId] = (this.state.roundSeatChanges[playerId] || 0) + delta;
+    const player = this.state.players.find(p => p.id === playerId);
+    const target = this.state.players.find(p => p.id === targetId);
+    if (!player || !target) return;
+
+    // Transfer seats from target using seat map
+    const targetSeats = getPlayerSeats(this.state.seats, targetId);
+    let transferred = 0;
+    for (const seat of targetSeats) {
+      if (transferred >= delta) break;
+      transferSeat(this.state.seats, seat.id, playerId);
+      transferred++;
+    }
+
+    // If not enough from target, take from leader
+    if (transferred < delta) {
+      this.transferSeatsFromLeaderTo(playerId, delta - transferred);
+    }
+
+    // Sync seat counts
+    this.syncPlayerSeatCounts();
+
+    this.state.roundSeatChanges[playerId] = (this.state.roundSeatChanges[playerId] || 0) + delta;
     this.logEvent({ type: 'seats_changed', timestamp: Date.now(), playerId, delta, newTotal: player.seats, reason: `${reason} (from ${target.name})` });
   }
 

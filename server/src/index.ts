@@ -579,6 +579,25 @@ io.on('connection', (socket) => {
     }
   });
 
+  // NEW: Resolve seat capture (Australian map)
+  socket.on('resolve_capture_seat', ({ seatId }) => {
+    if (!currentRoomId || !currentPlayerId) {
+      socket.emit('error', { message: 'Not in a room' });
+      return;
+    }
+    try {
+      const success = roomManager.resolveCaptureSeat(currentRoomId, currentPlayerId, seatId);
+      if (success) {
+        broadcastState(currentRoomId);
+      } else {
+        socket.emit('error', { message: 'Cannot capture seat' });
+      }
+    } catch (error) {
+      console.error('Error capturing seat:', error);
+      socket.emit('error', { message: 'Server error' });
+    }
+  });
+
   // =====================
   // END OF NEW HANDLERS
   // =====================

@@ -11,7 +11,8 @@
       "conservative": "favoured",
       "market": "favoured",
       "interventionist": "opposed"
-    }
+    },
+    "ideology": { "econ": "RIGHT" }
   },
   {
     "id": "campaign_002",
@@ -25,7 +26,8 @@
       "conservative": "opposed",
       "market": "neutral",
       "interventionist": "favoured"
-    }
+    },
+    "ideology": { "social": "PROG" }
   },
   {
     "id": "campaign_003",
@@ -39,7 +41,8 @@
       "conservative": "favoured",
       "market": "neutral",
       "interventionist": "neutral"
-    }
+    },
+    "ideology": { "social": "CONS" }
   },
   {
     "id": "campaign_004",
@@ -53,7 +56,8 @@
       "conservative": "neutral",
       "market": "opposed",
       "interventionist": "favoured"
-    }
+    },
+    "ideology": { "econ": "LEFT" }
   },
   {
     "id": "campaign_005",
@@ -67,7 +71,8 @@
       "conservative": "neutral",
       "market": "neutral",
       "interventionist": "favoured"
-    }
+    },
+    "ideology": { "econ": "LEFT" }
   },
   {
     "id": "campaign_006",
@@ -81,7 +86,8 @@
       "conservative": "favoured",
       "market": "favoured",
       "interventionist": "opposed"
-    }
+    },
+    "ideology": { "econ": "RIGHT" }
   },
   {
     "id": "campaign_007",
@@ -95,7 +101,8 @@
       "conservative": "neutral",
       "market": "opposed",
       "interventionist": "favoured"
-    }
+    },
+    "ideology": { "econ": "LEFT" }
   },
   {
     "id": "campaign_008",
@@ -109,7 +116,8 @@
       "conservative": "favoured",
       "market": "neutral",
       "interventionist": "neutral"
-    }
+    },
+    "ideology": { "social": "CONS" }
   },
   {
     "id": "campaign_009",
@@ -123,7 +131,8 @@
       "conservative": "opposed",
       "market": "opposed",
       "interventionist": "favoured"
-    }
+    },
+    "ideology": { "econ": "LEFT" }
   },
   {
     "id": "campaign_010",
@@ -137,7 +146,8 @@
       "conservative": "favoured",
       "market": "favoured",
       "interventionist": "neutral"
-    }
+    },
+    "ideology": { "econ": "RIGHT" }
   },
   {
     "id": "campaign_011",
@@ -151,7 +161,8 @@
       "conservative": "opposed",
       "market": "opposed",
       "interventionist": "favoured"
-    }
+    },
+    "ideology": { "econ": "LEFT" }
   },
   {
     "id": "campaign_012",
@@ -165,7 +176,8 @@
       "conservative": "favoured",
       "market": "neutral",
       "interventionist": "neutral"
-    }
+    },
+    "ideology": { "social": "CONS" }
   },
   {
     "id": "campaign_013",
@@ -179,7 +191,8 @@
       "conservative": "neutral",
       "market": "opposed",
       "interventionist": "favoured"
-    }
+    },
+    "ideology": { "econ": "LEFT" }
   },
   {
     "id": "campaign_014",
@@ -192,7 +205,8 @@
       "conservative": "favoured",
       "market": "neutral",
       "interventionist": "favoured"
-    }
+    },
+    "ideology": { "econ": "CENTER" }
   },
   {
     "id": "campaign_015",
@@ -206,7 +220,8 @@
       "conservative": "neutral",
       "market": "opposed",
       "interventionist": "favoured"
-    }
+    },
+    "ideology": { "econ": "LEFT" }
   },
   {
     "id": "campaign_016",
@@ -220,7 +235,8 @@
       "conservative": "opposed",
       "market": "neutral",
       "interventionist": "favoured"
-    }
+    },
+    "ideology": { "social": "PROG" }
   },
   {
     "id": "campaign_017",
@@ -233,7 +249,8 @@
       "conservative": "favoured",
       "market": "neutral",
       "interventionist": "neutral"
-    }
+    },
+    "ideology": { "social": "CONS" }
   },
   {
     "id": "campaign_018",
@@ -247,7 +264,8 @@
       "conservative": "opposed",
       "market": "opposed",
       "interventionist": "favoured"
-    }
+    },
+    "ideology": { "econ": "LEFT" }
   },
   {
     "id": "campaign_019",
@@ -260,7 +278,8 @@
       "conservative": "opposed",
       "market": "favoured",
       "interventionist": "neutral"
-    }
+    },
+    "ideology": { "social": "PROG" }
   },
   {
     "id": "campaign_020",
@@ -273,7 +292,8 @@
       "conservative": "favoured",
       "market": "opposed",
       "interventionist": "neutral"
-    }
+    },
+    "ideology": { "social": "CONS" }
   },
   {
     "id": "campaign_021",
@@ -286,7 +306,8 @@
       "conservative": "opposed",
       "market": "opposed",
       "interventionist": "favoured"
-    }
+    },
+    "ideology": { "econ": "LEFT" }
   },
   {
     "id": "campaign_022",
@@ -299,7 +320,8 @@
       "conservative": "neutral",
       "market": "opposed",
       "interventionist": "favoured"
-    }
+    },
+    "ideology": { "econ": "LEFT" }
   },
   {
     "id": "campaign_023",
@@ -311,7 +333,8 @@
       "conservative": "neutral",
       "market": "neutral",
       "interventionist": "neutral"
-    }
+    },
+    "ideology": { "econ": "CENTER" }
   },
   {
     "id": "campaign_024",
@@ -323,7 +346,8 @@
       "conservative": "neutral",
       "market": "neutral",
       "interventionist": "neutral"
-    }
+    },
+    "ideology": { "social": "CENTER" }
   },
   {
     "id": "campaign_025",
@@ -335,7 +359,8 @@
       "conservative": "neutral",
       "market": "neutral",
       "interventionist": "neutral"
-    }
+    },
+    "ideology": { "econ": "CENTER" }
   },
   {
     "id": "campaign_026",
@@ -347,7 +372,8 @@
       "conservative": "neutral",
       "market": "neutral",
       "interventionist": "neutral"
-    }
+    },
+    "ideology": { "social": "PROG" }
   },
   {
     "id": "campaign_027",
@@ -363,7 +389,8 @@
       "conservative": "neutral",
       "market": "neutral",
       "interventionist": "neutral"
-    }
+    },
+    "ideology": { "econ": "CENTER" }
   },
   {
     "id": "campaign_028",
@@ -379,7 +406,8 @@
       "conservative": "neutral",
       "market": "neutral",
       "interventionist": "neutral"
-    }
+    },
+    "ideology": { "social": "CENTER" }
   },
   {
     "id": "campaign_029",
@@ -392,7 +420,8 @@
       "conservative": "favoured",
       "market": "favoured",
       "interventionist": "neutral"
-    }
+    },
+    "ideology": { "econ": "RIGHT" }
   },
   {
     "id": "campaign_030",
@@ -404,6 +433,7 @@
       "conservative": "favoured",
       "market": "neutral",
       "interventionist": "neutral"
-    }
+    },
+    "ideology": { "social": "CONS" }
   }
 ]

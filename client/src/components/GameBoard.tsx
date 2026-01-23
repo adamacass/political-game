@@ -1,11 +1,13 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { GameState, GameConfig, Player, CampaignCard, PolicyCard, ChatMessage, HandCard, Issue } from '../types';
+import { GameState, GameConfig, Player, CampaignCard, PolicyCard, ChatMessage, HandCard, Issue, SeatId } from '../types';
 import { SeatLayout } from './SeatLayout';
 import { ChatPanel } from './ChatPanel';
 import { WormGraph, WormGraphMini } from './WormGraph';
 import { NegotiationPanel } from './NegotiationPanel';
 import { TargetingModal } from './TargetingModal';
-import { MessageSquare, Download, Star, Scroll, Zap, TrendingUp, RefreshCw, Users, Target, Sparkles, ChevronRight, AlertCircle, CheckCircle2, Award, AlertTriangle, History } from 'lucide-react';
+import { AustraliaMap, AustraliaMapMini } from './AustraliaMap';
+import { MySeatsList } from './MySeatsList';
+import { MessageSquare, Download, Star, Scroll, Zap, TrendingUp, RefreshCw, Users, Target, Sparkles, ChevronRight, AlertCircle, CheckCircle2, Award, AlertTriangle, History, Map, LayoutGrid } from 'lucide-react';
 
 interface PCapChangeRecord { playerId: string; pCapDelta: number; seatDelta: number; reason: string; changeType: 'award' | 'penalty'; timestamp: number; }
 
@@ -18,6 +20,7 @@ interface GameBoardProps {
   onSendChat: (content: string, recipientId: string | null) => void;
   onMakeTradeOffer: (toPlayerId: string, offered: string[], requested: string[]) => void;
   onRespondToOffer: (offerId: string, accept: boolean) => void; onCancelOffer: (offerId: string) => void; onNegotiationReady: () => void;
+  onCaptureSeat?: (seatId: SeatId) => void;
 }
 
 function getIdeologyStrength(actions: number) { if (actions < 1) return { label: 'Unknown', strength: 'none' }; if (actions < 3) return { label: 'Weak', strength: 'weak' }; if (actions < 6) return { label: 'Moderate', strength: 'moderate' }; return { label: 'Strong', strength: 'strong' }; }
@@ -141,11 +144,12 @@ function RoundHistoryPanel({ history, players }: { history: GameState['history']
 }
 
 export function GameBoard(props: GameBoardProps) {
-  const { gameState, gameConfig, playerId, chatMessages, onDrawCard, onPlayCampaign, onSelectTarget, onSkipCampaign, onSkipAndReplace, onProposePolicy, onSkipProposal, onCastVote, onAcknowledgeWildcard, onSelectNewAgenda, onForceAdvance, onExportGame, onSendChat, onMakeTradeOffer, onRespondToOffer, onCancelOffer, onNegotiationReady } = props;
+  const { gameState, gameConfig, playerId, chatMessages, onDrawCard, onPlayCampaign, onSelectTarget, onSkipCampaign, onSkipAndReplace, onProposePolicy, onSkipProposal, onCastVote, onAcknowledgeWildcard, onSelectNewAgenda, onForceAdvance, onExportGame, onSendChat, onMakeTradeOffer, onRespondToOffer, onCancelOffer, onNegotiationReady, onCaptureSeat } = props;
   const [showChat, setShowChat] = useState(false);
   const [showWormGraph, setShowWormGraph] = useState(false);
   const [selectedCard, setSelectedCard] = useState<string | null>(null);
   const [showReplaceConfirm, setShowReplaceConfirm] = useState<string | null>(null);
+  const [mapView, setMapView] = useState<'map' | 'hemicycle'>('map');  // Default to Australia map
 
   const currentPlayer = gameState.players.find(p => p.id === playerId);
   const currentTurnPlayerId = gameState.turnOrder[gameState.currentPlayerIndex];
@@ -178,6 +182,7 @@ export function GameBoard(props: GameBoardProps) {
       case 'negotiation': const ir = gameState.negotiation.playersReady.includes(playerId); label = 'TRADE'; description = ir ? 'Waiting...' : 'Trade or ready up'; icon = <Users className="w-5 h-5" />; actionRequired = !ir; break;
       case 'campaign': label = 'CAMPAIGN'; description = isMyTurn ? 'Your turn!' : `${currentTurnPlayer?.name || 'Next'}'s turn`; icon = <Target className="w-5 h-5" />; actionRequired = isMyTurn; break;
       case 'campaign_targeting': label = 'TARGET'; description = gameState.pendingCampaign?.playerId === playerId ? 'Pick target!' : 'Waiting...'; icon = <Target className="w-5 h-5" />; actionRequired = gameState.pendingCampaign?.playerId === playerId; break;
+      case 'seat_capture': label = 'CAPTURE'; description = gameState.pendingSeatCapture?.actorId === playerId ? `Select ${gameState.pendingSeatCapture?.remaining} seat(s) on map!` : 'Waiting...'; icon = <Map className="w-5 h-5" />; actionRequired = gameState.pendingSeatCapture?.actorId === playerId; break;
       case 'policy_proposal': label = 'POLICY'; description = iAmSpeaker ? 'Propose!' : 'Waiting for Speaker'; icon = <Scroll className="w-5 h-5" />; actionRequired = iAmSpeaker; break;
       case 'policy_vote': const hv = gameState.votes.some(v => v.playerId === playerId); label = 'VOTE'; description = hv ? 'Waiting...' : 'Cast vote!'; actionRequired = !hv; break;
       case 'agenda_selection': label = 'SET AGENDA'; description = gameState.proposerId === playerId ? 'Pick new agenda!' : 'Waiting...'; actionRequired = gameState.proposerId === playerId; break;
@@ -231,7 +236,34 @@ export function GameBoard(props: GameBoardProps) {
       <div className="max-w-7xl mx-auto px-4 py-4">
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
           <div className="lg:col-span-1 space-y-4">
-            <SeatLayout players={gameState.players} totalSeats={gameState.totalSeats} speakerId={speakerId} />
+            {/* Map/Hemicycle toggle */}
+            <div className="bg-white rounded-lg shadow">
+              <div className="flex items-center justify-between p-2 border-b">
+                <div className="flex gap-1">
+                  <button onClick={() => setMapView('map')} className={`px-2 py-1 text-xs rounded flex items-center gap-1 ${mapView === 'map' ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}><Map className="w-3 h-3" />Map</button>
+                  <button onClick={() => setMapView('hemicycle')} className={`px-2 py-1 text-xs rounded flex items-center gap-1 ${mapView === 'hemicycle' ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}><LayoutGrid className="w-3 h-3" />Hemicycle</button>
+                </div>
+              </div>
+              {mapView === 'map' ? (
+                <AustraliaMap
+                  seats={gameState.seats || {}}
+                  players={gameState.players}
+                  pendingSeatCapture={gameState.pendingSeatCapture}
+                  currentPlayerId={playerId}
+                  onCaptureSeat={onCaptureSeat}
+                />
+              ) : (
+                <SeatLayout players={gameState.players} totalSeats={gameState.totalSeats} speakerId={speakerId} />
+              )}
+            </div>
+            {/* My Seats List */}
+            {currentPlayer && Object.keys(gameState.seats || {}).length > 0 && (
+              <MySeatsList
+                seats={gameState.seats || {}}
+                playerId={playerId}
+                playerColor={myColor}
+              />
+            )}
             {!showWormGraph && gameState.history.length > 0 && <div className="bg-white rounded-lg shadow p-3"><div className="flex justify-between items-center mb-2"><h4 className="text-sm font-semibold">Trend</h4><button onClick={() => setShowWormGraph(true)} className="text-xs text-blue-600 hover:underline">Expand</button></div><WormGraphMini history={gameState.history} players={gameState.players} totalSeats={gameState.totalSeats} /></div>}
             <RoundHistoryPanel history={gameState.history} players={gameState.players} />
             <div className="bg-white rounded-lg shadow p-4">
