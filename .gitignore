@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+*.log
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Vite build outputs
+vite.config.js
+vite.config.d.ts
