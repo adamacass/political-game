@@ -2,6 +2,19 @@ import React, { useState, useMemo } from 'react';
 import { HistorySnapshot, Player } from '../types';
 import { X } from 'lucide-react';
 
+// Design tokens - ballot paper aesthetic
+const colors = {
+  paper1: '#F4F1E8',
+  paper2: '#EEEBE2',
+  paper3: '#E8E5DC',
+  ink: '#111111',
+  inkSecondary: '#3A3A3A',
+  rule: '#1A1A1A',
+  success: '#16a34a',
+  error: '#dc2626',
+  warning: '#d97706',
+};
+
 interface WormGraphProps {
   history: HistorySnapshot[];
   players: Player[];
@@ -92,9 +105,9 @@ export function WormGraph({ history, players, totalSeats, currentRound }: WormGr
 
   if (history.length === 0) {
     return (
-      <div className="bg-white rounded-lg shadow p-4">
-        <h3 className="text-lg font-semibold mb-2">Polling Worm</h3>
-        <div className="h-40 flex items-center justify-center text-gray-400">
+      <div className="rounded-lg p-4" style={{ backgroundColor: colors.paper1, border: `2px solid ${colors.rule}` }}>
+        <h3 className="text-lg font-semibold mb-2" style={{ color: colors.ink }}>Polling Worm</h3>
+        <div className="h-40 flex items-center justify-center" style={{ color: colors.inkSecondary }}>
           No round data yet
         </div>
       </div>
@@ -102,10 +115,10 @@ export function WormGraph({ history, players, totalSeats, currentRound }: WormGr
   }
 
   return (
-    <div className="bg-white rounded-lg shadow p-4">
+    <div className="rounded-lg p-4" style={{ backgroundColor: colors.paper1, border: `2px solid ${colors.rule}` }}>
       <div className="flex justify-between items-center mb-2">
-        <h3 className="text-lg font-semibold">Polling Worm</h3>
-        <span className="text-sm text-gray-500">
+        <h3 className="text-lg font-semibold" style={{ color: colors.ink }}>Polling Worm</h3>
+        <span className="text-sm" style={{ color: colors.inkSecondary }}>
           Click a round for details
         </span>
       </div>
@@ -125,7 +138,7 @@ export function WormGraph({ history, players, totalSeats, currentRound }: WormGr
                     y1={y}
                     x2={width - padding.right}
                     y2={y}
-                    stroke="#e5e7eb"
+                    stroke={colors.paper3}
                     strokeDasharray="4,4"
                   />
                   <text
@@ -133,14 +146,14 @@ export function WormGraph({ history, players, totalSeats, currentRound }: WormGr
                     y={y + 4}
                     textAnchor="end"
                     fontSize="10"
-                    fill="#9ca3af"
+                    fill={colors.inkSecondary}
                   >
                     {value}
                   </text>
                 </g>
               );
             })}
-            
+
             {/* Majority line */}
             {(() => {
               const majoritySeats = Math.floor(totalSeats / 2) + 1;
@@ -153,7 +166,7 @@ export function WormGraph({ history, players, totalSeats, currentRound }: WormGr
                       y1={y}
                       x2={width - padding.right}
                       y2={y}
-                      stroke="#f59e0b"
+                      stroke={colors.warning}
                       strokeWidth="2"
                       strokeDasharray="8,4"
                     />
@@ -161,7 +174,7 @@ export function WormGraph({ history, players, totalSeats, currentRound }: WormGr
                       x={width - padding.right + 4}
                       y={y + 4}
                       fontSize="10"
-                      fill="#f59e0b"
+                      fill={colors.warning}
                       fontWeight="bold"
                     >
                       Majority
@@ -185,7 +198,7 @@ export function WormGraph({ history, players, totalSeats, currentRound }: WormGr
                     y1={padding.top}
                     x2={x}
                     y2={height - padding.bottom}
-                    stroke={isActive ? '#3b82f6' : '#e5e7eb'}
+                    stroke={isActive ? colors.ink : colors.paper3}
                     strokeWidth={isActive ? 2 : 1}
                   />
                   <text
@@ -193,7 +206,7 @@ export function WormGraph({ history, players, totalSeats, currentRound }: WormGr
                     y={height - padding.bottom + 16}
                     textAnchor="middle"
                     fontSize="10"
-                    fill={isActive ? '#3b82f6' : '#9ca3af'}
+                    fill={isActive ? colors.ink : colors.inkSecondary}
                     fontWeight={isActive ? 'bold' : 'normal'}
                   >
                     R{snapshot.round}
@@ -226,7 +239,7 @@ export function WormGraph({ history, players, totalSeats, currentRound }: WormGr
                   cy={point.y}
                   r={point.round === selectedRound || point.round === hoveredRound ? 6 : 4}
                   fill={color}
-                  stroke="white"
+                  stroke={colors.paper1}
                   strokeWidth="2"
                   className="cursor-pointer transition-all"
                   onMouseEnter={() => setHoveredRound(point.round)}
@@ -236,7 +249,7 @@ export function WormGraph({ history, players, totalSeats, currentRound }: WormGr
               ))}
             </g>
           ))}
-          
+
           {/* Y-axis label */}
           <text
             x={12}
@@ -244,56 +257,57 @@ export function WormGraph({ history, players, totalSeats, currentRound }: WormGr
             transform={`rotate(-90, 12, ${height / 2})`}
             textAnchor="middle"
             fontSize="11"
-            fill="#6b7280"
+            fill={colors.inkSecondary}
           >
             Seats
           </text>
         </svg>
         
         {/* Legend */}
-        <div className="flex flex-wrap gap-3 mt-2 justify-center">
+        <div className="flex flex-wrap gap-3 mt-2 justify-center" style={{ borderTop: `1px solid ${colors.rule}`, paddingTop: '0.5rem' }}>
           {players.map(player => (
-            <div key={player.id} className="flex items-center gap-1 text-sm">
-              <div 
+            <div key={player.id} className="flex items-center gap-1 text-sm" style={{ color: colors.ink }}>
+              <div
                 className="w-3 h-3 rounded-full"
-                style={{ backgroundColor: player.color }}
+                style={{ backgroundColor: player.color, border: `1px solid ${colors.rule}` }}
               />
               <span>{player.name}</span>
             </div>
           ))}
         </div>
       </div>
-      
+
       {/* Round detail panel */}
       {activeSnapshot && (
-        <div className="mt-4 p-3 bg-gray-50 rounded-lg border relative">
+        <div className="mt-4 p-3 rounded relative" style={{ backgroundColor: colors.paper2, border: `1px solid ${colors.rule}` }}>
           {selectedRound && (
             <button
               onClick={() => setSelectedRound(null)}
-              className="absolute top-2 right-2 p-1 hover:bg-gray-200 rounded"
+              className="absolute top-2 right-2 p-1 rounded hover:opacity-70"
+              style={{ color: colors.ink }}
             >
               <X className="w-4 h-4" />
             </button>
           )}
-          
+
           <div className="flex justify-between items-start mb-2">
-            <h4 className="font-semibold">Round {activeSnapshot.round}</h4>
-            <span className="text-sm bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
+            <h4 className="font-semibold" style={{ color: colors.ink }}>Round {activeSnapshot.round}</h4>
+            <span className="text-sm px-2 py-0.5 rounded" style={{ backgroundColor: colors.paper1, color: colors.ink, border: `1px solid ${colors.rule}` }}>
               {formatIssue(activeSnapshot.activeIssue)}
             </span>
           </div>
-          
+
           {/* Seat counts */}
           <div className="mb-3">
-            <div className="text-xs text-gray-500 mb-1">Seats at end of round:</div>
+            <div className="text-xs mb-1" style={{ color: colors.inkSecondary }}>Seats at end of round:</div>
             <div className="flex flex-wrap gap-2">
               {Object.entries(activeSnapshot.seatCounts).map(([playerId, seats]) => {
                 const player = players.find(p => p.id === playerId);
                 return (
-                  <span 
+                  <span
                     key={playerId}
                     className="px-2 py-1 rounded text-sm font-medium text-white"
-                    style={{ backgroundColor: player?.color || '#666' }}
+                    style={{ backgroundColor: player?.color || colors.inkSecondary, border: `1px solid ${colors.rule}` }}
                   >
                     {player?.name}: {seats}
                   </span>
@@ -301,59 +315,59 @@ export function WormGraph({ history, players, totalSeats, currentRound }: WormGr
               })}
             </div>
           </div>
-          
+
           {/* Campaigns */}
           {activeSnapshot.campaignsPlayed.length > 0 && (
             <div className="mb-2">
-              <div className="text-xs text-gray-500 mb-1">Campaigns:</div>
+              <div className="text-xs mb-1" style={{ color: colors.inkSecondary }}>Campaigns:</div>
               <div className="space-y-1">
                 {activeSnapshot.campaignsPlayed.map((campaign, idx) => (
-                  <div key={idx} className="text-sm">
+                  <div key={idx} className="text-sm" style={{ color: colors.ink }}>
                     <span className="font-medium">{getPlayerName(campaign.playerId)}</span>
                     {' played '}
                     <span className="italic">{campaign.cardName}</span>
                     {' → '}
-                    <span className={campaign.seatDelta >= 0 ? 'text-green-600' : 'text-red-600'}>
+                    <span style={{ color: campaign.seatDelta >= 0 ? colors.success : colors.error }}>
                       {campaign.seatDelta >= 0 ? '+' : ''}{campaign.seatDelta} seats
                     </span>
                     {campaign.agendaBonus > 0 && (
-                      <span className="text-blue-600 ml-1">(+{campaign.agendaBonus} agenda)</span>
+                      <span className="ml-1" style={{ color: colors.ink }}>(+{campaign.agendaBonus} agenda)</span>
                     )}
                   </div>
                 ))}
               </div>
             </div>
           )}
-          
+
           {/* Policy */}
           {activeSnapshot.policyResult && (
             <div className="mb-2">
-              <div className="text-xs text-gray-500 mb-1">Policy:</div>
-              <div className="text-sm">
+              <div className="text-xs mb-1" style={{ color: colors.inkSecondary }}>Policy:</div>
+              <div className="text-sm" style={{ color: colors.ink }}>
                 <span className="font-medium">{getPlayerName(activeSnapshot.policyResult.proposerId)}</span>
                 {' proposed '}
                 <span className="italic">{activeSnapshot.policyResult.cardName}</span>
                 {' → '}
-                <span className={activeSnapshot.policyResult.passed ? 'text-green-600 font-medium' : 'text-red-600'}>
+                <span className="font-medium" style={{ color: activeSnapshot.policyResult.passed ? colors.success : colors.error }}>
                   {activeSnapshot.policyResult.passed ? 'PASSED' : 'FAILED'}
                 </span>
-                <span className="text-gray-500 ml-1">
+                <span className="ml-1" style={{ color: colors.inkSecondary }}>
                   ({activeSnapshot.policyResult.yesVotes}-{activeSnapshot.policyResult.noVotes})
                 </span>
               </div>
             </div>
           )}
-          
+
           {/* Wildcard */}
           {activeSnapshot.wildcardDrawn && (
             <div className="mb-2">
-              <div className="text-xs text-gray-500 mb-1">Wildcard:</div>
-              <div className="text-sm">
+              <div className="text-xs mb-1" style={{ color: colors.inkSecondary }}>Wildcard:</div>
+              <div className="text-sm" style={{ color: colors.ink }}>
                 <span className="italic">{activeSnapshot.wildcardDrawn.cardName}</span>
                 {activeSnapshot.wildcardDrawn.effects.map((effect, idx) => (
                   <span key={idx} className="ml-2">
-                    {getPlayerName(effect.playerId)}: 
-                    <span className={effect.seatDelta >= 0 ? 'text-green-600' : 'text-red-600'}>
+                    {getPlayerName(effect.playerId)}:
+                    <span style={{ color: effect.seatDelta >= 0 ? colors.success : colors.error }}>
                       {' '}{effect.seatDelta >= 0 ? '+' : ''}{effect.seatDelta}
                     </span>
                   </span>
@@ -361,9 +375,8 @@ export function WormGraph({ history, players, totalSeats, currentRound }: WormGr
               </div>
             </div>
           )}
-          
-              
-          </div>
+
+        </div>
       )}
     </div>
   );
@@ -405,7 +418,7 @@ export function WormGraphMini({ history, players, totalSeats }: Omit<WormGraphPr
 
   if (history.length === 0) {
     return (
-      <div className="bg-gray-50 rounded p-2 h-20 flex items-center justify-center text-gray-400 text-xs">
+      <div className="rounded p-2 h-20 flex items-center justify-center text-xs" style={{ backgroundColor: colors.paper2, color: colors.inkSecondary }}>
         No data
       </div>
     );

@@ -101,18 +101,20 @@ interface BoundingBox {
   height: number;
 }
 
-// State bounding boxes aligned with static australia-map.svg (viewBox 200x180)
-// Coordinates are in 0-100 system, scaled by 2x and 1.8x when rendered
-// Adjusted to fit within the accurate Australia outline
+// State bounding boxes aligned with static australia-map.svg (viewBox 665 575 105 145)
+// Coordinates are in 0-100 system, transformed via: svgX = 665 + x*1.05, svgY = 575 + y*1.45
+// Adjusted to fit within the geographic Australia outline from simple-world-map
+// Australia mainland spans roughly x: 7-90, y: 24-73 in this system
+// Tasmania spans roughly x: 70-80, y: 84-93
 const STATE_BOUNDS: Record<StateCode, BoundingBox> = {
-  WA:  { x: 12, y: 26, width: 24, height: 48 },  // Western third (map x: 20-76)
-  NT:  { x: 40, y: 22, width: 20, height: 26 },  // Top center (map x: 76-124, y: 32-92)
-  SA:  { x: 40, y: 54, width: 20, height: 18 },  // Center-south (map x: 76-124, y: 92-130)
-  QLD: { x: 65, y: 24, width: 22, height: 30 },  // Northeast (map x: 124-175, y: 34-100)
-  NSW: { x: 66, y: 58, width: 20, height: 12 },  // Southeast coast (map x: 124-172, y: 100-128)
-  VIC: { x: 62, y: 72, width: 14, height: 5 },   // Bottom corner (map x: 114-150, y: 124-134)
-  TAS: { x: 75, y: 86, width: 10, height: 8 },   // Island (map x: 144-172, y: 148-176)
-  ACT: { x: 78, y: 66, width: 5,  height: 4 },   // Small region in NSW
+  WA:  { x: 8,  y: 28, width: 20, height: 40 },  // Western side (left coast)
+  NT:  { x: 32, y: 24, width: 20, height: 22 },  // Top center (north)
+  SA:  { x: 32, y: 50, width: 20, height: 18 },  // Center-south (inland)
+  QLD: { x: 56, y: 26, width: 28, height: 22 },  // Northeast (upper right)
+  NSW: { x: 56, y: 52, width: 26, height: 14 },  // Southeast coast (mid-right)
+  VIC: { x: 52, y: 66, width: 18, height: 7 },   // Bottom corner (southeast tip)
+  TAS: { x: 70, y: 84, width: 10, height: 9 },   // Island (below mainland, southeast)
+  ACT: { x: 72, y: 58, width: 4,  height: 4 },   // Small region within NSW
 };
 
 // State ideology biases (subtle flavor)

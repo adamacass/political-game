@@ -9,6 +9,16 @@ import React, { useState, useMemo } from 'react';
 import { Seat, SeatId, StateCode, EconBucket, SocialBucket } from '../types';
 import { ChevronDown, ChevronUp, MapPin, Filter } from 'lucide-react';
 
+// Design tokens - ballot paper aesthetic
+const colors = {
+  paper1: '#F4F1E8',
+  paper2: '#EEEBE2',
+  paper3: '#E8E5DC',
+  ink: '#111111',
+  inkSecondary: '#3A3A3A',
+  rule: '#1A1A1A',
+};
+
 interface MySeatsListProps {
   seats: Record<SeatId, Seat>;
   playerId: string;
@@ -91,37 +101,38 @@ export function MySeatsList({ seats, playerId, playerColor }: MySeatsListProps) 
   const hasFilters = stateFilter !== 'ALL' || econFilter !== 'ALL' || socialFilter !== 'ALL';
 
   return (
-    <div className="bg-white rounded-lg shadow">
+    <div className="rounded-lg" style={{ backgroundColor: colors.paper1, border: `2px solid ${colors.rule}` }}>
       {/* Header - always visible */}
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full p-3 flex items-center justify-between hover:bg-gray-50 transition-colors rounded-lg"
+        className="w-full p-3 flex items-center justify-between hover:opacity-90 transition-colors rounded-lg"
         style={{ borderLeft: `4px solid ${playerColor}` }}
       >
         <div className="flex items-center gap-2">
           <MapPin className="w-4 h-4" style={{ color: playerColor }} />
-          <span className="font-semibold">My Seats</span>
-          <span className="text-sm text-gray-500">({mySeats.length})</span>
+          <span className="font-semibold" style={{ color: colors.ink }}>My Seats</span>
+          <span className="text-sm" style={{ color: colors.inkSecondary }}>({mySeats.length})</span>
         </div>
         {expanded ? (
-          <ChevronUp className="w-4 h-4 text-gray-400" />
+          <ChevronUp className="w-4 h-4" style={{ color: colors.inkSecondary }} />
         ) : (
-          <ChevronDown className="w-4 h-4 text-gray-400" />
+          <ChevronDown className="w-4 h-4" style={{ color: colors.inkSecondary }} />
         )}
       </button>
 
       {/* Expanded content */}
       {expanded && (
-        <div className="px-3 pb-3 border-t border-gray-100">
+        <div className="px-3 pb-3" style={{ borderTop: `1px solid ${colors.rule}` }}>
           {/* Ideology summary */}
           <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
             <div>
-              <div className="text-gray-500 mb-1">Economic</div>
+              <div className="mb-1" style={{ color: colors.inkSecondary }}>Economic</div>
               <div className="flex gap-1">
                 {(['LEFT', 'CENTER', 'RIGHT'] as EconBucket[]).map(bucket => (
                   <span
                     key={bucket}
-                    className={`px-1.5 py-0.5 rounded ${ECON_LABELS[bucket].color}`}
+                    className="px-1.5 py-0.5 rounded"
+                    style={{ backgroundColor: colors.paper2, color: colors.ink, border: `1px solid ${colors.rule}` }}
                   >
                     {ECON_LABELS[bucket].label}: {ideologySummary.econ[bucket]}
                   </span>
@@ -129,12 +140,13 @@ export function MySeatsList({ seats, playerId, playerColor }: MySeatsListProps) 
               </div>
             </div>
             <div>
-              <div className="text-gray-500 mb-1">Social</div>
+              <div className="mb-1" style={{ color: colors.inkSecondary }}>Social</div>
               <div className="flex gap-1">
                 {(['PROG', 'CENTER', 'CONS'] as SocialBucket[]).map(bucket => (
                   <span
                     key={bucket}
-                    className={`px-1.5 py-0.5 rounded ${SOCIAL_LABELS[bucket].color}`}
+                    className="px-1.5 py-0.5 rounded"
+                    style={{ backgroundColor: colors.paper2, color: colors.ink, border: `1px solid ${colors.rule}` }}
                   >
                     {SOCIAL_LABELS[bucket].label}: {ideologySummary.social[bucket]}
                   </span>
@@ -145,11 +157,12 @@ export function MySeatsList({ seats, playerId, playerColor }: MySeatsListProps) 
 
           {/* Filters */}
           <div className="mt-3 flex flex-wrap gap-2 items-center text-xs">
-            <Filter className="w-3 h-3 text-gray-400" />
+            <Filter className="w-3 h-3" style={{ color: colors.inkSecondary }} />
             <select
               value={stateFilter}
               onChange={(e) => setStateFilter(e.target.value as StateCode | 'ALL')}
-              className="px-2 py-1 border rounded text-xs"
+              className="px-2 py-1 rounded text-xs focus:outline-none"
+              style={{ backgroundColor: colors.paper2, border: `1px solid ${colors.rule}`, color: colors.ink }}
             >
               <option value="ALL">All States</option>
               {Object.entries(stateBreakdown).map(([state, count]) => (
@@ -161,7 +174,8 @@ export function MySeatsList({ seats, playerId, playerColor }: MySeatsListProps) 
             <select
               value={econFilter}
               onChange={(e) => setEconFilter(e.target.value as EconBucket | 'ALL')}
-              className="px-2 py-1 border rounded text-xs"
+              className="px-2 py-1 rounded text-xs focus:outline-none"
+              style={{ backgroundColor: colors.paper2, border: `1px solid ${colors.rule}`, color: colors.ink }}
             >
               <option value="ALL">All Econ</option>
               <option value="LEFT">Left</option>
@@ -171,7 +185,8 @@ export function MySeatsList({ seats, playerId, playerColor }: MySeatsListProps) 
             <select
               value={socialFilter}
               onChange={(e) => setSocialFilter(e.target.value as SocialBucket | 'ALL')}
-              className="px-2 py-1 border rounded text-xs"
+              className="px-2 py-1 rounded text-xs focus:outline-none"
+              style={{ backgroundColor: colors.paper2, border: `1px solid ${colors.rule}`, color: colors.ink }}
             >
               <option value="ALL">All Social</option>
               <option value="PROG">Progressive</option>
@@ -185,7 +200,8 @@ export function MySeatsList({ seats, playerId, playerColor }: MySeatsListProps) 
                   setEconFilter('ALL');
                   setSocialFilter('ALL');
                 }}
-                className="text-blue-600 hover:underline"
+                className="hover:underline"
+                style={{ color: colors.ink }}
               >
                 Clear
               </button>
@@ -195,12 +211,12 @@ export function MySeatsList({ seats, playerId, playerColor }: MySeatsListProps) 
           {/* Seat list */}
           <div className="mt-3 max-h-48 overflow-y-auto">
             {filteredSeats.length === 0 ? (
-              <div className="text-center text-gray-400 py-4 text-sm">
+              <div className="text-center py-4 text-sm" style={{ color: colors.inkSecondary }}>
                 {hasFilters ? 'No seats match filters' : 'No seats owned'}
               </div>
             ) : (
               <table className="w-full text-xs">
-                <thead className="text-gray-500 border-b">
+                <thead style={{ color: colors.inkSecondary, borderBottom: `1px solid ${colors.rule}` }}>
                   <tr>
                     <th className="text-left py-1 font-medium">Seat</th>
                     <th className="text-left py-1 font-medium">State</th>
@@ -212,22 +228,25 @@ export function MySeatsList({ seats, playerId, playerColor }: MySeatsListProps) 
                   {filteredSeats.map(seat => (
                     <tr
                       key={seat.id}
-                      className="border-b border-gray-50 hover:bg-gray-50"
+                      className="hover:opacity-80"
+                      style={{ borderBottom: `1px solid ${colors.paper3}` }}
                     >
-                      <td className="py-1.5 truncate max-w-[100px]" title={seat.name}>
+                      <td className="py-1.5 truncate max-w-[100px]" title={seat.name} style={{ color: colors.ink }}>
                         {seat.name}
                       </td>
-                      <td className="py-1.5 text-gray-500">{seat.state}</td>
+                      <td className="py-1.5" style={{ color: colors.inkSecondary }}>{seat.state}</td>
                       <td className="py-1.5 text-center">
                         <span
-                          className={`px-1.5 py-0.5 rounded text-[10px] ${ECON_LABELS[seat.ideology.econ].color}`}
+                          className="px-1.5 py-0.5 rounded text-[10px]"
+                          style={{ backgroundColor: colors.paper2, color: colors.ink, border: `1px solid ${colors.rule}` }}
                         >
                           {ECON_LABELS[seat.ideology.econ].label}
                         </span>
                       </td>
                       <td className="py-1.5 text-center">
                         <span
-                          className={`px-1.5 py-0.5 rounded text-[10px] ${SOCIAL_LABELS[seat.ideology.social].color}`}
+                          className="px-1.5 py-0.5 rounded text-[10px]"
+                          style={{ backgroundColor: colors.paper2, color: colors.ink, border: `1px solid ${colors.rule}` }}
                         >
                           {SOCIAL_LABELS[seat.ideology.social].label}
                         </span>
@@ -240,15 +259,16 @@ export function MySeatsList({ seats, playerId, playerColor }: MySeatsListProps) 
           </div>
 
           {/* State breakdown */}
-          <div className="mt-3 pt-2 border-t border-gray-100">
-            <div className="text-xs text-gray-500 mb-1">By State:</div>
+          <div className="mt-3 pt-2" style={{ borderTop: `1px solid ${colors.rule}` }}>
+            <div className="text-xs mb-1" style={{ color: colors.inkSecondary }}>By State:</div>
             <div className="flex flex-wrap gap-1 text-xs">
               {Object.entries(stateBreakdown)
                 .sort(([, a], [, b]) => b - a)
                 .map(([state, count]) => (
                   <span
                     key={state}
-                    className="px-1.5 py-0.5 bg-gray-100 rounded"
+                    className="px-1.5 py-0.5 rounded"
+                    style={{ backgroundColor: colors.paper2, color: colors.ink, border: `1px solid ${colors.rule}` }}
                   >
                     {state}: {count}
                   </span>

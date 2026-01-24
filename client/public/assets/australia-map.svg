@@ -1,65 +1,45 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 180" fill="none">
-  <!-- Ballot paper aesthetic: paper fill with ink stroke -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="665 575 105 145" fill="none">
+  <!--
+    Australia Map - Geographic outline from simple-world-map
+    Source: https://github.com/flekschas/simple-world-map
+    Ballot Paper Aesthetic styling applied
+  -->
 
-  <!-- Australia Mainland - accurate simplified outline -->
+  <!-- Australia Mainland -->
   <path
-    d="M 20,120
-       L 20,105 L 20,90 L 22,75 L 25,62
-       L 30,50 L 38,42 L 48,38 L 58,40 L 65,45
-       L 70,40 L 78,35 L 88,32 L 95,36
-       L 98,44 L 94,54 L 88,62 L 90,70 L 98,65 L 106,58
-       L 115,50 L 124,46 L 132,50 L 136,58
-       L 142,52 L 150,44 L 158,38 L 166,34
-       L 175,40 L 180,52 L 182,66 L 180,82
-       L 175,98 L 168,112 L 160,122 L 150,130
-       L 140,135 L 130,136 L 122,132 L 114,128
-       L 104,130 L 92,134 L 80,134 L 68,132
-       L 56,134 L 44,138 L 32,136 L 22,130
-       L 20,125 L 20,120
-       Z"
+    d="M672.961,609.067l-0.303,21.938l-3.371,2.472l-0.303,2.161l4.598,3.086l11.35-2.161h5.826l2.145-3.095l12.879-2.472l9.198,2.784l-0.614,3.708l1.228,3.708l7.055-1.236l0.303,1.851l-4.599,3.396l1.53,1.236l3.37-1.236l-0.917,10.2l6.44,4.944l3.683-1.236l1.841,1.852l10.735-1.548l10.123-16.381l3.682-0.925l7.357-13.596l1.841-11.739l-4.599-5.869l1.842-1.236l-3.684-11.436l-3.984-2.783l0.614-15.448l-3.684-2.782l-0.916-8.652h-1.842l-6.138,20.392l-3.37,0.312l-7.668-7.728l4.297-11.437l-7.971-1.547l-8.896,2.472l-2.454,7.104l-3.984,0.925l-0.304-4.944l-16.252,9.889l0.304,3.708l-2.454,3.397h-6.139l-13.19,5.56L672.961,609.067z"
     fill="#EEEBE2"
     stroke="#1A1A1A"
-    stroke-width="1.5"
+    stroke-width="0.8"
+    stroke-linejoin="round"
   />
 
-  <!-- Tasmania -->
+  <!-- Tasmania - more accurate heart/triangle shape -->
   <path
-    d="M 148,152
-       L 156,148 L 166,150 L 172,156
-       L 172,166 L 166,174 L 156,176
-       L 148,172 L 144,164 L 146,156 L 148,152
-       Z"
+    d="M738,695
+       l-5,2
+       l-3,5
+       l0,6
+       l4,5
+       l7,2
+       l6,-2
+       l3,-5
+       l0,-6
+       l-4,-5
+       l-5,-2
+       z"
     fill="#EEEBE2"
     stroke="#1A1A1A"
-    stroke-width="1.5"
+    stroke-width="0.8"
+    stroke-linejoin="round"
   />
 
-  <!-- State Borders -->
-  <!-- WA-NT border -->
-  <line x1="76" y1="34" x2="76" y2="92" stroke="#1A1A1A" stroke-width="0.75" />
-  <!-- WA-SA border -->
-  <line x1="76" y1="92" x2="76" y2="134" stroke="#1A1A1A" stroke-width="0.75" />
-  <!-- NT-SA border -->
-  <line x1="76" y1="92" x2="124" y2="92" stroke="#1A1A1A" stroke-width="0.75" />
-  <!-- NT-QLD border -->
-  <line x1="124" y1="58" x2="124" y2="92" stroke="#1A1A1A" stroke-width="0.75" />
-  <!-- SA-QLD border -->
-  <line x1="124" y1="92" x2="124" y2="100" stroke="#1A1A1A" stroke-width="0.75" />
-  <!-- QLD-NSW border -->
-  <line x1="124" y1="100" x2="172" y2="100" stroke="#1A1A1A" stroke-width="0.75" />
-  <!-- SA-NSW border -->
-  <line x1="124" y1="100" x2="124" y2="124" stroke="#1A1A1A" stroke-width="0.75" />
-  <!-- NSW-VIC border -->
-  <path d="M 124,124 Q 136,128 148,135" stroke="#1A1A1A" stroke-width="0.75" fill="none" />
-  <!-- SA-VIC border -->
-  <line x1="124" y1="124" x2="114" y2="130" stroke="#1A1A1A" stroke-width="0.75" />
-
-  <!-- State Labels -->
-  <text x="45" y="90" font-family="system-ui, sans-serif" font-size="8" fill="#3A3A3A" text-anchor="middle">WA</text>
-  <text x="100" y="65" font-family="system-ui, sans-serif" font-size="8" fill="#3A3A3A" text-anchor="middle">NT</text>
-  <text x="98" y="112" font-family="system-ui, sans-serif" font-size="8" fill="#3A3A3A" text-anchor="middle">SA</text>
-  <text x="155" y="75" font-family="system-ui, sans-serif" font-size="8" fill="#3A3A3A" text-anchor="middle">QLD</text>
-  <text x="155" y="115" font-family="system-ui, sans-serif" font-size="8" fill="#3A3A3A" text-anchor="middle">NSW</text>
-  <text x="140" y="132" font-family="system-ui, sans-serif" font-size="7" fill="#3A3A3A" text-anchor="middle">VIC</text>
-  <text x="160" y="164" font-family="system-ui, sans-serif" font-size="7" fill="#3A3A3A" text-anchor="middle">TAS</text>
+  <!-- State Labels only - no borders (borders would require accurate geographic data) -->
+  <text x="682" y="625" font-family="system-ui, sans-serif" font-size="5" fill="#3A3A3A" text-anchor="middle" font-weight="500">WA</text>
+  <text x="710" y="600" font-family="system-ui, sans-serif" font-size="4" fill="#3A3A3A" text-anchor="middle" font-weight="500">NT</text>
+  <text x="710" y="635" font-family="system-ui, sans-serif" font-size="4" fill="#3A3A3A" text-anchor="middle" font-weight="500">SA</text>
+  <text x="745" y="608" font-family="system-ui, sans-serif" font-size="5" fill="#3A3A3A" text-anchor="middle" font-weight="500">QLD</text>
+  <text x="750" y="640" font-family="system-ui, sans-serif" font-size="4" fill="#3A3A3A" text-anchor="middle" font-weight="500">NSW</text>
+  <text x="745" y="658" font-family="system-ui, sans-serif" font-size="3" fill="#3A3A3A" text-anchor="middle" font-weight="500">VIC</text>
+  <text x="742" y="705" font-family="system-ui, sans-serif" font-size="3.5" fill="#3A3A3A" text-anchor="middle" font-weight="500">TAS</text>
 </svg>

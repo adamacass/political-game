@@ -28,16 +28,20 @@ interface AustraliaMapProps {
   onCaptureSeat?: (seatId: SeatId) => void;
 }
 
-// Map dimensions matching the static SVG asset (viewBox 0 0 200 180)
-const MAP_WIDTH = 200;
-const MAP_HEIGHT = 180;
+// Map dimensions matching the static SVG asset (viewBox 665 575 105 145)
+// This viewBox shows the Australia outline from the geographic path data
+const MAP_VIEWBOX = '665 575 105 145';
+const MAP_ORIGIN_X = 665;
+const MAP_ORIGIN_Y = 575;
+const MAP_WIDTH = 105;
+const MAP_HEIGHT = 145;
 
 // Extended seat data for rendering
 interface SeatRenderData extends Seat {
   color: string;
   eligible: boolean;
   dimmed: boolean;
-  // Scaled coordinates for the 200x180 viewBox
+  // Scaled coordinates for the SVG viewBox
   scaledX: number;
   scaledY: number;
 }
@@ -76,16 +80,16 @@ export function AustraliaMap({
   const isCapturing = pendingSeatCapture && pendingSeatCapture.actorId === currentPlayerId;
 
   // Prepare seat data with visual properties
-  // Scale from 0-100 coordinate system to 0-200/0-180
+  // Scale from 0-100 coordinate system to SVG viewBox coordinates
   const seatData = useMemo((): SeatRenderData[] => {
     return Object.values(seats).map(seat => ({
       ...seat,
       color: getPlayerColor(seat.ownerPlayerId),
       eligible: isEligible(seat.id),
       dimmed: Boolean(isCapturing && !isEligible(seat.id)),
-      // Scale x: 0-100 -> 0-200, y: 0-100 -> 0-180
-      scaledX: seat.x * 2,
-      scaledY: seat.y * 1.8,
+      // Scale x: 0-100 -> viewBox x range, y: 0-100 -> viewBox y range
+      scaledX: MAP_ORIGIN_X + (seat.x / 100) * MAP_WIDTH,
+      scaledY: MAP_ORIGIN_Y + (seat.y / 100) * MAP_HEIGHT,
     }));
   }, [seats, getPlayerColor, isEligible, isCapturing]);
 
@@ -134,9 +138,9 @@ export function AustraliaMap({
           draggable={false}
         />
 
-        {/* SVG overlay for interactive seats */}
+        {/* SVG overlay for interactive seats - must match background SVG viewBox */}
         <svg
-          viewBox={`0 0 ${MAP_WIDTH} ${MAP_HEIGHT}`}
+          viewBox={MAP_VIEWBOX}
           className="absolute inset-0 w-full h-full"
           style={{ pointerEvents: 'none' }}
         >
@@ -148,10 +152,10 @@ export function AustraliaMap({
                 <circle
                   cx={seat.scaledX}
                   cy={seat.scaledY}
-                  r="5"
+                  r="2.5"
                   fill="none"
                   stroke={colors.ink}
-                  strokeWidth="0.8"
+                  strokeWidth="0.4"
                   className="animate-pulse"
                 />
               )}
@@ -160,10 +164,10 @@ export function AustraliaMap({
               <circle
                 cx={seat.scaledX}
                 cy={seat.scaledY}
-                r="3"
+                r="1.5"
                 fill={seat.color}
                 stroke={colors.rule}
-                strokeWidth="0.4"
+                strokeWidth="0.2"
                 opacity={seat.dimmed ? 0.3 : 1}
                 className={`transition-all duration-200 ${seat.eligible ? 'cursor-pointer' : ''}`}
                 onClick={() => handleSeatClick(seat)}
@@ -248,18 +252,18 @@ export function AustraliaMapMini({
 
       {/* Seat overlay */}
       <svg
-        viewBox={`0 0 ${MAP_WIDTH} ${MAP_HEIGHT}`}
+        viewBox={MAP_VIEWBOX}
         className="absolute inset-0 w-full h-full"
       >
         {Object.values(seats).map(seat => (
           <circle
             key={seat.id}
-            cx={seat.x * 2}
-            cy={seat.y * 1.8}
-            r="2"
+            cx={MAP_ORIGIN_X + (seat.x / 100) * MAP_WIDTH}
+            cy={MAP_ORIGIN_Y + (seat.y / 100) * MAP_HEIGHT}
+            r="1"
             fill={getPlayerColor(seat.ownerPlayerId)}
             stroke={colors.rule}
-            strokeWidth="0.3"
+            strokeWidth="0.15"
           />
         ))}
       </svg>
