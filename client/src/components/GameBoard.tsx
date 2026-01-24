@@ -8,7 +8,7 @@ import { TargetingModal } from './TargetingModal';
 import { AustraliaMap, AustraliaMapMini } from './AustraliaMap';
 import { MySeatsList } from './MySeatsList';
 import { PlayerSymbol } from './PlayerSymbol';
-import { MessageSquare, Download, Star, Scroll, Zap, TrendingUp, RefreshCw, Users, Target, Sparkles, ChevronRight, AlertCircle, CheckCircle2, Award, AlertTriangle, History, Map, LayoutGrid, Trophy } from 'lucide-react';
+import { MessageSquare, Download, Star, Scroll, Zap, TrendingUp, RefreshCw, Users, Target, Sparkles, ChevronRight, AlertCircle, CheckCircle2, Award, AlertTriangle, History, Map, LayoutGrid, Trophy, Megaphone } from 'lucide-react';
 import { colors, borders, componentStyles } from '../styles/tokens';
 import { getSocialColor, getEconomicColor, SOCIAL_COLORS, ECONOMIC_COLORS } from '../constants/ideologyColors';
 
@@ -450,7 +450,7 @@ export function GameBoard(props: GameBoardProps) {
               <div className="rounded p-4" style={{ backgroundColor: colors.paper1, border: borders.outer }}>
                 <h3 className="font-semibold mb-3 flex items-center gap-2" style={{ color: colors.ink }}>Your Hand ({currentPlayer.hand.length}/{gameConfig.handLimit})</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {currentPlayer.hand.map(h => <CardDisplayFull key={h.card.id} handCard={h} selected={selectedCard === h.card.id} onClick={() => setSelectedCard(selectedCard === h.card.id ? null : h.card.id)} activeIssue={gameState.activeIssue} playerProfile={currentPlayer.ideologyProfile} />)}
+                  {currentPlayer.hand.map(h => <CardDisplayFull key={h.card.id} handCard={h} selected={selectedCard === h.card.id} onClick={() => setSelectedCard(selectedCard === h.card.id ? null : h.card.id)} activeIssue={gameState.activeIssue} playerProfile={currentPlayer.ideologyProfile} currentPhase={gameState.phase} />)}
                 </div>
               </div>
             )}
@@ -624,23 +624,54 @@ function GameOverUI({ gameState, playerId }: { gameState: GameState; playerId: s
 }
 
 // Full card display with stance table - ballot paper style
-function CardDisplayFull({ handCard, selected, onClick, activeIssue, playerProfile }: { handCard: HandCard; selected: boolean; onClick: () => void; activeIssue: string; playerProfile: Player['ideologyProfile'] }) {
+function CardDisplayFull({ handCard, selected, onClick, activeIssue, playerProfile, currentPhase }: { handCard: HandCard; selected: boolean; onClick: () => void; activeIssue: string; playerProfile: Player['ideologyProfile']; currentPhase?: string }) {
   const { card, isNew } = handCard;
   const isCampaign = 'seatDelta' in card;
   const matchesAgenda = 'issue' in card && card.issue === activeIssue;
   const alignment = checkCardAlignment(card, playerProfile);
   const stanceTable = 'stanceTable' in card ? card.stanceTable : null;
 
+  // Determine if card should be blurred based on current phase
+  const shouldBlur = currentPhase === 'campaign' && !isCampaign || currentPhase === 'policy_proposal' && isCampaign;
+
   return (
-    <div onClick={onClick} className="relative p-3 rounded cursor-pointer transition-all" style={{
+    <div onClick={onClick} className={`relative p-3 rounded cursor-pointer transition-all ${shouldBlur ? 'opacity-50' : ''}`} style={{
       backgroundColor: selected ? colors.paper3 : colors.paper2,
       border: selected ? `2px solid ${colors.ink}` : borders.inner,
       transform: selected ? 'scale(1.02)' : undefined,
-      boxShadow: isNew ? `0 0 0 2px ${colors.warning}` : undefined
+      boxShadow: isNew ? `0 0 0 2px ${colors.warning}` : undefined,
+      filter: shouldBlur ? 'blur(1px)' : undefined
     }}>
       {isNew && <div className="absolute -top-2 -right-2 text-xs font-bold px-2 py-0.5 rounded-full flex items-center gap-1" style={{ backgroundColor: colors.warning, color: colors.paper1 }}><Sparkles className="w-3 h-3" />NEW</div>}
+
+      {/* Artwork placeholder box - 120x80px for card art */}
+      <div className="mb-2 rounded overflow-hidden" style={{
+        width: '100%',
+        height: '80px',
+        backgroundColor: colors.paper3,
+        border: borders.inner,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}>
+        {card.artworkUrl ? (
+          <img src={card.artworkUrl} alt={card.name} className="w-full h-full object-cover" />
+        ) : (
+          <div className="text-center">
+            {isCampaign ? (
+              <Megaphone className="w-8 h-8 mx-auto" style={{ color: colors.inkSecondary, opacity: 0.3 }} />
+            ) : (
+              <Scroll className="w-8 h-8 mx-auto" style={{ color: colors.inkSecondary, opacity: 0.3 }} />
+            )}
+            <div className="text-[10px] mt-1" style={{ color: colors.inkSecondary, opacity: 0.5 }}>120×80px artwork</div>
+          </div>
+        )}
+      </div>
+
       <div className="flex justify-between items-start mb-2">
-        <span className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: colors.paper1, color: colors.ink, border: borders.inner }}>{isCampaign ? 'Campaign' : 'Policy'}</span>
+        <span className="text-xs px-2 py-0.5 rounded flex items-center gap-1" style={{ backgroundColor: colors.paper1, color: colors.ink, border: borders.inner }}>
+          {isCampaign ? <><Megaphone className="w-3 h-3" /> Campaign</> : <><Scroll className="w-3 h-3" /> Policy</>}
+        </span>
         <div className="flex gap-1">
           {matchesAgenda && <span className="text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: colors.paper1, color: colors.ink, border: borders.inner }}>+Agenda</span>}
           {alignment === 'aligned' && <span className="text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: colors.paper1, color: colors.success, border: borders.inner }}>Aligned</span>}
