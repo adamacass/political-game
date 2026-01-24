@@ -39,10 +39,12 @@ interface LobbyProps {
   gameConfig: GameConfig | null;
   playerId: string;
   availableColors: PartyColorId[];
+  savedGames: Array<{ roomId: string; playerId: string; timestamp: number; version: string }>;
   onStartGame: () => void;
   onUpdateConfig: (config: Partial<GameConfig>) => void;
   onCreateRoom: (playerName: string, partyName: string, colorId?: PartyColorId, social?: SocialIdeology, economic?: EconomicIdeology) => void;
   onJoinRoom: (roomId: string, playerName: string, partyName: string, colorId?: PartyColorId, social?: SocialIdeology, economic?: EconomicIdeology) => void;
+  onResumeGame: (roomId: string, playerId: string) => void;
 }
 
 export function Lobby({
@@ -50,12 +52,14 @@ export function Lobby({
   gameConfig,
   playerId,
   availableColors,
+  savedGames,
   onStartGame,
   onUpdateConfig,
   onCreateRoom,
   onJoinRoom,
+  onResumeGame,
 }: LobbyProps) {
-  const [mode, setMode] = useState<'choose' | 'create' | 'join'>('choose');
+  const [mode, setMode] = useState<'choose' | 'create' | 'join' | 'resume'>('choose');
   const [playerName, setPlayerName] = useState('');
   const [partyName, setPartyName] = useState('');
   const [roomCode, setRoomCode] = useState('');
@@ -119,25 +123,75 @@ export function Lobby({
   if (mode === 'choose') {
     return (
       <div className="min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: colors.paper2 }}>
-        <div className="rounded-lg p-8 w-full max-w-md" style={{ backgroundColor: colors.paper1, border: `2px solid ${colors.rule}` }}>
+        <div className="rounded-lg p-8 w-full max-w-md paper-texture" style={{ backgroundColor: colors.paper1, border: `2px solid ${colors.rule}` }}>
           <h1 className="text-3xl font-bold text-center mb-2" style={{ color: colors.ink }}>Political Game</h1>
           <p className="text-center mb-8" style={{ color: colors.inkSecondary }}>Compete for seats in parliament</p>
 
           <div className="space-y-4">
             <button
               onClick={() => setMode('create')}
-              className="w-full py-4 px-6 rounded font-semibold text-lg transition-all hover:opacity-90"
+              className="w-full py-4 px-6 rounded-lg font-semibold text-lg transition-all hover:opacity-90"
               style={{ backgroundColor: colors.ink, color: colors.paper1, border: `2px solid ${colors.rule}` }}
             >
               Create New Game
             </button>
             <button
               onClick={() => setMode('join')}
-              className="w-full py-4 px-6 rounded font-semibold text-lg transition-all hover:opacity-90"
+              className="w-full py-4 px-6 rounded-lg font-semibold text-lg transition-all hover:opacity-90"
               style={{ backgroundColor: colors.paper2, color: colors.ink, border: `2px solid ${colors.rule}` }}
             >
               Join Existing Game
             </button>
+            {savedGames.length > 0 && (
+              <button
+                onClick={() => setMode('resume')}
+                className="w-full py-4 px-6 rounded-lg font-semibold text-lg transition-all hover:opacity-90"
+                style={{ backgroundColor: colors.paper3, color: colors.ink, border: `2px dashed ${colors.rule}` }}
+              >
+                Resume Saved Game
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (mode === 'resume') {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: colors.paper2 }}>
+        <div className="rounded-lg p-8 w-full max-w-md paper-texture" style={{ backgroundColor: colors.paper1, border: `2px solid ${colors.rule}` }}>
+          <button
+            onClick={() => setMode('choose')}
+            className="mb-4 hover:opacity-70"
+            style={{ color: colors.inkSecondary }}
+          >
+            &larr; Back
+          </button>
+          <h2 className="text-2xl font-bold mb-6" style={{ color: colors.ink }}>
+            Resume Saved Game
+          </h2>
+          <div className="space-y-3">
+            {savedGames.map(saved => (
+              <button
+                key={`${saved.roomId}-${saved.playerId}`}
+                onClick={() => onResumeGame(saved.roomId, saved.playerId)}
+                className="w-full p-4 rounded-lg flex items-center justify-between hover:opacity-90 transition-colors"
+                style={{ backgroundColor: colors.paper2, border: `1px solid ${colors.rule}` }}
+              >
+                <div className="text-left">
+                  <div className="font-semibold" style={{ color: colors.ink }}>
+                    Room {saved.roomId}
+                  </div>
+                  <div className="text-xs" style={{ color: colors.inkSecondary }}>
+                    Saved {new Date(saved.timestamp).toLocaleString()}
+                  </div>
+                </div>
+                <span className="text-xs px-2 py-1 rounded-full" style={{ backgroundColor: colors.paper3, color: colors.ink }}>
+                  v{saved.version}
+                </span>
+              </button>
+            ))}
           </div>
         </div>
       </div>
@@ -148,7 +202,7 @@ export function Lobby({
   if (!gameState) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: colors.paper2 }}>
-        <div className="rounded-lg p-8 w-full max-w-md" style={{ backgroundColor: colors.paper1, border: `2px solid ${colors.rule}` }}>
+        <div className="rounded-lg p-8 w-full max-w-md paper-texture" style={{ backgroundColor: colors.paper1, border: `2px solid ${colors.rule}` }}>
           <button
             onClick={() => setMode('choose')}
             className="mb-4 hover:opacity-70"
@@ -170,7 +224,7 @@ export function Lobby({
                   value={roomCode}
                   onChange={e => setRoomCode(e.target.value.toUpperCase())}
                   placeholder="Enter 6-letter code"
-                  className="w-full px-4 py-3 rounded uppercase font-mono text-xl tracking-wider focus:outline-none focus:ring-2"
+                  className="w-full px-4 py-3 rounded-lg uppercase font-mono text-xl tracking-wider focus:outline-none focus:ring-2"
                   style={{ ...inputStyle, '--tw-ring-color': colors.ink } as any}
                   maxLength={6}
                 />
@@ -184,7 +238,7 @@ export function Lobby({
                 value={playerName}
                 onChange={e => setPlayerName(e.target.value)}
                 placeholder="John"
-                className="w-full px-4 py-3 rounded focus:outline-none focus:ring-2"
+                className="w-full px-4 py-3 rounded-lg focus:outline-none focus:ring-2"
                 style={inputStyle}
               />
             </div>
@@ -196,7 +250,7 @@ export function Lobby({
                 value={partyName}
                 onChange={e => setPartyName(e.target.value)}
                 placeholder="Progressive Alliance"
-                className="w-full px-4 py-3 rounded focus:outline-none focus:ring-2"
+                className="w-full px-4 py-3 rounded-lg focus:outline-none focus:ring-2"
                 style={inputStyle}
               />
             </div>
@@ -238,7 +292,7 @@ export function Lobby({
             <button
               onClick={mode === 'create' ? handleCreate : handleJoin}
               disabled={!playerName.trim() || !partyName.trim() || (mode === 'join' && !roomCode.trim())}
-              className="w-full py-4 rounded font-semibold text-lg transition-colors disabled:opacity-40"
+              className="w-full py-4 rounded-lg font-semibold text-lg transition-colors disabled:opacity-40"
               style={{ backgroundColor: colors.ink, color: colors.paper1, border: `2px solid ${colors.rule}` }}
             >
               {mode === 'create' ? 'Create Game' : 'Join Game'}
@@ -262,7 +316,7 @@ export function Lobby({
                 <span className="text-3xl font-mono font-bold tracking-wider" style={{ color: colors.ink }}>{gameState.roomId}</span>
                 <button
                   onClick={copyRoomCode}
-                  className="p-2 rounded transition-colors hover:opacity-70"
+                  className="p-2 rounded-lg transition-colors hover:opacity-70"
                   title="Copy room code"
                 >
                   {copied ? <Check className="w-5 h-5" style={{ color: '#16a34a' }} /> : <Copy className="w-5 h-5" style={{ color: colors.inkSecondary }} />}
@@ -274,7 +328,7 @@ export function Lobby({
               {isHost && (
                 <button
                   onClick={() => setShowSettings(!showSettings)}
-                  className="p-3 rounded transition-colors"
+                  className="p-3 rounded-lg transition-colors"
                   style={{
                     backgroundColor: showSettings ? colors.paper3 : colors.paper2,
                     border: `1px solid ${colors.rule}`,
@@ -289,7 +343,7 @@ export function Lobby({
                 <button
                   onClick={onStartGame}
                   disabled={gameState.players.length < 2}
-                  className="flex items-center gap-2 px-6 py-3 rounded font-semibold transition-colors disabled:opacity-40"
+                  className="flex items-center gap-2 px-6 py-3 rounded-lg font-semibold transition-colors disabled:opacity-40"
                   style={{ backgroundColor: colors.ink, color: colors.paper1, border: `2px solid ${colors.rule}` }}
                 >
                   <Play className="w-5 h-5" />
@@ -312,7 +366,7 @@ export function Lobby({
               {gameState.players.map((player, idx) => (
                 <div
                   key={player.id}
-                  className="p-4 rounded"
+                  className="p-4 rounded-lg"
                   style={{
                     backgroundColor: player.id === playerId ? colors.paper3 : colors.paper2,
                     border: `2px solid ${colors.rule}`
@@ -335,7 +389,7 @@ export function Lobby({
                       <div className="text-sm" style={{ color: colors.inkSecondary }}>{player.playerName}</div>
                     </div>
                     {idx === 0 && (
-                      <span className="px-2 py-1 rounded text-xs font-medium flex items-center gap-1"
+                      <span className="px-2 py-1 rounded-lg text-xs font-medium flex items-center gap-1"
                         style={{ backgroundColor: colors.paper1, color: colors.ink, border: `1px solid ${colors.rule}` }}>
                         <Star className="w-3 h-3" /> Host
                       </span>
@@ -357,7 +411,7 @@ export function Lobby({
               {Array.from({ length: 5 - gameState.players.length }).map((_, idx) => (
                 <div
                   key={`empty-${idx}`}
-                  className="p-4 rounded flex items-center justify-center"
+                  className="p-4 rounded-lg flex items-center justify-center"
                   style={{
                     backgroundColor: colors.paper2,
                     border: `2px dashed ${colors.inkSecondary}`,
@@ -407,7 +461,7 @@ function SettingsPanel({ config, onUpdate }: { config: GameConfig; onUpdate: (c:
           type="number"
           value={config.totalSeats}
           onChange={e => onUpdate({ totalSeats: parseInt(e.target.value) || 50 })}
-          className="w-full mt-1 px-3 py-2 rounded focus:outline-none"
+          className="w-full mt-1 px-3 py-2 rounded-lg focus:outline-none"
           style={inputStyle}
           min={20}
           max={200}
@@ -422,7 +476,7 @@ function SettingsPanel({ config, onUpdate }: { config: GameConfig; onUpdate: (c:
         <select
           value={config.ideologyMode}
           onChange={e => onUpdate({ ideologyMode: e.target.value as any })}
-          className="w-full mt-1 px-3 py-2 rounded focus:outline-none"
+          className="w-full mt-1 px-3 py-2 rounded-lg focus:outline-none"
           style={inputStyle}
         >
           <option value="derived">Derived (from actions)</option>
@@ -439,7 +493,7 @@ function SettingsPanel({ config, onUpdate }: { config: GameConfig; onUpdate: (c:
         <select
           value={config.seatIdeologyMode || 'random'}
           onChange={e => onUpdate({ seatIdeologyMode: e.target.value as 'random' | 'realistic' })}
-          className="w-full mt-1 px-3 py-2 rounded focus:outline-none"
+          className="w-full mt-1 px-3 py-2 rounded-lg focus:outline-none"
           style={inputStyle}
         >
           <option value="random">Random (grouped by state)</option>
@@ -461,7 +515,7 @@ function SettingsPanel({ config, onUpdate }: { config: GameConfig; onUpdate: (c:
           type="checkbox"
           checked={config.enableNegotiation}
           onChange={e => onUpdate({ enableNegotiation: e.target.checked })}
-          className="w-5 h-5 rounded"
+          className="w-5 h-5 rounded-lg"
           style={{ accentColor: colors.ink }}
         />
       </div>
@@ -478,7 +532,7 @@ function SettingsPanel({ config, onUpdate }: { config: GameConfig; onUpdate: (c:
             enableSeatTargeting: e.target.checked,
             seatTransferRule: e.target.checked ? 'player_choice' : 'from_leader'
           })}
-          className="w-5 h-5 rounded"
+          className="w-5 h-5 rounded-lg"
           style={{ accentColor: colors.ink }}
         />
       </div>
@@ -492,7 +546,7 @@ function SettingsPanel({ config, onUpdate }: { config: GameConfig; onUpdate: (c:
           type="checkbox"
           checked={config.autoRefillHand}
           onChange={e => onUpdate({ autoRefillHand: e.target.checked })}
-          className="w-5 h-5 rounded"
+          className="w-5 h-5 rounded-lg"
           style={{ accentColor: colors.ink }}
         />
       </div>
@@ -503,7 +557,7 @@ function SettingsPanel({ config, onUpdate }: { config: GameConfig; onUpdate: (c:
           type="checkbox"
           checked={config.allowSkipReplace}
           onChange={e => onUpdate({ allowSkipReplace: e.target.checked })}
-          className="w-5 h-5 rounded"
+          className="w-5 h-5 rounded-lg"
           style={{ accentColor: colors.ink }}
         />
       </div>
@@ -514,7 +568,7 @@ function SettingsPanel({ config, onUpdate }: { config: GameConfig; onUpdate: (c:
           type="number"
           value={config.maxRounds || 0}
           onChange={e => onUpdate({ maxRounds: parseInt(e.target.value) || null })}
-          className="w-full mt-1 px-3 py-2 rounded focus:outline-none"
+          className="w-full mt-1 px-3 py-2 rounded-lg focus:outline-none"
           style={inputStyle}
           min={0}
           max={50}

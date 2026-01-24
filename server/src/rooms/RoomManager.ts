@@ -129,6 +129,30 @@ class RoomManager {
     return room?.engine.getEventLog();
   }
 
+  // Get game log
+  getGameLog(roomId: string) {
+    const room = this.rooms.get(roomId.toUpperCase());
+    return room?.engine.getGameLog();
+  }
+
+  getGameLogCsv(roomId: string) {
+    const room = this.rooms.get(roomId.toUpperCase());
+    return room?.engine.getGameLogCsv();
+  }
+
+  restoreSession(roomId: string, playerId: string, socketId: string): boolean {
+    const room = this.rooms.get(roomId.toUpperCase());
+    if (!room) return false;
+    const state = room.engine.getState();
+    const exists = state.players.some(p => p.id === playerId);
+    if (!exists) return false;
+    room.socketToPlayer.set(socketId, playerId);
+    room.playerToSocket.set(playerId, socketId);
+    room.engine.reconnectPlayer(playerId);
+    room.lastActivity = Date.now();
+    return true;
+  }
+
   // Start game
   startGame(roomId: string): boolean {
     const room = this.rooms.get(roomId.toUpperCase());

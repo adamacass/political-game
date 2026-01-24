@@ -24,6 +24,31 @@ function App() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [availableColors, setAvailableColors] = useState<PartyColorId[]>([]);
   const [error, setError] = useState<string>('');
+  const [savedGames, setSavedGames] = useState<Array<{ roomId: string; playerId: string; timestamp: number; version: string }>>([]);
+
+  const loadSavedGames = useCallback(() => {
+    const entries: Array<{ roomId: string; playerId: string; timestamp: number; version: string }> = [];
+    Object.keys(localStorage)
+      .filter(key => key.startsWith('game_'))
+      .forEach(key => {
+        try {
+          const raw = localStorage.getItem(key);
+          if (!raw) return;
+          const parsed = JSON.parse(raw) as { gameState?: GameState; playerId?: string; timestamp?: number; version?: string };
+          if (!parsed?.gameState?.roomId || !parsed?.playerId || !parsed?.timestamp) return;
+          entries.push({
+            roomId: parsed.gameState.roomId,
+            playerId: parsed.playerId,
+            timestamp: parsed.timestamp,
+            version: parsed.version || '1.0',
+          });
+        } catch (parseError) {
+          console.warn('Failed to parse saved game', parseError);
+        }
+      });
+    entries.sort((a, b) => b.timestamp - a.timestamp);
+    setSavedGames(entries);
+  }, []);
 
   // Initialize socket connection
   useEffect(() => {
@@ -94,6 +119,11 @@ function App() {
       console.log('Player reconnected:', playerId);
     });
 
+    newSocket.on('session_restored', ({ roomId, playerId: restoredPlayerId }) => {
+      console.log('Session restored:', roomId, restoredPlayerId);
+      setPlayerId(restoredPlayerId);
+    });
+
     newSocket.on('game_exported', ({ eventLog, config, seed, chatLog, history }) => {
       const exportData = {
         exportedAt: new Date().toISOString(),
@@ -119,6 +149,46 @@ function App() {
       newSocket.close();
     };
   }, []);
+
+  useEffect(() => {
+    loadSavedGames();
+  }, [loadSavedGames]);
+
+  useEffect(() => {
+    if (!socket) return;
+    const urlParams = new URLSearchParams(window.location.search);
+    const restoreRoomId = urlParams.get('restore');
+    if (!restoreRoomId) return;
+    const savedData = localStorage.getItem(`game_${restoreRoomId}`);
+    if (!savedData) return;
+    try {
+      const parsed = JSON.parse(savedData) as { playerId?: string };
+      if (!parsed?.playerId) return;
+      socket.emit('restore_session', {
+        roomId: restoreRoomId,
+        playerId: parsed.playerId,
+      });
+    } catch (parseError) {
+      console.warn('Failed to restore session from URL', parseError);
+    }
+  }, [socket]);
+
+  useEffect(() => {
+    if (!gameState || !gameState.roomId || !gameConfig || !playerId) return;
+    const saveInterval = setInterval(() => {
+      const saveData = {
+        gameState,
+        gameConfig,
+        playerId,
+        timestamp: Date.now(),
+        version: '1.0',
+      };
+      localStorage.setItem(`game_${gameState.roomId}`, JSON.stringify(saveData));
+      loadSavedGames();
+      console.log('Game auto-saved');
+    }, 30000);
+    return () => clearInterval(saveInterval);
+  }, [gameState, gameConfig, playerId, loadSavedGames]);
 
   // Actions
   const createRoom = useCallback((
@@ -227,6 +297,10 @@ function App() {
     socket?.emit('negotiation_ready');
   }, [socket]);
 
+  const resumeSavedGame = useCallback((roomId: string, savedPlayerId: string) => {
+    socket?.emit('restore_session', { roomId, playerId: savedPlayerId });
+  }, [socket]);
+
 const selectNewAgenda = useCallback((issue: string) => {
   socket?.emit('select_new_agenda', { issue });
 }, [socket]);
@@ -255,7 +329,7 @@ const hostSkipToNextRound = useCallback(() => {
   const isInGame = gameState && gameState.phase !== 'waiting';
 
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen paper-texture" style={{ backgroundColor: '#E8E5DC' }}>
       {error && (
         <div className="fixed top-4 right-4 z-50 px-4 py-2 bg-red-500 text-white rounded-lg shadow-lg">
           {error}
@@ -268,10 +342,12 @@ const hostSkipToNextRound = useCallback(() => {
           gameConfig={gameConfig}
           playerId={playerId}
           availableColors={availableColors}
+          savedGames={savedGames}
           onStartGame={startGame}
           onUpdateConfig={updateConfig}
           onCreateRoom={createRoom}
           onJoinRoom={joinRoom}
+          onResumeGame={resumeSavedGame}
         />
       ) : (
         <GameBoard

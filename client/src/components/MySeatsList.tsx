@@ -131,7 +131,7 @@ export function MySeatsList({ seats, playerId, playerColor }: MySeatsListProps) 
                 {(['LEFT', 'CENTER', 'RIGHT'] as EconBucket[]).map(bucket => (
                   <span
                     key={bucket}
-                    className="px-1.5 py-0.5 rounded"
+                    className="px-1.5 py-0.5 rounded-lg"
                     style={{ backgroundColor: colors.paper2, color: colors.ink, border: `1px solid ${colors.rule}` }}
                   >
                     {ECON_LABELS[bucket].label}: {ideologySummary.econ[bucket]}
@@ -145,7 +145,7 @@ export function MySeatsList({ seats, playerId, playerColor }: MySeatsListProps) 
                 {(['PROG', 'CENTER', 'CONS'] as SocialBucket[]).map(bucket => (
                   <span
                     key={bucket}
-                    className="px-1.5 py-0.5 rounded"
+                    className="px-1.5 py-0.5 rounded-lg"
                     style={{ backgroundColor: colors.paper2, color: colors.ink, border: `1px solid ${colors.rule}` }}
                   >
                     {SOCIAL_LABELS[bucket].label}: {ideologySummary.social[bucket]}
@@ -161,7 +161,7 @@ export function MySeatsList({ seats, playerId, playerColor }: MySeatsListProps) 
             <select
               value={stateFilter}
               onChange={(e) => setStateFilter(e.target.value as StateCode | 'ALL')}
-              className="px-2 py-1 rounded text-xs focus:outline-none"
+              className="px-2 py-1 rounded-lg text-xs focus:outline-none"
               style={{ backgroundColor: colors.paper2, border: `1px solid ${colors.rule}`, color: colors.ink }}
             >
               <option value="ALL">All States</option>
@@ -174,7 +174,7 @@ export function MySeatsList({ seats, playerId, playerColor }: MySeatsListProps) 
             <select
               value={econFilter}
               onChange={(e) => setEconFilter(e.target.value as EconBucket | 'ALL')}
-              className="px-2 py-1 rounded text-xs focus:outline-none"
+              className="px-2 py-1 rounded-lg text-xs focus:outline-none"
               style={{ backgroundColor: colors.paper2, border: `1px solid ${colors.rule}`, color: colors.ink }}
             >
               <option value="ALL">All Econ</option>
@@ -185,7 +185,7 @@ export function MySeatsList({ seats, playerId, playerColor }: MySeatsListProps) 
             <select
               value={socialFilter}
               onChange={(e) => setSocialFilter(e.target.value as SocialBucket | 'ALL')}
-              className="px-2 py-1 rounded text-xs focus:outline-none"
+              className="px-2 py-1 rounded-lg text-xs focus:outline-none"
               style={{ backgroundColor: colors.paper2, border: `1px solid ${colors.rule}`, color: colors.ink }}
             >
               <option value="ALL">All Social</option>
@@ -237,7 +237,7 @@ export function MySeatsList({ seats, playerId, playerColor }: MySeatsListProps) 
                       <td className="py-1.5" style={{ color: colors.inkSecondary }}>{seat.state}</td>
                       <td className="py-1.5 text-center">
                         <span
-                          className="px-1.5 py-0.5 rounded text-[10px]"
+                          className="px-1.5 py-0.5 rounded-lg text-[10px]"
                           style={{ backgroundColor: colors.paper2, color: colors.ink, border: `1px solid ${colors.rule}` }}
                         >
                           {ECON_LABELS[seat.ideology.econ].label}
@@ -245,7 +245,7 @@ export function MySeatsList({ seats, playerId, playerColor }: MySeatsListProps) 
                       </td>
                       <td className="py-1.5 text-center">
                         <span
-                          className="px-1.5 py-0.5 rounded text-[10px]"
+                          className="px-1.5 py-0.5 rounded-lg text-[10px]"
                           style={{ backgroundColor: colors.paper2, color: colors.ink, border: `1px solid ${colors.rule}` }}
                         >
                           {SOCIAL_LABELS[seat.ideology.social].label}
@@ -267,7 +267,7 @@ export function MySeatsList({ seats, playerId, playerColor }: MySeatsListProps) 
                 .map(([state, count]) => (
                   <span
                     key={state}
-                    className="px-1.5 py-0.5 rounded"
+                    className="px-1.5 py-0.5 rounded-lg"
                     style={{ backgroundColor: colors.paper2, color: colors.ink, border: `1px solid ${colors.rule}` }}
                   >
                     {state}: {count}

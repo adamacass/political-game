@@ -6,6 +6,7 @@ import {
   Seat, SeatId, PendingSeatCapture, EconBucket, SocialBucket, StateCode, StateControl,
 } from '../types';
 import { SeededRNG } from './rng';
+import { GameLogger } from './GameLogger';
 import { getCampaignCards, getPolicyCards, getWildcardCards, getCampaignCard, getPolicyCard, getWildcardCard, mergeConfig } from '../config/loader';
 import { v4 as uuidv4 } from 'uuid';
 import {
@@ -19,10 +20,12 @@ export class GameEngine {
   private state: GameState;
   private config: GameConfig;
   private rng: SeededRNG;
+  private gameLogger: GameLogger;
 
   constructor(roomId: string, config: Partial<GameConfig> = {}, seed?: string) {
     this.config = mergeConfig(config);
     this.rng = new SeededRNG(seed);
+    this.gameLogger = new GameLogger();
     this.state = this.createInitialState(roomId);
   }
 
@@ -51,6 +54,8 @@ export class GameEngine {
   getState(): GameState { return { ...this.state }; }
   getConfig(): GameConfig { return { ...this.config }; }
   getSeed(): string { return this.rng.getSeed(); }
+  getGameLog() { return this.gameLogger.export(); }
+  getGameLogCsv() { return this.gameLogger.exportCSV(); }
   getAvailableColors(): PartyColorId[] { 
     const allColorIds = PARTY_COLORS.map(c => c.id) as PartyColorId[];
     return allColorIds.filter(id => !this.state.takenColors.includes(id)); 
@@ -420,6 +425,15 @@ export class GameEngine {
       toPlayerId: playerId,
       ideology: seat.ideology,
     });
+    this.gameLogger.logSeatChange(
+      this.state.round,
+      this.state.phase,
+      seatId,
+      seat.name,
+      previousOwner,
+      playerId,
+      'seat_capture'
+    );
 
     // Update remaining and eligibles
     pending.remaining--;
@@ -720,6 +734,9 @@ export class GameEngine {
 
   private logPCapChange(playerId: string, pCapDelta: number, seatDelta: number, reason: string, changeType: 'award' | 'penalty'): void {
     this.state.roundPCapChanges.push({ playerId, pCapDelta, seatDelta, reason, changeType, timestamp: Date.now() });
+    const player = this.state.players.find(p => p.id === playerId);
+    const newPCap = player ? player.pCapCards.reduce((sum, card) => sum + card.value, 0) : 0;
+    this.gameLogger.logPCapChange(this.state.round, this.state.phase, playerId, pCapDelta, newPCap, reason);
   }
 
   private drawWildcard(proposerId: string): void {
@@ -750,6 +767,15 @@ export class GameEngine {
     const seatCounts: Record<string, number> = {}, pCapCounts: Record<string, number> = {}, ideologyProfiles: Record<string, IdeologyProfile> = {};
     this.state.players.forEach(p => { seatCounts[p.id] = p.seats; pCapCounts[p.id] = p.pCapCards.reduce((s, c) => s + c.value, 0); ideologyProfiles[p.id] = { ...p.ideologyProfile }; });
     this.state.history.push({ round: this.state.round, timestamp: Date.now(), activeIssue: this.state.activeIssue, seatCounts, pCapCounts, ideologyProfiles, campaignsPlayed: [...this.state.roundCampaignsPlayed], policyResult: this.state.roundPolicyResult, wildcardDrawn: this.state.roundWildcardDrawn, tradesCompleted: [...this.state.roundTradesCompleted], issueChangedTo: this.state.roundIssueChangedTo, pCapChanges: [...this.state.roundPCapChanges] });
+    this.gameLogger.logRoundEnd(
+      this.state.round,
+      this.state.phase,
+      this.state.players.map(player => ({
+        playerId: player.id,
+        seats: player.seats,
+        pCap: pCapCounts[player.id] || 0,
+      }))
+    );
   }
 
   private advanceToNextRound(): void {
@@ -781,11 +807,11 @@ export class GameEngine {
 
     if (delta > 0) {
       // NEW: For positive changes, transfer seats from leader to player
-      this.transferSeatsFromLeaderTo(playerId, delta);
+      this.transferSeatsFromLeaderTo(playerId, delta, reason);
     } else if (delta < 0) {
       // For negative changes, lose seats to redistribution
       const loss = Math.min(player.seats, Math.abs(delta));
-      this.loseSeatsByRedistr(playerId, loss);
+      this.loseSeatsByRedistr(playerId, loss, reason);
     }
 
     // Sync seat counts from authoritative seat map
@@ -798,7 +824,7 @@ export class GameEngine {
   /**
    * Transfer N seats from the leader to the recipient using the seat map
    */
-  private transferSeatsFromLeaderTo(recipientId: string, amount: number): void {
+  private transferSeatsFromLeaderTo(recipientId: string, amount: number, reason: string): void {
     let remaining = amount;
     const leader = this.getSeatLeader();
 
@@ -807,6 +833,15 @@ export class GameEngine {
       const leaderSeats = getPlayerSeats(this.state.seats, leader.id);
       for (const seat of leaderSeats) {
         if (remaining <= 0) break;
+        this.gameLogger.logSeatChange(
+          this.state.round,
+          this.state.phase,
+          seat.id,
+          seat.name,
+          seat.ownerPlayerId,
+          recipientId,
+          reason
+        );
         transferSeat(this.state.seats, seat.id, recipientId);
         remaining--;
       }
@@ -820,7 +855,17 @@ export class GameEngine {
         const otherSeats = getPlayerSeats(this.state.seats, other.id);
         const toTake = Math.min(otherSeats.length, Math.ceil(remaining / others.length));
         for (let i = 0; i < toTake && remaining > 0; i++) {
-          transferSeat(this.state.seats, otherSeats[i].id, recipientId);
+          const seat = otherSeats[i];
+          this.gameLogger.logSeatChange(
+            this.state.round,
+            this.state.phase,
+            seat.id,
+            seat.name,
+            seat.ownerPlayerId,
+            recipientId,
+            reason
+          );
+          transferSeat(this.state.seats, seat.id, recipientId);
           remaining--;
         }
       }
@@ -830,7 +875,7 @@ export class GameEngine {
   /**
    * Player loses seats, redistributed to other players
    */
-  private loseSeatsByRedistr(playerId: string, amount: number): void {
+  private loseSeatsByRedistr(playerId: string, amount: number, reason: string): void {
     const playerSeats = getPlayerSeats(this.state.seats, playerId);
     const others = this.state.players.filter(p => p.id !== playerId);
     if (others.length === 0) return;
@@ -840,7 +885,17 @@ export class GameEngine {
     for (const seat of playerSeats) {
       if (lost >= amount) break;
       // Round-robin redistribution to other players
-      transferSeat(this.state.seats, seat.id, others[otherIndex % others.length].id);
+      const recipientId = others[otherIndex % others.length].id;
+      this.gameLogger.logSeatChange(
+        this.state.round,
+        this.state.phase,
+        seat.id,
+        seat.name,
+        seat.ownerPlayerId,
+        recipientId,
+        reason
+      );
+      transferSeat(this.state.seats, seat.id, recipientId);
       otherIndex++;
       lost++;
     }
@@ -850,26 +905,36 @@ export class GameEngine {
     const player = this.state.players.find(p => p.id === playerId);
     const target = this.state.players.find(p => p.id === targetId);
     if (!player || !target) return;
+    const detailedReason = `${reason} (from ${target.name})`;
 
     // Transfer seats from target using seat map
     const targetSeats = getPlayerSeats(this.state.seats, targetId);
     let transferred = 0;
     for (const seat of targetSeats) {
       if (transferred >= delta) break;
+      this.gameLogger.logSeatChange(
+        this.state.round,
+        this.state.phase,
+        seat.id,
+        seat.name,
+        seat.ownerPlayerId,
+        playerId,
+        detailedReason
+      );
       transferSeat(this.state.seats, seat.id, playerId);
       transferred++;
     }
 
     // If not enough from target, take from leader
     if (transferred < delta) {
-      this.transferSeatsFromLeaderTo(playerId, delta - transferred);
+      this.transferSeatsFromLeaderTo(playerId, delta - transferred, detailedReason);
     }
 
     // Sync seat counts
     this.syncPlayerSeatCounts();
 
     this.state.roundSeatChanges[playerId] = (this.state.roundSeatChanges[playerId] || 0) + delta;
-    this.logEvent({ type: 'seats_changed', timestamp: Date.now(), playerId, delta, newTotal: player.seats, reason: `${reason} (from ${target.name})` });
+    this.logEvent({ type: 'seats_changed', timestamp: Date.now(), playerId, delta, newTotal: player.seats, reason: detailedReason });
   }
 
   private transferSeatsTo(recipient: Player, amount: number): void {

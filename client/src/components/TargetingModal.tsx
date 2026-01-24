@@ -54,7 +54,7 @@ export function TargetingModal({ pendingCampaign, players, currentPlayerId, onSe
             <button
               key={opponent.id}
               onClick={() => onSelectTarget(opponent.id)}
-              className="w-full p-4 rounded transition-all flex items-center justify-between group hover:opacity-90"
+              className="w-full p-4 rounded-lg transition-all flex items-center justify-between group hover:opacity-90"
               style={{ backgroundColor: colors.paper2, border: `2px solid ${colors.rule}` }}
             >
               <div className="flex items-center gap-3">

@@ -96,14 +96,14 @@ export function NegotiationPanel({
           {!isReady ? (
             <button
               onClick={onReady}
-              className="px-4 py-2 rounded font-medium transition-colors flex items-center gap-2"
+              className="px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2"
               style={{ backgroundColor: colors.success, color: '#fff', border: `2px solid ${colors.rule}` }}
             >
               <CheckCircle2 className="w-4 h-4" />
               Mark Ready
             </button>
           ) : (
-            <span className="px-4 py-2 rounded font-medium flex items-center gap-2" style={{ backgroundColor: colors.paper3, color: colors.success, border: `1px solid ${colors.rule}` }}>
+            <span className="px-4 py-2 rounded-lg font-medium flex items-center gap-2" style={{ backgroundColor: colors.paper3, color: colors.success, border: `1px solid ${colors.rule}` }}>
               <Check className="w-4 h-4" />
               Ready!
             </span>
@@ -121,7 +121,7 @@ export function NegotiationPanel({
               const isCountering = counterOfferMode === offer.id;
 
               return (
-                <div key={offer.id} className="p-4 rounded" style={{ backgroundColor: colors.paper2, border: `2px solid ${colors.rule}` }}>
+                <div key={offer.id} className="p-4 rounded-lg" style={{ backgroundColor: colors.paper2, border: `2px solid ${colors.rule}` }}>
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2">
                       <div className="w-1 h-6 rounded-full" style={{ backgroundColor: fromPlayer?.color }} />
@@ -131,13 +131,13 @@ export function NegotiationPanel({
                     </div>
                     {!isCountering && (
                       <div className="flex gap-2">
-                        <button onClick={() => onRespond(offer.id, true)} className="px-3 py-1 rounded text-sm flex items-center gap-1" style={{ backgroundColor: colors.success, color: '#fff', border: `1px solid ${colors.rule}` }}>
+                        <button onClick={() => onRespond(offer.id, true)} className="px-3 py-1 rounded-lg text-sm flex items-center gap-1" style={{ backgroundColor: colors.success, color: '#fff', border: `1px solid ${colors.rule}` }}>
                           <Check className="w-4 h-4" /> Accept
                         </button>
-                        <button onClick={() => startCounterOffer(offer)} className="px-3 py-1 rounded text-sm flex items-center gap-1" style={{ backgroundColor: colors.warning, color: '#fff', border: `1px solid ${colors.rule}` }}>
+                        <button onClick={() => startCounterOffer(offer)} className="px-3 py-1 rounded-lg text-sm flex items-center gap-1" style={{ backgroundColor: colors.warning, color: '#fff', border: `1px solid ${colors.rule}` }}>
                           <RefreshCw className="w-4 h-4" /> Counter
                         </button>
-                        <button onClick={() => onRespond(offer.id, false)} className="px-3 py-1 rounded text-sm flex items-center gap-1" style={{ backgroundColor: colors.error, color: '#fff', border: `1px solid ${colors.rule}` }}>
+                        <button onClick={() => onRespond(offer.id, false)} className="px-3 py-1 rounded-lg text-sm flex items-center gap-1" style={{ backgroundColor: colors.error, color: '#fff', border: `1px solid ${colors.rule}` }}>
                           <X className="w-4 h-4" /> Reject
                         </button>
                       </div>
@@ -193,11 +193,11 @@ export function NegotiationPanel({
                       </div>
 
                       <div className="flex gap-2">
-                        <button onClick={() => handleSubmitCounterOffer(offer)} disabled={counterOffered.length === 0} className="flex-1 py-2 rounded font-medium text-sm flex items-center justify-center gap-1" style={{ backgroundColor: counterOffered.length > 0 ? colors.ink : colors.paper3, color: counterOffered.length > 0 ? colors.paper1 : colors.inkSecondary, border: `1px solid ${colors.rule}` }}>
+                        <button onClick={() => handleSubmitCounterOffer(offer)} disabled={counterOffered.length === 0} className="flex-1 py-2 rounded-lg font-medium text-sm flex items-center justify-center gap-1" style={{ backgroundColor: counterOffered.length > 0 ? colors.ink : colors.paper3, color: counterOffered.length > 0 ? colors.paper1 : colors.inkSecondary, border: `1px solid ${colors.rule}` }}>
                           <Send className="w-4 h-4" />
                           Send Counter-Offer
                         </button>
-                        <button onClick={() => { setCounterOfferMode(null); setCounterOffered([]); setCounterRequested([]); }} className="px-4 py-2 rounded text-sm" style={{ backgroundColor: colors.paper3, color: colors.ink, border: `1px solid ${colors.rule}` }}>
+                        <button onClick={() => { setCounterOfferMode(null); setCounterOffered([]); setCounterRequested([]); }} className="px-4 py-2 rounded-lg text-sm" style={{ backgroundColor: colors.paper3, color: colors.ink, border: `1px solid ${colors.rule}` }}>
                           Cancel
                         </button>
                       </div>
@@ -218,7 +218,7 @@ export function NegotiationPanel({
             {myOffers.map(offer => {
               const toPlayer = gameState.players.find(p => p.id === offer.toPlayerId);
               return (
-                <div key={offer.id} className="p-3 rounded flex items-center justify-between" style={{ backgroundColor: colors.paper2, border: `1px solid ${colors.rule}` }}>
+                <div key={offer.id} className="p-3 rounded-lg flex items-center justify-between" style={{ backgroundColor: colors.paper2, border: `1px solid ${colors.rule}` }}>
                   <div className="flex items-center gap-2">
                     <Clock className="w-4 h-4" style={{ color: colors.inkSecondary }} />
                     <span className="text-sm" style={{ color: colors.ink }}>
@@ -235,11 +235,11 @@ export function NegotiationPanel({
 
       {/* Make new offer */}
       {!showOfferBuilder ? (
-        <button onClick={() => setShowOfferBuilder(true)} className="w-full py-3 rounded transition-colors" style={{ border: `2px dashed ${colors.inkSecondary}`, color: colors.inkSecondary, backgroundColor: 'transparent' }}>
+        <button onClick={() => setShowOfferBuilder(true)} className="w-full py-3 rounded-lg transition-colors" style={{ border: `2px dashed ${colors.inkSecondary}`, color: colors.inkSecondary, backgroundColor: 'transparent' }}>
           + Make Trade Offer
         </button>
       ) : (
-        <div className="rounded p-4" style={{ backgroundColor: colors.paper2, border: `2px solid ${colors.rule}` }}>
+        <div className="rounded-lg p-4" style={{ backgroundColor: colors.paper2, border: `2px solid ${colors.rule}` }}>
           <div className="flex justify-between items-center mb-4">
             <h4 className="font-medium" style={{ color: colors.ink }}>New Trade Offer</h4>
             <button onClick={() => { setShowOfferBuilder(false); setSelectedPlayer(null); setOfferedCards([]); setRequestedCards([]); }} style={{ color: colors.inkSecondary }}>
@@ -251,7 +251,7 @@ export function NegotiationPanel({
             <label className="text-sm block mb-2" style={{ color: colors.inkSecondary }}>Trade with:</label>
             <div className="flex gap-2 flex-wrap">
               {otherPlayers.map(player => (
-                <button key={player.id} onClick={() => setSelectedPlayer(player.id)} className="px-3 py-2 rounded flex items-center gap-2 transition-all" style={{ backgroundColor: selectedPlayer === player.id ? colors.paper1 : colors.paper3, border: selectedPlayer === player.id ? `2px solid ${colors.ink}` : `1px solid ${colors.rule}` }}>
+                <button key={player.id} onClick={() => setSelectedPlayer(player.id)} className="px-3 py-2 rounded-lg flex items-center gap-2 transition-all" style={{ backgroundColor: selectedPlayer === player.id ? colors.paper1 : colors.paper3, border: selectedPlayer === player.id ? `2px solid ${colors.ink}` : `1px solid ${colors.rule}` }}>
                   <div className="w-4 h-4 rounded-full" style={{ backgroundColor: player.color }} />
                   <span className="text-sm font-medium" style={{ color: colors.ink }}>{player.name}</span>
                 </button>
@@ -279,7 +279,7 @@ export function NegotiationPanel({
                 </div>
               </div>
 
-              <button onClick={handleSubmitOffer} disabled={offeredCards.length === 0} className="w-full py-3 rounded font-medium flex items-center justify-center gap-2 transition-colors" style={{ backgroundColor: offeredCards.length > 0 ? colors.ink : colors.paper3, color: offeredCards.length > 0 ? colors.paper1 : colors.inkSecondary, border: `2px solid ${colors.rule}` }}>
+              <button onClick={handleSubmitOffer} disabled={offeredCards.length === 0} className="w-full py-3 rounded-lg font-medium flex items-center justify-center gap-2 transition-colors" style={{ backgroundColor: offeredCards.length > 0 ? colors.ink : colors.paper3, color: offeredCards.length > 0 ? colors.paper1 : colors.inkSecondary, border: `2px solid ${colors.rule}` }}>
                 <Send className="w-4 h-4" />
                 Send Offer
               </button>
@@ -306,7 +306,7 @@ function DetailedMiniCard({ card, showFull }: { card: CampaignCard | PolicyCard;
   const hasStances = 'stanceTable' in card && card.stanceTable;
 
   return (
-    <div className="p-2 rounded text-xs" style={{ backgroundColor: colors.paper1, border: `1px solid ${colors.rule}` }}>
+    <div className="p-2 rounded-lg text-xs" style={{ backgroundColor: colors.paper1, border: `1px solid ${colors.rule}` }}>
       <div className="font-medium" style={{ color: colors.ink }}>{card.name}</div>
       {isCampaign && <div style={{ color: colors.success }}>+{(card as CampaignCard).seatDelta} seats</div>}
       {showFull && hasStances && (
@@ -337,9 +337,9 @@ function SelectableDetailedCard({ handCard, selected, onClick, showFull }: { han
   const hasStances = 'stanceTable' in card && card.stanceTable;
 
   return (
-    <div onClick={onClick} className="p-2 rounded cursor-pointer transition-all text-xs" style={{ backgroundColor: selected ? colors.paper3 : colors.paper1, border: selected ? `2px solid ${colors.ink}` : `1px solid ${colors.rule}`, boxShadow: isNew ? `0 0 0 2px ${colors.warning}` : undefined }}>
+    <div onClick={onClick} className="p-2 rounded-lg cursor-pointer transition-all text-xs" style={{ backgroundColor: selected ? colors.paper3 : colors.paper1, border: selected ? `2px solid ${colors.ink}` : `1px solid ${colors.rule}`, boxShadow: isNew ? `0 0 0 2px ${colors.warning}` : undefined }}>
       <div className="flex items-start justify-between gap-1">
-        <span className="px-1 py-0.5 rounded text-[10px]" style={{ backgroundColor: colors.paper2, color: colors.ink, border: `1px solid ${colors.rule}` }}>
+        <span className="px-1 py-0.5 rounded-lg text-[10px]" style={{ backgroundColor: colors.paper2, color: colors.ink, border: `1px solid ${colors.rule}` }}>
           {isCampaign ? 'C' : 'P'}
         </span>
         {isNew && <span className="text-[10px]" style={{ color: colors.warning }}>NEW</span>}
@@ -368,9 +368,9 @@ function FullCardDisplay({ handCard }: { handCard: HandCard }) {
   const hasPolicyLink = isCampaign && (card as CampaignCard).policyLink;
 
   return (
-    <div className="p-3 rounded" style={{ backgroundColor: isNew ? colors.paper3 : colors.paper2, border: `1px solid ${colors.rule}`, boxShadow: isNew ? `0 0 0 2px ${colors.warning}` : undefined }}>
+    <div className="p-3 rounded-lg" style={{ backgroundColor: isNew ? colors.paper3 : colors.paper2, border: `1px solid ${colors.rule}`, boxShadow: isNew ? `0 0 0 2px ${colors.warning}` : undefined }}>
       <div className="flex items-start justify-between mb-1">
-        <span className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: colors.paper1, color: colors.ink, border: `1px solid ${colors.rule}` }}>
+        <span className="text-xs px-2 py-0.5 rounded-lg" style={{ backgroundColor: colors.paper1, color: colors.ink, border: `1px solid ${colors.rule}` }}>
           {isCampaign ? 'Campaign' : 'Policy'}
         </span>
         {isNew && <span className="text-xs font-medium" style={{ color: colors.warning }}>NEW</span>}

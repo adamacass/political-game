@@ -60,7 +60,7 @@ function StanceDisplay({ stanceTable, compact = false }: { stanceTable: any; com
           const stance = stanceTable[s.key];
           if (stance === 'neutral') return null;
           return (
-            <span key={s.key} className="text-[10px] px-1 rounded" style={{
+            <span key={s.key} className="text-[10px] px-1 rounded-lg" style={{
               backgroundColor: stance === 'favoured' ? colors.paper3 : colors.paper2,
               color: stance === 'favoured' ? colors.success : colors.error,
               border: `1px solid ${colors.rule}`
@@ -95,7 +95,7 @@ function PCapToast({ changes, players }: { changes: PCapChangeRecord[]; players:
       {changes.slice(-5).map((c, i) => {
         const player = players.find(p => p.id === c.playerId);
         return (
-          <div key={i} className="p-3 rounded flex items-center gap-2" style={{
+          <div key={i} className="p-3 rounded-lg flex items-center gap-2" style={{
             backgroundColor: colors.paper1,
             border: borders.outer,
             borderLeftWidth: '4px',
@@ -123,7 +123,7 @@ function RoundHistoryPanel({ history, players }: { history: GameState['history']
   const latest = history[history.length - 1];
   const pCapChanges = (latest as any).pCapChanges || [];
   return (
-    <div className="rounded p-4" style={{ backgroundColor: colors.paper1, border: borders.outer }}>
+    <div className="rounded-lg p-4" style={{ backgroundColor: colors.paper1, border: borders.outer }}>
       <button onClick={() => setExpanded(!expanded)} className="w-full flex items-center justify-between text-left">
         <h3 className="font-semibold flex items-center gap-2" style={{ color: colors.ink }}><History className="w-4 h-4" />Round {latest.round} Summary</h3>
         <span className="text-sm" style={{ color: colors.inkSecondary }}>{expanded ? 'Hide' : 'Show'}</span>
@@ -206,7 +206,7 @@ export function GameBoard(props: GameBoardProps) {
   const roundPCapChanges = (gameState as any).roundPCapChanges || [];
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: colors.paper2 }}>
+    <div className="min-h-screen paper-texture" style={{ backgroundColor: colors.paper2 }}>
       <PCapToast changes={roundPCapChanges} players={gameState.players} />
 
       {/* Top header bar - ballot paper style with party color stripe */}
@@ -221,7 +221,7 @@ export function GameBoard(props: GameBoardProps) {
               <div><div className="font-bold" style={{ color: colors.ink }}>{currentPlayer?.name}</div><div className="text-xs" style={{ color: colors.inkSecondary }}>{currentPlayer?.playerName} &bull; {currentPlayer?.seats} seats &bull; {currentPlayer ? getPlayerPCap(currentPlayer) : 0} PCap</div></div>
             </div>
             <div className="flex-1 flex justify-center">
-              <div className={`flex items-center gap-3 px-6 py-2 rounded ${phaseInfo.actionRequired ? 'animate-pulse' : ''}`} style={{
+              <div className={`flex items-center gap-3 px-6 py-2 rounded-lg ${phaseInfo.actionRequired ? 'animate-pulse' : ''}`} style={{
                 backgroundColor: phaseInfo.actionRequired ? colors.ink : colors.paper2,
                 color: phaseInfo.actionRequired ? colors.paper1 : colors.ink,
                 border: borders.outer
@@ -232,15 +232,15 @@ export function GameBoard(props: GameBoardProps) {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <div className="px-3 py-1 rounded text-sm" style={{ backgroundColor: colors.paper2, border: borders.inner }}>
+              <div className="px-3 py-1 rounded-lg text-sm" style={{ backgroundColor: colors.paper2, border: borders.inner }}>
                 <span style={{ color: colors.inkSecondary }}>Agenda:</span> <span className="font-bold" style={{ color: colors.ink }}>{formatIssue(gameState.activeIssue)}</span>
               </div>
               {isHost && onForceAdvance && gameState.phase !== 'waiting' && gameState.phase !== 'game_over' && (
-                <button onClick={onForceAdvance} className="p-2 rounded text-xs" style={{ backgroundColor: colors.warning, color: colors.paper1, border: borders.outer }} title="Force skip phase">Skip</button>
+                <button onClick={onForceAdvance} className="p-2 rounded-lg text-xs" style={{ backgroundColor: colors.warning, color: colors.paper1, border: borders.outer }} title="Force skip phase">Skip</button>
               )}
-              <button onClick={() => setShowWormGraph(!showWormGraph)} className="p-2 rounded" style={{ backgroundColor: showWormGraph ? colors.ink : colors.paper2, color: showWormGraph ? colors.paper1 : colors.ink, border: borders.inner }}><TrendingUp className="w-5 h-5" /></button>
-              <button onClick={() => setShowChat(!showChat)} className="p-2 rounded relative" style={{ backgroundColor: showChat ? colors.ink : colors.paper2, color: showChat ? colors.paper1 : colors.ink, border: borders.inner }}><MessageSquare className="w-5 h-5" /></button>
-              <button onClick={onExportGame} className="p-2 rounded" style={{ backgroundColor: colors.paper2, color: colors.ink, border: borders.inner }}><Download className="w-5 h-5" /></button>
+              <button onClick={() => setShowWormGraph(!showWormGraph)} className="p-2 rounded-lg" style={{ backgroundColor: showWormGraph ? colors.ink : colors.paper2, color: showWormGraph ? colors.paper1 : colors.ink, border: borders.inner }}><TrendingUp className="w-5 h-5" /></button>
+              <button onClick={() => setShowChat(!showChat)} className="p-2 rounded-lg relative" style={{ backgroundColor: showChat ? colors.ink : colors.paper2, color: showChat ? colors.paper1 : colors.ink, border: borders.inner }}><MessageSquare className="w-5 h-5" /></button>
+              <button onClick={onExportGame} className="p-2 rounded-lg" style={{ backgroundColor: colors.paper2, color: colors.ink, border: borders.inner }}><Download className="w-5 h-5" /></button>
             </div>
           </div>
           <div className="mt-2 text-center text-sm" style={{ color: colors.inkSecondary }}>{phaseInfo.description}</div>
@@ -253,15 +253,15 @@ export function GameBoard(props: GameBoardProps) {
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
           <div className="lg:col-span-1 space-y-4">
             {/* Map/Hemicycle toggle */}
-            <div className="rounded" style={{ backgroundColor: colors.paper1, border: borders.outer }}>
+            <div className="rounded-lg" style={{ backgroundColor: colors.paper1, border: borders.outer }}>
               <div className="flex items-center justify-between p-2" style={{ borderBottom: borders.inner }}>
                 <div className="flex gap-1">
-                  <button onClick={() => setMapView('map')} className="px-2 py-1 text-xs rounded flex items-center gap-1" style={{
+                  <button onClick={() => setMapView('map')} className="px-2 py-1 text-xs rounded-lg flex items-center gap-1" style={{
                     backgroundColor: mapView === 'map' ? colors.ink : colors.paper2,
                     color: mapView === 'map' ? colors.paper1 : colors.ink,
                     border: borders.inner
                   }}><Map className="w-3 h-3" />Map</button>
-                  <button onClick={() => setMapView('hemicycle')} className="px-2 py-1 text-xs rounded flex items-center gap-1" style={{
+                  <button onClick={() => setMapView('hemicycle')} className="px-2 py-1 text-xs rounded-lg flex items-center gap-1" style={{
                     backgroundColor: mapView === 'hemicycle' ? colors.ink : colors.paper2,
                     color: mapView === 'hemicycle' ? colors.paper1 : colors.ink,
                     border: borders.inner
@@ -288,16 +288,16 @@ export function GameBoard(props: GameBoardProps) {
                 playerColor={myColor}
               />
             )}
-            {!showWormGraph && gameState.history.length > 0 && <div className="rounded p-3" style={{ backgroundColor: colors.paper1, border: borders.outer }}><div className="flex justify-between items-center mb-2"><h4 className="text-sm font-semibold" style={{ color: colors.ink }}>Trend</h4><button onClick={() => setShowWormGraph(true)} className="text-xs hover:underline" style={{ color: colors.inkSecondary }}>Expand</button></div><WormGraphMini history={gameState.history} players={gameState.players} totalSeats={gameState.totalSeats} /></div>}
+            {!showWormGraph && gameState.history.length > 0 && <div className="rounded-lg p-3" style={{ backgroundColor: colors.paper1, border: borders.outer }}><div className="flex justify-between items-center mb-2"><h4 className="text-sm font-semibold" style={{ color: colors.ink }}>Trend</h4><button onClick={() => setShowWormGraph(true)} className="text-xs hover:underline" style={{ color: colors.inkSecondary }}>Expand</button></div><WormGraphMini history={gameState.history} players={gameState.players} totalSeats={gameState.totalSeats} /></div>}
             <RoundHistoryPanel history={gameState.history} players={gameState.players} />
-            <div className="rounded p-4" style={{ backgroundColor: colors.paper1, border: borders.outer }}>
+            <div className="rounded-lg p-4" style={{ backgroundColor: colors.paper1, border: borders.outer }}>
               <h3 className="font-semibold mb-3" style={{ color: colors.ink }}>Players</h3>
               <div className="space-y-2">
                 {gameState.players.map(player => {
                   const isCurrent = player.id === currentTurnPlayerId, isSpeaker = player.id === speakerId, isMe = player.id === playerId;
                   const ideology = getIdeologyLabel(player.ideologyProfile);
                   return (
-                    <div key={player.id} className="p-2 rounded" style={{
+                    <div key={player.id} className="p-2 rounded-lg" style={{
                       backgroundColor: isCurrent ? colors.paper3 : colors.paper2,
                       border: isMe ? `2px solid ${player.color}` : borders.inner
                     }}>
@@ -347,7 +347,7 @@ export function GameBoard(props: GameBoardProps) {
             {gameState.phase === 'wildcard_resolution' && gameState.pendingWildcard && <WildcardUI wildcard={gameState.pendingWildcard} onAcknowledge={onAcknowledgeWildcard} />}
             {gameState.phase === 'game_over' && <GameOverUI gameState={gameState} playerId={playerId} />}
             {currentPlayer && !['game_over', 'negotiation'].includes(gameState.phase) && (
-              <div className="rounded p-4" style={{ backgroundColor: colors.paper1, border: borders.outer }}>
+              <div className="rounded-lg p-4" style={{ backgroundColor: colors.paper1, border: borders.outer }}>
                 <h3 className="font-semibold mb-3 flex items-center gap-2" style={{ color: colors.ink }}>Your Hand ({currentPlayer.hand.length}/{gameConfig.handLimit})</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {currentPlayer.hand.map(h => <CardDisplayFull key={h.card.id} handCard={h} selected={selectedCard === h.card.id} onClick={() => setSelectedCard(selectedCard === h.card.id ? null : h.card.id)} activeIssue={gameState.activeIssue} playerProfile={currentPlayer.ideologyProfile} />)}
@@ -358,7 +358,7 @@ export function GameBoard(props: GameBoardProps) {
 
           <div className="lg:col-span-1">
             {showChat ? <div className="h-[500px]"><ChatPanel messages={chatMessages} players={gameState.players} currentPlayerId={playerId} onSendMessage={onSendChat} onClose={() => setShowChat(false)} /></div> : (
-              <div className="rounded p-4" style={{ backgroundColor: colors.paper1, border: borders.outer }}>
+              <div className="rounded-lg p-4" style={{ backgroundColor: colors.paper1, border: borders.outer }}>
                 <h3 className="font-semibold mb-3" style={{ color: colors.ink }}>Game Info</h3>
                 <div className="space-y-3 text-sm">
                   <div><span style={{ color: colors.inkSecondary }}>Room:</span><span className="ml-2 font-mono font-bold" style={{ color: colors.ink }}>{gameState.roomId}</span></div>
@@ -375,19 +375,19 @@ export function GameBoard(props: GameBoardProps) {
 }
 
 function DrawPhaseUI({ cardsNeeded, currentPlayer, onDraw, playerColor }: { cardsNeeded: number; currentPlayer?: Player; onDraw: (type: 'campaign' | 'policy') => void; playerColor: string }) {
-  if (cardsNeeded <= 0) return <div className="rounded p-6 text-center" style={{ backgroundColor: colors.paper1, border: borders.outer }}><CheckCircle2 className="w-12 h-12 mx-auto mb-2" style={{ color: colors.success }} /><p style={{ color: colors.inkSecondary }}>Hand full. Waiting for others...</p></div>;
+  if (cardsNeeded <= 0) return <div className="rounded-lg p-6 text-center" style={{ backgroundColor: colors.paper1, border: borders.outer }}><CheckCircle2 className="w-12 h-12 mx-auto mb-2" style={{ color: colors.success }} /><p style={{ color: colors.inkSecondary }}>Hand full. Waiting for others...</p></div>;
   return (
-    <div className="rounded p-6" style={{ backgroundColor: colors.paper1, border: borders.outer, borderTopWidth: '4px', borderTopColor: playerColor }}>
+    <div className="rounded-lg p-6" style={{ backgroundColor: colors.paper1, border: borders.outer, borderTopWidth: '4px', borderTopColor: playerColor }}>
       <h3 className="text-lg font-semibold mb-2 text-center flex items-center justify-center gap-2" style={{ color: colors.ink }}>
         <AlertCircle className="w-5 h-5" />
         Replenish Hand
       </h3>
       <p className="text-center mb-4" style={{ color: colors.inkSecondary }}>Draw {cardsNeeded} more card{cardsNeeded > 1 ? 's' : ''} ({currentPlayer?.hand.length || 0}/5)</p>
       <div className="flex gap-4 justify-center">
-        <button onClick={() => onDraw('campaign')} className="px-6 py-4 rounded font-medium transition-all hover:opacity-90" style={{ backgroundColor: colors.ink, color: colors.paper1, border: borders.outer }}>
+        <button onClick={() => onDraw('campaign')} className="px-6 py-4 rounded-lg font-medium transition-all hover:opacity-90" style={{ backgroundColor: colors.ink, color: colors.paper1, border: borders.outer }}>
           <Target className="w-6 h-6 mx-auto mb-1" />Campaign
         </button>
-        <button onClick={() => onDraw('policy')} className="px-6 py-4 rounded font-medium transition-all hover:opacity-90" style={{ backgroundColor: colors.ink, color: colors.paper1, border: borders.outer }}>
+        <button onClick={() => onDraw('policy')} className="px-6 py-4 rounded-lg font-medium transition-all hover:opacity-90" style={{ backgroundColor: colors.ink, color: colors.paper1, border: borders.outer }}>
           <Scroll className="w-6 h-6 mx-auto mb-1" />Policy
         </button>
       </div>
@@ -396,17 +396,17 @@ function DrawPhaseUI({ cardsNeeded, currentPlayer, onDraw, playerColor }: { card
 }
 
 function CampaignPhaseUI({ isMyTurn, hasCampaigned, cards, activeIssue, selectedCard, playerColor, playerProfile, canSkipReplace, showReplaceConfirm, onSelectCard, onPlay, onSkip, onShowReplaceConfirm, onSkipAndReplace }: { isMyTurn: boolean; hasCampaigned: boolean; cards: HandCard[]; activeIssue: string; selectedCard: string | null; playerColor: string; playerProfile?: Player['ideologyProfile']; canSkipReplace: boolean; showReplaceConfirm: string | null; onSelectCard: (id: string | null) => void; onPlay: (id: string) => void; onSkip: () => void; onShowReplaceConfirm: (id: string | null) => void; onSkipAndReplace: (id: string) => void }) {
-  if (hasCampaigned) return <div className="rounded p-6 text-center" style={{ backgroundColor: colors.paper1, border: borders.outer }}><CheckCircle2 className="w-12 h-12 mx-auto mb-2" style={{ color: colors.success }} /><p style={{ color: colors.inkSecondary }}>Done. Waiting...</p></div>;
-  if (!isMyTurn) return <div className="rounded p-6 text-center" style={{ backgroundColor: colors.paper1, border: borders.outer }}><p style={{ color: colors.inkSecondary }}>Waiting...</p></div>;
+  if (hasCampaigned) return <div className="rounded-lg p-6 text-center" style={{ backgroundColor: colors.paper1, border: borders.outer }}><CheckCircle2 className="w-12 h-12 mx-auto mb-2" style={{ color: colors.success }} /><p style={{ color: colors.inkSecondary }}>Done. Waiting...</p></div>;
+  if (!isMyTurn) return <div className="rounded-lg p-6 text-center" style={{ backgroundColor: colors.paper1, border: borders.outer }}><p style={{ color: colors.inkSecondary }}>Waiting...</p></div>;
   const sel = cards.find(h => h.card.id === selectedCard);
   const alignment = sel && playerProfile ? checkCardAlignment(sel.card, playerProfile) : 'neutral';
   return (
-    <div className="rounded p-6" style={{ backgroundColor: colors.paper1, border: borders.outer, borderTopWidth: '4px', borderTopColor: playerColor }}>
+    <div className="rounded-lg p-6" style={{ backgroundColor: colors.paper1, border: borders.outer, borderTopWidth: '4px', borderTopColor: playerColor }}>
       <h3 className="text-lg font-semibold mb-2 flex items-center gap-2" style={{ color: colors.ink }}><Target className="w-5 h-5" style={{ color: playerColor }} />Your Turn - Play Campaign</h3>
       <p className="text-sm mb-3" style={{ color: colors.inkSecondary }}>Agenda bonus: <span className="font-medium" style={{ color: colors.ink }}>{activeIssue.replace('_', ' ')}</span> (+1 seat)</p>
 
       {sel && (
-        <div className="mb-4 p-3 rounded" style={{ backgroundColor: colors.paper2, border: borders.inner }}>
+        <div className="mb-4 p-3 rounded-lg" style={{ backgroundColor: colors.paper2, border: borders.inner }}>
           <div className="font-medium" style={{ color: colors.ink }}>{sel.card.name}</div>
           <div className="text-sm" style={{ color: colors.inkSecondary }}>{sel.card.description}</div>
           <div className="text-sm font-bold mt-1" style={{ color: colors.success }}>+{(sel.card as CampaignCard).seatDelta} seats</div>
@@ -415,29 +415,29 @@ function CampaignPhaseUI({ isMyTurn, hasCampaigned, cards, activeIssue, selected
       )}
 
       {sel && alignment !== 'neutral' && (
-        <div className="mb-3 p-2 rounded text-sm" style={{ backgroundColor: alignment === 'aligned' ? colors.paper3 : colors.paper2, border: borders.inner }}>
+        <div className="mb-3 p-2 rounded-lg text-sm" style={{ backgroundColor: alignment === 'aligned' ? colors.paper3 : colors.paper2, border: borders.inner }}>
           {alignment === 'aligned' ? <><Award className="w-4 h-4 inline mr-1" style={{ color: colors.success }} /><span style={{ color: colors.success }}>Aligned with your ideology: +1 PCap</span></> : <><AlertTriangle className="w-4 h-4 inline mr-1" style={{ color: colors.error }} /><span style={{ color: colors.error }}>Contrary to your ideology: -1 seat</span></>}
         </div>
       )}
-      {showReplaceConfirm && <div className="mb-4 p-3 rounded" style={{ backgroundColor: colors.paper3, border: borders.inner }}><p className="text-sm font-medium mb-2" style={{ color: colors.warning }}>Discard and replace?</p><div className="flex gap-2"><button onClick={() => onSkipAndReplace(showReplaceConfirm)} className="px-3 py-1 rounded text-sm" style={{ backgroundColor: colors.ink, color: colors.paper1 }}>Yes</button><button onClick={() => onShowReplaceConfirm(null)} className="px-3 py-1 rounded text-sm" style={{ backgroundColor: colors.paper2, color: colors.ink, border: borders.inner }}>Cancel</button></div></div>}
-      <div className="flex gap-4"><button onClick={() => selectedCard && onPlay(selectedCard)} disabled={!sel} className="flex-1 py-3 rounded font-medium" style={{ backgroundColor: sel ? playerColor : colors.paper3, color: sel ? '#fff' : colors.inkSecondary, border: borders.outer }}>Play</button><button onClick={onSkip} className="px-6 py-3 rounded font-medium" style={{ backgroundColor: colors.paper2, color: colors.ink, border: borders.outer }}>Skip</button></div>
+      {showReplaceConfirm && <div className="mb-4 p-3 rounded-lg" style={{ backgroundColor: colors.paper3, border: borders.inner }}><p className="text-sm font-medium mb-2" style={{ color: colors.warning }}>Discard and replace?</p><div className="flex gap-2"><button onClick={() => onSkipAndReplace(showReplaceConfirm)} className="px-3 py-1 rounded-lg text-sm" style={{ backgroundColor: colors.ink, color: colors.paper1 }}>Yes</button><button onClick={() => onShowReplaceConfirm(null)} className="px-3 py-1 rounded-lg text-sm" style={{ backgroundColor: colors.paper2, color: colors.ink, border: borders.inner }}>Cancel</button></div></div>}
+      <div className="flex gap-4"><button onClick={() => selectedCard && onPlay(selectedCard)} disabled={!sel} className="flex-1 py-3 rounded-lg font-medium" style={{ backgroundColor: sel ? playerColor : colors.paper3, color: sel ? '#fff' : colors.inkSecondary, border: borders.outer }}>Play</button><button onClick={onSkip} className="px-6 py-3 rounded-lg font-medium" style={{ backgroundColor: colors.paper2, color: colors.ink, border: borders.outer }}>Skip</button></div>
       {canSkipReplace && selectedCard && <button onClick={() => onShowReplaceConfirm(selectedCard)} className="mt-2 w-full py-2 text-sm flex items-center justify-center gap-1" style={{ color: colors.inkSecondary }}><RefreshCw className="w-4 h-4" />Skip & replace</button>}
     </div>
   );
 }
 
 function PolicyProposalUI({ canPropose, cards, selectedCard, currentPlayer, playerColor, onSelectCard, onPropose, onSkip }: { canPropose: boolean; cards: HandCard[]; selectedCard: string | null; currentPlayer?: Player; playerColor: string; onSelectCard: (id: string | null) => void; onPropose: (id: string) => void; onSkip: () => void }) {
-  if (!canPropose) return <div className="rounded p-6 text-center" style={{ backgroundColor: colors.paper1, border: borders.outer }}><p style={{ color: colors.inkSecondary }}>Waiting for Speaker...</p></div>;
+  if (!canPropose) return <div className="rounded-lg p-6 text-center" style={{ backgroundColor: colors.paper1, border: borders.outer }}><p style={{ color: colors.inkSecondary }}>Waiting for Speaker...</p></div>;
   const sel = cards.find(h => h.card.id === selectedCard);
   const alignment = sel && currentPlayer ? checkCardAlignment(sel.card, currentPlayer.ideologyProfile) : 'neutral';
   const hasSeats = currentPlayer && currentPlayer.seats >= 1;
   return (
-    <div className="rounded p-6" style={{ backgroundColor: colors.paper1, border: borders.outer, borderTopWidth: '4px', borderTopColor: playerColor }}>
+    <div className="rounded-lg p-6" style={{ backgroundColor: colors.paper1, border: borders.outer, borderTopWidth: '4px', borderTopColor: playerColor }}>
       <h3 className="text-lg font-semibold mb-2 flex items-center gap-2" style={{ color: colors.ink }}><Scroll className="w-5 h-5" style={{ color: playerColor }} />Propose Policy</h3>
-      {!hasSeats && <div className="mb-4 p-3 rounded text-sm" style={{ backgroundColor: colors.paper3, color: colors.warning, border: borders.inner }}>Need 1+ seat to propose.</div>}
+      {!hasSeats && <div className="mb-4 p-3 rounded-lg text-sm" style={{ backgroundColor: colors.paper3, color: colors.warning, border: borders.inner }}>Need 1+ seat to propose.</div>}
 
       {sel && (
-        <div className="mb-3 p-3 rounded" style={{ backgroundColor: colors.paper2, border: borders.inner }}>
+        <div className="mb-3 p-3 rounded-lg" style={{ backgroundColor: colors.paper2, border: borders.inner }}>
           <div className="font-medium" style={{ color: colors.ink }}>{(sel.card as PolicyCard).name}</div>
           <div className="text-sm" style={{ color: colors.inkSecondary }}>{sel.card.description}</div>
           <div className="text-xs mt-1" style={{ color: colors.inkSecondary }}>Issue: {(sel.card as PolicyCard).issue?.replace('_', ' ')}</div>
@@ -446,11 +446,11 @@ function PolicyProposalUI({ canPropose, cards, selectedCard, currentPlayer, play
       )}
 
       {sel && alignment !== 'neutral' && (
-        <div className="mb-3 p-2 rounded text-sm" style={{ backgroundColor: colors.paper3, border: borders.inner }}>
+        <div className="mb-3 p-2 rounded-lg text-sm" style={{ backgroundColor: colors.paper3, border: borders.inner }}>
           {alignment === 'aligned' ? <><Award className="w-4 h-4 inline mr-1" style={{ color: colors.success }} /><span style={{ color: colors.success }}>Aligned: +2 PCap</span></> : <><AlertTriangle className="w-4 h-4 inline mr-1" style={{ color: colors.error }} /><span style={{ color: colors.error }}>Contrary: -2 seats</span></>}
         </div>
       )}
-      <div className="flex gap-4"><button onClick={() => selectedCard && onPropose(selectedCard)} disabled={!sel || !hasSeats} className="flex-1 py-3 rounded font-medium" style={{ backgroundColor: sel && hasSeats ? playerColor : colors.paper3, color: sel && hasSeats ? '#fff' : colors.inkSecondary, border: borders.outer }}>Propose</button><button onClick={onSkip} className="px-6 py-3 rounded font-medium" style={{ backgroundColor: colors.paper2, color: colors.ink, border: borders.outer }}>Skip</button></div>
+      <div className="flex gap-4"><button onClick={() => selectedCard && onPropose(selectedCard)} disabled={!sel || !hasSeats} className="flex-1 py-3 rounded-lg font-medium" style={{ backgroundColor: sel && hasSeats ? playerColor : colors.paper3, color: sel && hasSeats ? '#fff' : colors.inkSecondary, border: borders.outer }}>Propose</button><button onClick={onSkip} className="px-6 py-3 rounded-lg font-medium" style={{ backgroundColor: colors.paper2, color: colors.ink, border: borders.outer }}>Skip</button></div>
     </div>
   );
 }
@@ -462,9 +462,9 @@ function PolicyVoteUI({ policy, proposer, currentPlayer, hasVoted, votes, player
   const isTied = yesVotes === noVotes && votes.length === players.length;
   const matchesAgenda = policy.issue === activeIssue;
   return (
-    <div className="rounded p-6" style={{ backgroundColor: colors.paper1, border: borders.outer, borderTopWidth: '4px', borderTopColor: playerColor }}>
+    <div className="rounded-lg p-6" style={{ backgroundColor: colors.paper1, border: borders.outer, borderTopWidth: '4px', borderTopColor: playerColor }}>
       <h3 className="text-lg font-semibold mb-2" style={{ color: colors.ink }}>Vote on Policy</h3>
-      <div className="mb-4 p-4 rounded" style={{ backgroundColor: colors.paper2, border: borders.inner }}>
+      <div className="mb-4 p-4 rounded-lg" style={{ backgroundColor: colors.paper2, border: borders.inner }}>
         <div className="text-xl font-bold" style={{ color: colors.ink }}>{policy.name}</div>
         <div className="mb-2" style={{ color: colors.inkSecondary }}>{policy.description}</div>
         <div className="text-sm" style={{ color: colors.inkSecondary }}>By: {proposer?.name || '?'} &bull; {policy.issue?.replace('_', ' ')}</div>
@@ -481,7 +481,7 @@ function PolicyVoteUI({ policy, proposer, currentPlayer, hasVoted, votes, player
         {isTied && <div className="text-sm mb-2" style={{ color: colors.ink }}>Tied! Speaker ({players.find(p => p.id === speakerId)?.name}) decides.</div>}
         <div className="flex gap-1">{players.map(p => { const v = votes.find(x => x.playerId === p.id); return <div key={p.id} className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold" style={{ backgroundColor: v ? (v.vote === 'yes' ? colors.success : colors.error) : p.color, color: '#fff', border: borders.inner }} title={p.name}>{v ? (v.vote === 'yes' ? 'Y' : 'N') : '?'}</div>; })}</div>
       </div>
-      {!hasVoted ? <div className="flex gap-4"><button onClick={() => onVote('yes')} className="flex-1 py-3 rounded font-medium" style={{ backgroundColor: colors.success, color: '#fff', border: borders.outer }}>Yes</button><button onClick={() => onVote('no')} className="flex-1 py-3 rounded font-medium" style={{ backgroundColor: colors.error, color: '#fff', border: borders.outer }}>No</button></div> : <div className="text-center py-3 flex items-center justify-center gap-2" style={{ color: colors.inkSecondary }}><CheckCircle2 className="w-5 h-5" style={{ color: colors.success }} />Waiting...</div>}
+      {!hasVoted ? <div className="flex gap-4"><button onClick={() => onVote('yes')} className="flex-1 py-3 rounded-lg font-medium" style={{ backgroundColor: colors.success, color: '#fff', border: borders.outer }}>Yes</button><button onClick={() => onVote('no')} className="flex-1 py-3 rounded-lg font-medium" style={{ backgroundColor: colors.error, color: '#fff', border: borders.outer }}>No</button></div> : <div className="text-center py-3 flex items-center justify-center gap-2" style={{ color: colors.inkSecondary }}><CheckCircle2 className="w-5 h-5" style={{ color: colors.success }} />Waiting...</div>}
     </div>
   );
 }
@@ -489,12 +489,12 @@ function PolicyVoteUI({ policy, proposer, currentPlayer, hasVoted, votes, player
 function AgendaSelectionUI({ currentIssue, playerColor, onSelect }: { currentIssue: string; playerColor: string; onSelect: (issue: Issue) => void }) {
   const issues: Issue[] = ['economy', 'cost_of_living', 'housing', 'climate', 'security'];
   return (
-    <div className="rounded p-6" style={{ backgroundColor: colors.paper1, border: borders.outer, borderTopWidth: '4px', borderTopColor: playerColor }}>
+    <div className="rounded-lg p-6" style={{ backgroundColor: colors.paper1, border: borders.outer, borderTopWidth: '4px', borderTopColor: playerColor }}>
       <h3 className="text-lg font-semibold mb-2 text-center" style={{ color: colors.ink }}>Choose New Agenda!</h3>
       <p className="text-sm mb-4 text-center" style={{ color: colors.inkSecondary }}>Your policy matched the agenda. Pick the next national focus.</p>
       <div className="grid grid-cols-2 gap-2">
         {issues.map(issue => (
-          <button key={issue} onClick={() => onSelect(issue)} className="p-3 rounded font-medium transition-all hover:opacity-90" style={{
+          <button key={issue} onClick={() => onSelect(issue)} className="p-3 rounded-lg font-medium transition-all hover:opacity-90" style={{
             backgroundColor: issue === currentIssue ? colors.paper3 : colors.ink,
             color: issue === currentIssue ? colors.inkSecondary : colors.paper1,
             border: borders.outer
@@ -509,16 +509,16 @@ function AgendaSelectionUI({ currentIssue, playerColor, onSelect }: { currentIss
 }
 
 function WildcardUI({ wildcard, onAcknowledge }: { wildcard: any; onAcknowledge: () => void }) {
-  return <div className="rounded p-6" style={{ backgroundColor: colors.paper1, border: borders.outer, borderTopWidth: '4px', borderTopColor: colors.warning }}><div className="text-center mb-4"><Zap className="w-12 h-12 mx-auto mb-2 animate-bounce" style={{ color: colors.warning }} /><h3 className="text-xl font-bold" style={{ color: colors.ink }}>Wildcard!</h3></div><div className="p-4 rounded mb-4" style={{ backgroundColor: colors.paper3, border: borders.inner }}><div className="text-lg font-bold" style={{ color: colors.ink }}>{wildcard.name}</div><div style={{ color: colors.inkSecondary }}>{wildcard.description}</div></div><button onClick={onAcknowledge} className="w-full py-3 rounded font-medium" style={{ backgroundColor: colors.ink, color: colors.paper1, border: borders.outer }}>Continue</button></div>;
+  return <div className="rounded-lg p-6" style={{ backgroundColor: colors.paper1, border: borders.outer, borderTopWidth: '4px', borderTopColor: colors.warning }}><div className="text-center mb-4"><Zap className="w-12 h-12 mx-auto mb-2 animate-bounce" style={{ color: colors.warning }} /><h3 className="text-xl font-bold" style={{ color: colors.ink }}>Wildcard!</h3></div><div className="p-4 rounded-lg mb-4" style={{ backgroundColor: colors.paper3, border: borders.inner }}><div className="text-lg font-bold" style={{ color: colors.ink }}>{wildcard.name}</div><div style={{ color: colors.inkSecondary }}>{wildcard.description}</div></div><button onClick={onAcknowledge} className="w-full py-3 rounded-lg font-medium" style={{ backgroundColor: colors.ink, color: colors.paper1, border: borders.outer }}>Continue</button></div>;
 }
 
 function GameOverUI({ gameState, playerId }: { gameState: GameState; playerId: string }) {
   const winner = gameState.players.find(p => p.id === gameState.winner);
   const rankings = [...gameState.players].sort((a, b) => (gameState.finalScores?.[b.id] || 0) - (gameState.finalScores?.[a.id] || 0));
   return (
-    <div className="rounded p-6" style={{ backgroundColor: colors.paper1, border: borders.outer }}>
+    <div className="rounded-lg p-6" style={{ backgroundColor: colors.paper1, border: borders.outer }}>
       <div className="text-center mb-6"><h2 className="text-3xl font-bold mb-2" style={{ color: colors.ink }}>{gameState.winner === playerId ? 'Victory!' : 'Game Over'}</h2><p className="text-xl" style={{ color: winner?.color }}>{winner?.name} wins!</p></div>
-      <div className="space-y-3">{rankings.map((p, i) => <div key={p.id} className="flex items-center justify-between p-3 rounded" style={{ backgroundColor: colors.paper2, border: i === 0 ? `2px solid ${colors.warning}` : borders.inner }}><div className="flex items-center gap-3"><span className="text-2xl">{i === 0 ? '1st' : i === 1 ? '2nd' : i === 2 ? '3rd' : `#${i + 1}`}</span><div className="w-1 h-8 rounded-full" style={{ backgroundColor: p.color }} /><div><div className="font-medium" style={{ color: colors.ink }}>{p.name}</div><div className="text-sm" style={{ color: colors.inkSecondary }}>{p.seats} seats</div></div></div><div className="text-2xl font-bold" style={{ color: colors.ink }}>{gameState.finalScores?.[p.id] || 0}</div></div>)}</div>
+      <div className="space-y-3">{rankings.map((p, i) => <div key={p.id} className="flex items-center justify-between p-3 rounded-lg" style={{ backgroundColor: colors.paper2, border: i === 0 ? `2px solid ${colors.warning}` : borders.inner }}><div className="flex items-center gap-3"><span className="text-2xl">{i === 0 ? '1st' : i === 1 ? '2nd' : i === 2 ? '3rd' : `#${i + 1}`}</span><div className="w-1 h-8 rounded-full" style={{ backgroundColor: p.color }} /><div><div className="font-medium" style={{ color: colors.ink }}>{p.name}</div><div className="text-sm" style={{ color: colors.inkSecondary }}>{p.seats} seats</div></div></div><div className="text-2xl font-bold" style={{ color: colors.ink }}>{gameState.finalScores?.[p.id] || 0}</div></div>)}</div>
     </div>
   );
 }
@@ -532,7 +532,7 @@ function CardDisplayFull({ handCard, selected, onClick, activeIssue, playerProfi
   const stanceTable = 'stanceTable' in card ? card.stanceTable : null;
 
   return (
-    <div onClick={onClick} className="relative p-3 rounded cursor-pointer transition-all" style={{
+    <div onClick={onClick} className="relative p-3 rounded-lg cursor-pointer transition-all" style={{
       backgroundColor: selected ? colors.paper3 : colors.paper2,
       border: selected ? `2px solid ${colors.ink}` : borders.inner,
       transform: selected ? 'scale(1.02)' : undefined,
@@ -540,11 +540,11 @@ function CardDisplayFull({ handCard, selected, onClick, activeIssue, playerProfi
     }}>
       {isNew && <div className="absolute -top-2 -right-2 text-xs font-bold px-2 py-0.5 rounded-full flex items-center gap-1" style={{ backgroundColor: colors.warning, color: colors.paper1 }}><Sparkles className="w-3 h-3" />NEW</div>}
       <div className="flex justify-between items-start mb-2">
-        <span className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: colors.paper1, color: colors.ink, border: borders.inner }}>{isCampaign ? 'Campaign' : 'Policy'}</span>
+        <span className="text-xs px-2 py-0.5 rounded-lg" style={{ backgroundColor: colors.paper1, color: colors.ink, border: borders.inner }}>{isCampaign ? 'Campaign' : 'Policy'}</span>
         <div className="flex gap-1">
-          {matchesAgenda && <span className="text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: colors.paper1, color: colors.ink, border: borders.inner }}>+Agenda</span>}
-          {alignment === 'aligned' && <span className="text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: colors.paper1, color: colors.success, border: borders.inner }}>Aligned</span>}
-          {alignment === 'contrary' && <span className="text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: colors.paper1, color: colors.error, border: borders.inner }}>Contrary</span>}
+          {matchesAgenda && <span className="text-xs px-1.5 py-0.5 rounded-lg" style={{ backgroundColor: colors.paper1, color: colors.ink, border: borders.inner }}>+Agenda</span>}
+          {alignment === 'aligned' && <span className="text-xs px-1.5 py-0.5 rounded-lg" style={{ backgroundColor: colors.paper1, color: colors.success, border: borders.inner }}>Aligned</span>}
+          {alignment === 'contrary' && <span className="text-xs px-1.5 py-0.5 rounded-lg" style={{ backgroundColor: colors.paper1, color: colors.error, border: borders.inner }}>Contrary</span>}
         </div>
       </div>
       <div className="font-medium" style={{ color: colors.ink }}>{card.name}</div>

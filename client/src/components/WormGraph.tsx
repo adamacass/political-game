@@ -279,11 +279,11 @@ export function WormGraph({ history, players, totalSeats, currentRound }: WormGr
 
       {/* Round detail panel */}
       {activeSnapshot && (
-        <div className="mt-4 p-3 rounded relative" style={{ backgroundColor: colors.paper2, border: `1px solid ${colors.rule}` }}>
+        <div className="mt-4 p-3 rounded-lg relative" style={{ backgroundColor: colors.paper2, border: `1px solid ${colors.rule}` }}>
           {selectedRound && (
             <button
               onClick={() => setSelectedRound(null)}
-              className="absolute top-2 right-2 p-1 rounded hover:opacity-70"
+              className="absolute top-2 right-2 p-1 rounded-lg hover:opacity-70"
               style={{ color: colors.ink }}
             >
               <X className="w-4 h-4" />
@@ -292,7 +292,7 @@ export function WormGraph({ history, players, totalSeats, currentRound }: WormGr
 
           <div className="flex justify-between items-start mb-2">
             <h4 className="font-semibold" style={{ color: colors.ink }}>Round {activeSnapshot.round}</h4>
-            <span className="text-sm px-2 py-0.5 rounded" style={{ backgroundColor: colors.paper1, color: colors.ink, border: `1px solid ${colors.rule}` }}>
+            <span className="text-sm px-2 py-0.5 rounded-lg" style={{ backgroundColor: colors.paper1, color: colors.ink, border: `1px solid ${colors.rule}` }}>
               {formatIssue(activeSnapshot.activeIssue)}
             </span>
           </div>
@@ -306,7 +306,7 @@ export function WormGraph({ history, players, totalSeats, currentRound }: WormGr
                 return (
                   <span
                     key={playerId}
-                    className="px-2 py-1 rounded text-sm font-medium text-white"
+                    className="px-2 py-1 rounded-lg text-sm font-medium text-white"
                     style={{ backgroundColor: player?.color || colors.inkSecondary, border: `1px solid ${colors.rule}` }}
                   >
                     {player?.name}: {seats}
@@ -418,7 +418,7 @@ export function WormGraphMini({ history, players, totalSeats }: Omit<WormGraphPr
 
   if (history.length === 0) {
     return (
-      <div className="rounded p-2 h-20 flex items-center justify-center text-xs" style={{ backgroundColor: colors.paper2, color: colors.inkSecondary }}>
+      <div className="rounded-lg p-2 h-20 flex items-center justify-center text-xs" style={{ backgroundColor: colors.paper2, color: colors.inkSecondary }}>
         No data
       </div>
     );

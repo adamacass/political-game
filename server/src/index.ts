@@ -475,6 +475,8 @@ io.on('connection', (socket) => {
       const eventLog = roomManager.getEventLog(currentRoomId);
       const config = roomManager.getConfig(currentRoomId);
       const state = roomManager.getState(currentRoomId);
+      const gameLog = roomManager.getGameLog(currentRoomId);
+      const gameLogCsv = roomManager.getGameLogCsv(currentRoomId);
       
       if (eventLog && config && state) {
         socket.emit('game_exported', { 
@@ -482,7 +484,9 @@ io.on('connection', (socket) => {
           config, 
           seed: state.seed,
           chatLog: state.chatMessages || [],
-          history: state.history || []
+          history: state.history || [],
+          gameLog: gameLog || [],
+          gameLogCsv: gameLogCsv || ''
         });
       }
     } catch (error) {
@@ -529,6 +533,29 @@ io.on('connection', (socket) => {
     } catch (error) {
       console.error('Error sending chat:', error);
       socket.emit('error', { message: 'Failed to send message' });
+    }
+  });
+
+  socket.on('restore_session', ({ roomId, playerId }) => {
+    if (!roomId || !playerId) {
+      socket.emit('error', { message: 'Missing restore details' });
+      return;
+    }
+    try {
+      const restored = roomManager.restoreSession(roomId, playerId, socket.id);
+      if (!restored) {
+        socket.emit('error', { message: 'Unable to restore session' });
+        return;
+      }
+      currentRoomId = roomId.toUpperCase();
+      currentPlayerId = playerId;
+      socket.join(currentRoomId);
+      socket.emit('session_restored', { success: true, roomId: currentRoomId, playerId });
+      socket.emit('available_colors', { colors: roomManager.getAvailableColors(currentRoomId) });
+      broadcastState(currentRoomId);
+    } catch (error) {
+      console.error('Error restoring session:', error);
+      socket.emit('error', { message: 'Server error' });
     }
   });
   // ... your existing handlers above ...
