@@ -7,7 +7,7 @@
 
 import React from 'react';
 import * as LucideIcons from 'lucide-react';
-import { getSymbolById, DEFAULT_SYMBOL_ID } from '../constants/politicalSymbols';
+import { getSymbolById, DEFAULT_SYMBOL_ID, POLITICAL_SYMBOLS } from '../constants/politicalSymbols';
 
 // Design tokens - ballot paper aesthetic
 const colors = {
@@ -72,9 +72,6 @@ interface SymbolPickerProps {
 }
 
 export function SymbolPicker({ selectedId, onSelect, previewColor }: SymbolPickerProps) {
-  // Import all symbols
-  const { POLITICAL_SYMBOLS } = require('../constants/politicalSymbols');
-
   return (
     <div className="grid grid-cols-10 gap-1">
       {POLITICAL_SYMBOLS.map((symbol: any) => {
