@@ -56,57 +56,61 @@ export class GameEngine {
     return allColorIds.filter(id => !this.state.takenColors.includes(id)); 
   }
 
-  addPlayer(id: string, playerName: string, partyName: string, colorId?: PartyColorId, socialIdeology?: SocialIdeology, economicIdeology?: EconomicIdeology): Player | null {
+  addPlayer(id: string, playerName: string, partyName: string, colorId?: PartyColorId, symbolId?: string, socialIdeology?: SocialIdeology, economicIdeology?: EconomicIdeology): Player | null {
     if (this.state.phase !== 'waiting' || this.state.players.length >= 5 || this.state.players.find(p => p.id === id)) return null;
-    
+
     // Get available colors and select one
     const availableColors = this.getAvailableColors();
     let finalColorId: PartyColorId = colorId && !this.state.takenColors.includes(colorId) ? colorId : availableColors[0];
     if (!finalColorId) return null;
     this.state.takenColors.push(finalColorId);
-    
+
     // Look up the hex color - with explicit fallback and logging
     const colorEntry = PARTY_COLORS.find(c => c.id === finalColorId);
     const colorHex = colorEntry?.hex || '#666666';
     console.log(`[ADD_PLAYER] colorId=${finalColorId}, colorEntry=`, colorEntry, `colorHex=${colorHex}`);
-    
+
+    // Default symbol if not provided
+    const finalSymbolId = symbolId || 'landmark';
+
     // Determine ideology
     let finalSocial: SocialIdeology, finalEconomic: EconomicIdeology;
-    if (this.config.ideologyMode === 'choose' && socialIdeology && economicIdeology) { 
-      finalSocial = socialIdeology; 
-      finalEconomic = economicIdeology; 
-    } else if (this.config.ideologyMode === 'derived') { 
-      finalSocial = 'progressive'; 
-      finalEconomic = 'market'; 
-    } else { 
-      finalSocial = (['progressive', 'conservative'] as SocialIdeology[])[this.rng.randomInt(0, 1)]; 
-      finalEconomic = (['market', 'interventionist'] as EconomicIdeology[])[this.rng.randomInt(0, 1)]; 
+    if (this.config.ideologyMode === 'choose' && socialIdeology && economicIdeology) {
+      finalSocial = socialIdeology;
+      finalEconomic = economicIdeology;
+    } else if (this.config.ideologyMode === 'derived') {
+      finalSocial = 'progressive';
+      finalEconomic = 'market';
+    } else {
+      finalSocial = (['progressive', 'conservative'] as SocialIdeology[])[this.rng.randomInt(0, 1)];
+      finalEconomic = (['market', 'interventionist'] as EconomicIdeology[])[this.rng.randomInt(0, 1)];
     }
-    
-    const player: Player = { 
-      id, 
-      name: partyName || `Party ${this.state.players.length + 1}`, 
-      playerName: playerName || `Player ${this.state.players.length + 1}`, 
-      colorId: finalColorId, 
-      color: colorHex, 
-      socialIdeology: finalSocial, 
-      economicIdeology: finalEconomic, 
-      ideologyProfile: { 
-        progressiveActions: 0, conservativeActions: 0, 
-        marketActions: 0, interventionistActions: 0, 
-        socialScore: 50, economicScore: 50, 
-        dominantSocial: 'neutral', dominantEconomic: 'neutral' 
-      }, 
-      seats: 0, 
-      hand: [], 
-      pCapCards: [], 
-      connected: true, 
-      hasSkippedThisRound: false 
+
+    const player: Player = {
+      id,
+      name: partyName || `Party ${this.state.players.length + 1}`,
+      playerName: playerName || `Player ${this.state.players.length + 1}`,
+      colorId: finalColorId,
+      color: colorHex,
+      symbolId: finalSymbolId,
+      socialIdeology: finalSocial,
+      economicIdeology: finalEconomic,
+      ideologyProfile: {
+        progressiveActions: 0, conservativeActions: 0,
+        marketActions: 0, interventionistActions: 0,
+        socialScore: 50, economicScore: 50,
+        dominantSocial: 'neutral', dominantEconomic: 'neutral'
+      },
+      seats: 0,
+      hand: [],
+      pCapCards: [],
+      connected: true,
+      hasSkippedThisRound: false
     };
-    
+
     this.state.players.push(player);
-    this.logEvent({ type: 'player_joined', timestamp: Date.now(), playerId: id, playerName: player.playerName, partyName: player.name, colorId: finalColorId });
-    console.log(`[ADD_PLAYER] Created player with color: ${player.color}`);
+    this.logEvent({ type: 'player_joined', timestamp: Date.now(), playerId: id, playerName: player.playerName, partyName: player.name, colorId: finalColorId, symbolId: finalSymbolId });
+    console.log(`[ADD_PLAYER] Created player with color: ${player.color}, symbol: ${finalSymbolId}`);
     return player;
   }
 

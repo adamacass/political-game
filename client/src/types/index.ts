@@ -313,21 +313,22 @@ export interface Player {
   id: string;
   name: string;              // Party name
   playerName: string;        // Human player name
-  colorId: PartyColorId;     // NEW: Selected color ID
+  colorId: PartyColorId;     // Selected color ID
   color: string;             // Hex color
+  symbolId: string;          // Selected political symbol ID
 
   // Ideology (fixed or derived based on mode)
   socialIdeology: SocialIdeology;
   economicIdeology: EconomicIdeology;
-  ideologyProfile: IdeologyProfile;   // NEW: Action-based tracking
+  ideologyProfile: IdeologyProfile;   // Action-based tracking
 
   seats: number;
-  hand: HandCard[];          // CHANGED: Now includes metadata
+  hand: HandCard[];          // Includes metadata
   pCapCards: PCapCard[];
   connected: boolean;
 
   // Round state
-  hasSkippedThisRound: boolean;    // NEW: For skip & replace limit
+  hasSkippedThisRound: boolean;    // For skip & replace limit
 }
 
 // ============================================================
@@ -427,7 +428,7 @@ export interface GameState {
 
 export type GameEvent =
   | { type: 'game_started'; timestamp: number; seed: string; config: string }
-  | { type: 'player_joined'; timestamp: number; playerId: string; playerName: string; partyName: string; colorId: PartyColorId }
+  | { type: 'player_joined'; timestamp: number; playerId: string; playerName: string; partyName: string; colorId: PartyColorId; symbolId: string }
   | { type: 'round_started'; timestamp: number; round: number; activeIssue: Issue }
   | { type: 'card_drawn'; timestamp: number; playerId: string; cardType: 'campaign' | 'policy'; cardId: string }
   | { type: 'card_replaced'; timestamp: number; playerId: string; discardedCardId: string; newCardId: string; newCardType: 'campaign' | 'policy' }
@@ -504,6 +505,7 @@ export interface JoinRoomData {
   playerName: string;
   partyName: string;
   colorId?: PartyColorId;
+  symbolId?: string;
   socialIdeology?: SocialIdeology;
   economicIdeology?: EconomicIdeology;
 }
@@ -512,6 +514,7 @@ export interface CreateRoomData {
   playerName: string;
   partyName: string;
   colorId?: PartyColorId;
+  symbolId?: string;
   configOverrides?: Partial<GameConfig>;
   socialIdeology?: SocialIdeology;
   economicIdeology?: EconomicIdeology;

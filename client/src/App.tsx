@@ -122,34 +122,38 @@ function App() {
 
   // Actions
   const createRoom = useCallback((
-    playerName: string, 
-    partyName: string, 
+    playerName: string,
+    partyName: string,
     colorId?: PartyColorId,
+    symbolId?: string,
     socialIdeology?: SocialIdeology,
     economicIdeology?: EconomicIdeology
   ) => {
-    socket?.emit('create_room', { 
-      playerName, 
-      partyName, 
+    socket?.emit('create_room', {
+      playerName,
+      partyName,
       colorId,
+      symbolId,
       socialIdeology,
       economicIdeology,
     });
   }, [socket]);
 
   const joinRoom = useCallback((
-    roomId: string, 
-    playerName: string, 
+    roomId: string,
+    playerName: string,
     partyName: string,
     colorId?: PartyColorId,
+    symbolId?: string,
     socialIdeology?: SocialIdeology,
     economicIdeology?: EconomicIdeology
   ) => {
-    socket?.emit('join_room', { 
-      roomId, 
-      playerName, 
+    socket?.emit('join_room', {
+      roomId,
+      playerName,
       partyName,
       colorId,
+      symbolId,
       socialIdeology,
       economicIdeology,
     });

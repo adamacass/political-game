@@ -21,7 +21,10 @@ import {
   RefreshCw,
   Brain,
   Map,
+  Shapes,
 } from 'lucide-react';
+import { PlayerSymbol, SymbolPicker } from './PlayerSymbol';
+import { DEFAULT_SYMBOL_ID } from '../constants/politicalSymbols';
 
 // Design tokens - ballot paper aesthetic
 const colors = {
@@ -41,8 +44,8 @@ interface LobbyProps {
   availableColors: PartyColorId[];
   onStartGame: () => void;
   onUpdateConfig: (config: Partial<GameConfig>) => void;
-  onCreateRoom: (playerName: string, partyName: string, colorId?: PartyColorId, social?: SocialIdeology, economic?: EconomicIdeology) => void;
-  onJoinRoom: (roomId: string, playerName: string, partyName: string, colorId?: PartyColorId, social?: SocialIdeology, economic?: EconomicIdeology) => void;
+  onCreateRoom: (playerName: string, partyName: string, colorId?: PartyColorId, symbolId?: string, social?: SocialIdeology, economic?: EconomicIdeology) => void;
+  onJoinRoom: (roomId: string, playerName: string, partyName: string, colorId?: PartyColorId, symbolId?: string, social?: SocialIdeology, economic?: EconomicIdeology) => void;
 }
 
 export function Lobby({
@@ -60,6 +63,7 @@ export function Lobby({
   const [partyName, setPartyName] = useState('');
   const [roomCode, setRoomCode] = useState('');
   const [selectedColor, setSelectedColor] = useState<PartyColorId | null>(null);
+  const [selectedSymbol, setSelectedSymbol] = useState<string>(DEFAULT_SYMBOL_ID);
   const [socialIdeology, setSocialIdeology] = useState<SocialIdeology>('progressive');
   const [economicIdeology, setEconomicIdeology] = useState<EconomicIdeology>('market');
   const [copied, setCopied] = useState(false);
@@ -81,6 +85,7 @@ export function Lobby({
         playerName.trim(),
         partyName.trim(),
         selectedColor || undefined,
+        selectedSymbol,
         gameConfig?.ideologyMode === 'choose' ? socialIdeology : undefined,
         gameConfig?.ideologyMode === 'choose' ? economicIdeology : undefined
       );
@@ -94,6 +99,7 @@ export function Lobby({
         playerName.trim(),
         partyName.trim(),
         selectedColor || undefined,
+        selectedSymbol,
         gameConfig?.ideologyMode === 'choose' ? socialIdeology : undefined,
         gameConfig?.ideologyMode === 'choose' ? economicIdeology : undefined
       );
@@ -235,6 +241,29 @@ export function Lobby({
               </div>
             </div>
 
+            {/* Symbol picker */}
+            <div>
+              <label className="block text-sm font-medium mb-2 flex items-center gap-2" style={{ color: colors.inkSecondary }}>
+                <Shapes className="w-4 h-4" />
+                Party Symbol
+              </label>
+              <div className="flex items-center gap-4 mb-2">
+                <PlayerSymbol
+                  symbolId={selectedSymbol}
+                  color={selectedColor ? PARTY_COLORS.find(c => c.id === selectedColor)?.hex || colors.ink : colors.ink}
+                  size="xl"
+                />
+                <div className="text-sm" style={{ color: colors.inkSecondary }}>
+                  Preview
+                </div>
+              </div>
+              <SymbolPicker
+                selectedId={selectedSymbol}
+                onSelect={setSelectedSymbol}
+                previewColor={selectedColor ? PARTY_COLORS.find(c => c.id === selectedColor)?.hex || colors.ink : colors.ink}
+              />
+            </div>
+
             <button
               onClick={mode === 'create' ? handleCreate : handleJoin}
               disabled={!playerName.trim() || !partyName.trim() || (mode === 'join' && !roomCode.trim())}
@@ -324,12 +353,11 @@ export function Lobby({
                       className="w-1 h-12 rounded-full"
                       style={{ backgroundColor: player.color }}
                     />
-                    <div
-                      className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg"
-                      style={{ backgroundColor: player.color, color: '#fff', border: `2px solid ${colors.rule}` }}
-                    >
-                      {player.name.charAt(0)}
-                    </div>
+                    <PlayerSymbol
+                      symbolId={player.symbolId || DEFAULT_SYMBOL_ID}
+                      color={player.color}
+                      size="lg"
+                    />
                     <div className="flex-1">
                       <div className="font-semibold" style={{ color: colors.ink }}>{player.name}</div>
                       <div className="text-sm" style={{ color: colors.inkSecondary }}>{player.playerName}</div>

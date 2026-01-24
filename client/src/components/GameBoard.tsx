@@ -7,8 +7,10 @@ import { NegotiationPanel } from './NegotiationPanel';
 import { TargetingModal } from './TargetingModal';
 import { AustraliaMap, AustraliaMapMini } from './AustraliaMap';
 import { MySeatsList } from './MySeatsList';
-import { MessageSquare, Download, Star, Scroll, Zap, TrendingUp, RefreshCw, Users, Target, Sparkles, ChevronRight, AlertCircle, CheckCircle2, Award, AlertTriangle, History, Map, LayoutGrid } from 'lucide-react';
+import { PlayerSymbol } from './PlayerSymbol';
+import { MessageSquare, Download, Star, Scroll, Zap, TrendingUp, RefreshCw, Users, Target, Sparkles, ChevronRight, AlertCircle, CheckCircle2, Award, AlertTriangle, History, Map, LayoutGrid, Trophy, Megaphone } from 'lucide-react';
 import { colors, borders, componentStyles } from '../styles/tokens';
+import { getSocialColor, getEconomicColor, SOCIAL_COLORS, ECONOMIC_COLORS } from '../constants/ideologyColors';
 
 interface PCapChangeRecord { playerId: string; pCapDelta: number; seatDelta: number; reason: string; changeType: 'award' | 'penalty'; timestamp: number; }
 
@@ -117,6 +119,70 @@ function PCapToast({ changes, players }: { changes: PCapChangeRecord[]; players:
   );
 }
 
+// Seat capture notification toast - shows with party color hue
+interface SeatCaptureEvent {
+  seatName: string;
+  toPlayerId: string;
+  fromPlayerId: string | null;
+  timestamp: number;
+}
+
+function SeatCaptureToast({ captures, players }: { captures: SeatCaptureEvent[]; players: Player[] }) {
+  const [visibleCaptures, setVisibleCaptures] = useState<SeatCaptureEvent[]>([]);
+
+  useEffect(() => {
+    if (captures.length > 0) {
+      setVisibleCaptures(captures.slice(-3)); // Show last 3 captures
+      const t = setTimeout(() => setVisibleCaptures([]), 4000);
+      return () => clearTimeout(t);
+    }
+  }, [captures]);
+
+  if (visibleCaptures.length === 0) return null;
+
+  return (
+    <div className="fixed top-36 right-4 z-50 space-y-2 max-w-sm">
+      {visibleCaptures.map((capture, i) => {
+        const winner = players.find(p => p.id === capture.toPlayerId);
+        const loser = capture.fromPlayerId ? players.find(p => p.id === capture.fromPlayerId) : null;
+
+        return (
+          <div
+            key={`${capture.seatName}-${capture.timestamp}-${i}`}
+            className="p-3 rounded animate-slide-in"
+            style={{
+              backgroundColor: winner?.color ? `${winner.color}15` : colors.paper1, // Party color with low opacity
+              border: borders.outer,
+              borderLeftWidth: '4px',
+              borderLeftColor: winner?.color || colors.ink
+            }}
+          >
+            <div className="flex items-center gap-2">
+              <Map className="w-5 h-5" style={{ color: winner?.color || colors.ink }} />
+              <div className="flex-1">
+                <div className="font-medium text-sm" style={{ color: colors.ink }}>
+                  {winner?.name || 'Unknown'} captured <span className="font-bold">{capture.seatName}</span>
+                </div>
+                {loser && (
+                  <div className="text-xs" style={{ color: colors.inkSecondary }}>
+                    Taken from {loser.name}
+                  </div>
+                )}
+              </div>
+              <div
+                className="w-6 h-6 rounded-full flex items-center justify-center"
+                style={{ backgroundColor: winner?.color, border: `1px solid ${colors.rule}` }}
+              >
+                <CheckCircle2 className="w-4 h-4" style={{ color: colors.paper1 }} />
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function RoundHistoryPanel({ history, players }: { history: GameState['history']; players: Player[] }) {
   const [expanded, setExpanded] = useState(false);
   if (history.length === 0) return null;
@@ -205,9 +271,26 @@ export function GameBoard(props: GameBoardProps) {
   const hasCampaigned = gameState.playersCampaigned.includes(playerId);
   const roundPCapChanges = (gameState as any).roundPCapChanges || [];
 
+  // Extract recent seat captures from event log for notifications
+  const recentSeatCaptures = useMemo(() => {
+    const now = Date.now();
+    const recentThreshold = 10000; // 10 seconds
+    return gameState.eventLog
+      .filter((e): e is Extract<typeof e, { type: 'seat_captured' }> =>
+        e.type === 'seat_captured' && (now - e.timestamp) < recentThreshold
+      )
+      .map(e => ({
+        seatName: e.seatName,
+        toPlayerId: e.toPlayerId,
+        fromPlayerId: e.fromPlayerId,
+        timestamp: e.timestamp
+      }));
+  }, [gameState.eventLog]);
+
   return (
     <div className="min-h-screen" style={{ backgroundColor: colors.paper2 }}>
       <PCapToast changes={roundPCapChanges} players={gameState.players} />
+      <SeatCaptureToast captures={recentSeatCaptures} players={gameState.players} />
 
       {/* Top header bar - ballot paper style with party color stripe */}
       <div className="sticky top-0 z-40" style={{ backgroundColor: colors.paper1, borderBottom: borders.outer }}>
@@ -291,40 +374,57 @@ export function GameBoard(props: GameBoardProps) {
             {!showWormGraph && gameState.history.length > 0 && <div className="rounded p-3" style={{ backgroundColor: colors.paper1, border: borders.outer }}><div className="flex justify-between items-center mb-2"><h4 className="text-sm font-semibold" style={{ color: colors.ink }}>Trend</h4><button onClick={() => setShowWormGraph(true)} className="text-xs hover:underline" style={{ color: colors.inkSecondary }}>Expand</button></div><WormGraphMini history={gameState.history} players={gameState.players} totalSeats={gameState.totalSeats} /></div>}
             <RoundHistoryPanel history={gameState.history} players={gameState.players} />
             <div className="rounded p-4" style={{ backgroundColor: colors.paper1, border: borders.outer }}>
-              <h3 className="font-semibold mb-3" style={{ color: colors.ink }}>Players</h3>
+              <h3 className="font-semibold mb-3 flex items-center gap-2" style={{ color: colors.ink }}>
+                <Trophy className="w-4 h-4" /> Scoreboard
+              </h3>
               <div className="space-y-2">
-                {gameState.players.map(player => {
+                {[...gameState.players]
+                  .sort((a, b) => getPlayerPCap(b) - getPlayerPCap(a) || b.seats - a.seats)
+                  .map((player, rank) => {
                   const isCurrent = player.id === currentTurnPlayerId, isSpeaker = player.id === speakerId, isMe = player.id === playerId;
                   const ideology = getIdeologyLabel(player.ideologyProfile);
+                  const pCap = getPlayerPCap(player);
+                  const isLeader = rank === 0;
                   return (
                     <div key={player.id} className="p-2 rounded" style={{
                       backgroundColor: isCurrent ? colors.paper3 : colors.paper2,
-                      border: isMe ? `2px solid ${player.color}` : borders.inner
+                      border: isMe ? `2px solid ${player.color}` : isLeader ? `2px solid ${colors.ink}` : borders.inner
                     }}>
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <div className="w-1 h-8 rounded-full" style={{ backgroundColor: player.color }} />
-                          <div className="w-4 h-4 rounded-full" style={{ backgroundColor: player.color }} />
-                          <div className="flex flex-col"><span className="font-medium text-sm" style={{ color: colors.ink }}>{player.name}</span><span className="text-xs" style={{ color: colors.inkSecondary }}>{player.playerName}</span></div>
+                          <span className="w-4 text-xs font-bold text-center" style={{ color: colors.inkSecondary }}>{rank + 1}</span>
+                          <PlayerSymbol symbolId={player.symbolId || 'landmark'} color={player.color} size="sm" />
+                          <div className="flex flex-col">
+                            <span className="font-medium text-sm" style={{ color: colors.ink }}>{player.name}</span>
+                            <span className="text-xs" style={{ color: colors.inkSecondary }}>{player.playerName}</span>
+                          </div>
                           {isSpeaker && <Star className="w-4 h-4" style={{ color: colors.warning }} />}
+                          {isLeader && <Trophy className="w-3 h-3" style={{ color: '#D4AF37' }} />}
                         </div>
-                        <div className="text-right"><div className="text-sm font-bold" style={{ color: colors.ink }}>{player.seats}</div><div className="text-xs" style={{ color: colors.inkSecondary }}>{getPlayerPCap(player)} PCap</div></div>
+                        <div className="text-right">
+                          <div className="text-sm font-bold" style={{ color: colors.ink }}>{pCap} <span className="font-normal text-xs" style={{ color: colors.inkSecondary }}>PCap</span></div>
+                          <div className="text-xs" style={{ color: colors.inkSecondary }}>{player.seats} seats</div>
+                        </div>
                       </div>
                       {gameConfig.ideologyMode === 'derived' && (
                         <div className="mt-2 pt-2" style={{ borderTop: `1px solid ${colors.paper3}` }}>
                           <div className="grid grid-cols-2 gap-1 text-xs">
                             <div className="flex items-center gap-1">
-                              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: ideology.social === 'Progressive' ? '#3b82f6' : ideology.social === 'Conservative' ? '#ef4444' : colors.inkSecondary }} />
+                              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: getSocialColor(player.ideologyProfile.socialScore) }} />
                               <span style={{ color: colors.inkSecondary }}>{ideology.socialStrength === 'Unknown' ? '?' : ideology.social}</span>
                             </div>
                             <div className="flex items-center gap-1">
-                              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: ideology.economic === 'Interventionist' ? '#22c55e' : ideology.economic === 'Market' ? '#eab308' : colors.inkSecondary }} />
+                              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: getEconomicColor(player.ideologyProfile.economicScore) }} />
                               <span style={{ color: colors.inkSecondary }}>{ideology.economicStrength === 'Unknown' ? '?' : ideology.economic}</span>
                             </div>
                           </div>
                           <div className="mt-1 flex gap-1">
-                            <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: colors.paper3 }}><div className="h-full" style={{ width: `${player.ideologyProfile.socialScore}%`, background: 'linear-gradient(to right, #ef4444, #3b82f6)' }} /></div>
-                            <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: colors.paper3 }}><div className="h-full" style={{ width: `${player.ideologyProfile.economicScore}%`, background: 'linear-gradient(to right, #eab308, #22c55e)' }} /></div>
+                            <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: colors.paper3 }}>
+                              <div className="h-full" style={{ width: `${player.ideologyProfile.socialScore}%`, background: `linear-gradient(to right, ${SOCIAL_COLORS.conservative}, ${SOCIAL_COLORS.progressive})` }} />
+                            </div>
+                            <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: colors.paper3 }}>
+                              <div className="h-full" style={{ width: `${player.ideologyProfile.economicScore}%`, background: `linear-gradient(to right, ${ECONOMIC_COLORS.market}, ${ECONOMIC_COLORS.interventionist})` }} />
+                            </div>
                           </div>
                         </div>
                       )}
@@ -350,7 +450,7 @@ export function GameBoard(props: GameBoardProps) {
               <div className="rounded p-4" style={{ backgroundColor: colors.paper1, border: borders.outer }}>
                 <h3 className="font-semibold mb-3 flex items-center gap-2" style={{ color: colors.ink }}>Your Hand ({currentPlayer.hand.length}/{gameConfig.handLimit})</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {currentPlayer.hand.map(h => <CardDisplayFull key={h.card.id} handCard={h} selected={selectedCard === h.card.id} onClick={() => setSelectedCard(selectedCard === h.card.id ? null : h.card.id)} activeIssue={gameState.activeIssue} playerProfile={currentPlayer.ideologyProfile} />)}
+                  {currentPlayer.hand.map(h => <CardDisplayFull key={h.card.id} handCard={h} selected={selectedCard === h.card.id} onClick={() => setSelectedCard(selectedCard === h.card.id ? null : h.card.id)} activeIssue={gameState.activeIssue} playerProfile={currentPlayer.ideologyProfile} currentPhase={gameState.phase} />)}
                 </div>
               </div>
             )}
@@ -524,23 +624,54 @@ function GameOverUI({ gameState, playerId }: { gameState: GameState; playerId: s
 }
 
 // Full card display with stance table - ballot paper style
-function CardDisplayFull({ handCard, selected, onClick, activeIssue, playerProfile }: { handCard: HandCard; selected: boolean; onClick: () => void; activeIssue: string; playerProfile: Player['ideologyProfile'] }) {
+function CardDisplayFull({ handCard, selected, onClick, activeIssue, playerProfile, currentPhase }: { handCard: HandCard; selected: boolean; onClick: () => void; activeIssue: string; playerProfile: Player['ideologyProfile']; currentPhase?: string }) {
   const { card, isNew } = handCard;
   const isCampaign = 'seatDelta' in card;
   const matchesAgenda = 'issue' in card && card.issue === activeIssue;
   const alignment = checkCardAlignment(card, playerProfile);
   const stanceTable = 'stanceTable' in card ? card.stanceTable : null;
 
+  // Determine if card should be blurred based on current phase
+  const shouldBlur = currentPhase === 'campaign' && !isCampaign || currentPhase === 'policy_proposal' && isCampaign;
+
   return (
-    <div onClick={onClick} className="relative p-3 rounded cursor-pointer transition-all" style={{
+    <div onClick={onClick} className={`relative p-3 rounded cursor-pointer transition-all ${shouldBlur ? 'opacity-50' : ''}`} style={{
       backgroundColor: selected ? colors.paper3 : colors.paper2,
       border: selected ? `2px solid ${colors.ink}` : borders.inner,
       transform: selected ? 'scale(1.02)' : undefined,
-      boxShadow: isNew ? `0 0 0 2px ${colors.warning}` : undefined
+      boxShadow: isNew ? `0 0 0 2px ${colors.warning}` : undefined,
+      filter: shouldBlur ? 'blur(1px)' : undefined
     }}>
       {isNew && <div className="absolute -top-2 -right-2 text-xs font-bold px-2 py-0.5 rounded-full flex items-center gap-1" style={{ backgroundColor: colors.warning, color: colors.paper1 }}><Sparkles className="w-3 h-3" />NEW</div>}
+
+      {/* Artwork placeholder box - 120x80px for card art */}
+      <div className="mb-2 rounded overflow-hidden" style={{
+        width: '100%',
+        height: '80px',
+        backgroundColor: colors.paper3,
+        border: borders.inner,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}>
+        {card.artworkUrl ? (
+          <img src={card.artworkUrl} alt={card.name} className="w-full h-full object-cover" />
+        ) : (
+          <div className="text-center">
+            {isCampaign ? (
+              <Megaphone className="w-8 h-8 mx-auto" style={{ color: colors.inkSecondary, opacity: 0.3 }} />
+            ) : (
+              <Scroll className="w-8 h-8 mx-auto" style={{ color: colors.inkSecondary, opacity: 0.3 }} />
+            )}
+            <div className="text-[10px] mt-1" style={{ color: colors.inkSecondary, opacity: 0.5 }}>120×80px artwork</div>
+          </div>
+        )}
+      </div>
+
       <div className="flex justify-between items-start mb-2">
-        <span className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: colors.paper1, color: colors.ink, border: borders.inner }}>{isCampaign ? 'Campaign' : 'Policy'}</span>
+        <span className="text-xs px-2 py-0.5 rounded flex items-center gap-1" style={{ backgroundColor: colors.paper1, color: colors.ink, border: borders.inner }}>
+          {isCampaign ? <><Megaphone className="w-3 h-3" /> Campaign</> : <><Scroll className="w-3 h-3" /> Policy</>}
+        </span>
         <div className="flex gap-1">
           {matchesAgenda && <span className="text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: colors.paper1, color: colors.ink, border: borders.inner }}>+Agenda</span>}
           {alignment === 'aligned' && <span className="text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: colors.paper1, color: colors.success, border: borders.inner }}>Aligned</span>}
