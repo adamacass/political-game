@@ -8,6 +8,7 @@
 import React, { useState, useMemo } from 'react';
 import { Seat, SeatId, StateCode, EconBucket, SocialBucket } from '../types';
 import { ChevronDown, ChevronUp, MapPin, Filter } from 'lucide-react';
+import { SEAT_IDEOLOGY_COLORS } from '../constants/ideologyColors';
 
 // Design tokens - ballot paper aesthetic
 const colors = {
@@ -25,17 +26,19 @@ interface MySeatsListProps {
   playerColor: string;
 }
 
-// Ideology bucket display helpers
-const ECON_LABELS: Record<EconBucket, { label: string; color: string }> = {
-  LEFT: { label: 'Left', color: 'bg-blue-100 text-blue-700' },
-  CENTER: { label: 'Center', color: 'bg-gray-100 text-gray-700' },
-  RIGHT: { label: 'Right', color: 'bg-yellow-100 text-yellow-700' },
+// Ideology bucket display helpers with soft red/blue spectrum
+type IdeologyColorSet = { bg: string; text: string; border: string };
+
+const ECON_LABELS: Record<EconBucket, { label: string; colors: IdeologyColorSet }> = {
+  LEFT: { label: 'Left', colors: SEAT_IDEOLOGY_COLORS.LEFT },
+  CENTER: { label: 'Center', colors: SEAT_IDEOLOGY_COLORS.CENTER },
+  RIGHT: { label: 'Right', colors: SEAT_IDEOLOGY_COLORS.RIGHT },
 };
 
-const SOCIAL_LABELS: Record<SocialBucket, { label: string; color: string }> = {
-  PROG: { label: 'Prog', color: 'bg-purple-100 text-purple-700' },
-  CENTER: { label: 'Center', color: 'bg-gray-100 text-gray-700' },
-  CONS: { label: 'Cons', color: 'bg-red-100 text-red-700' },
+const SOCIAL_LABELS: Record<SocialBucket, { label: string; colors: IdeologyColorSet }> = {
+  PROG: { label: 'Prog', colors: SEAT_IDEOLOGY_COLORS.PROG },
+  CENTER: { label: 'Center', colors: SEAT_IDEOLOGY_COLORS.CENTER },
+  CONS: { label: 'Cons', colors: SEAT_IDEOLOGY_COLORS.CONS },
 };
 
 const STATE_FULL_NAMES: Record<StateCode, string> = {
@@ -132,7 +135,11 @@ export function MySeatsList({ seats, playerId, playerColor }: MySeatsListProps) 
                   <span
                     key={bucket}
                     className="px-1.5 py-0.5 rounded"
-                    style={{ backgroundColor: colors.paper2, color: colors.ink, border: `1px solid ${colors.rule}` }}
+                    style={{
+                      backgroundColor: ECON_LABELS[bucket].colors.bg,
+                      color: ECON_LABELS[bucket].colors.text,
+                      border: `1px solid ${ECON_LABELS[bucket].colors.border}`
+                    }}
                   >
                     {ECON_LABELS[bucket].label}: {ideologySummary.econ[bucket]}
                   </span>
@@ -146,7 +153,11 @@ export function MySeatsList({ seats, playerId, playerColor }: MySeatsListProps) 
                   <span
                     key={bucket}
                     className="px-1.5 py-0.5 rounded"
-                    style={{ backgroundColor: colors.paper2, color: colors.ink, border: `1px solid ${colors.rule}` }}
+                    style={{
+                      backgroundColor: SOCIAL_LABELS[bucket].colors.bg,
+                      color: SOCIAL_LABELS[bucket].colors.text,
+                      border: `1px solid ${SOCIAL_LABELS[bucket].colors.border}`
+                    }}
                   >
                     {SOCIAL_LABELS[bucket].label}: {ideologySummary.social[bucket]}
                   </span>
@@ -238,7 +249,11 @@ export function MySeatsList({ seats, playerId, playerColor }: MySeatsListProps) 
                       <td className="py-1.5 text-center">
                         <span
                           className="px-1.5 py-0.5 rounded text-[10px]"
-                          style={{ backgroundColor: colors.paper2, color: colors.ink, border: `1px solid ${colors.rule}` }}
+                          style={{
+                            backgroundColor: ECON_LABELS[seat.ideology.econ].colors.bg,
+                            color: ECON_LABELS[seat.ideology.econ].colors.text,
+                            border: `1px solid ${ECON_LABELS[seat.ideology.econ].colors.border}`
+                          }}
                         >
                           {ECON_LABELS[seat.ideology.econ].label}
                         </span>
@@ -246,7 +261,11 @@ export function MySeatsList({ seats, playerId, playerColor }: MySeatsListProps) 
                       <td className="py-1.5 text-center">
                         <span
                           className="px-1.5 py-0.5 rounded text-[10px]"
-                          style={{ backgroundColor: colors.paper2, color: colors.ink, border: `1px solid ${colors.rule}` }}
+                          style={{
+                            backgroundColor: SOCIAL_LABELS[seat.ideology.social].colors.bg,
+                            color: SOCIAL_LABELS[seat.ideology.social].colors.text,
+                            border: `1px solid ${SOCIAL_LABELS[seat.ideology.social].colors.border}`
+                          }}
                         >
                           {SOCIAL_LABELS[seat.ideology.social].label}
                         </span>

@@ -7,8 +7,10 @@ import { NegotiationPanel } from './NegotiationPanel';
 import { TargetingModal } from './TargetingModal';
 import { AustraliaMap, AustraliaMapMini } from './AustraliaMap';
 import { MySeatsList } from './MySeatsList';
-import { MessageSquare, Download, Star, Scroll, Zap, TrendingUp, RefreshCw, Users, Target, Sparkles, ChevronRight, AlertCircle, CheckCircle2, Award, AlertTriangle, History, Map, LayoutGrid } from 'lucide-react';
+import { PlayerSymbol } from './PlayerSymbol';
+import { MessageSquare, Download, Star, Scroll, Zap, TrendingUp, RefreshCw, Users, Target, Sparkles, ChevronRight, AlertCircle, CheckCircle2, Award, AlertTriangle, History, Map, LayoutGrid, Trophy } from 'lucide-react';
 import { colors, borders, componentStyles } from '../styles/tokens';
+import { getSocialColor, getEconomicColor, SOCIAL_COLORS, ECONOMIC_COLORS } from '../constants/ideologyColors';
 
 interface PCapChangeRecord { playerId: string; pCapDelta: number; seatDelta: number; reason: string; changeType: 'award' | 'penalty'; timestamp: number; }
 
@@ -291,40 +293,57 @@ export function GameBoard(props: GameBoardProps) {
             {!showWormGraph && gameState.history.length > 0 && <div className="rounded p-3" style={{ backgroundColor: colors.paper1, border: borders.outer }}><div className="flex justify-between items-center mb-2"><h4 className="text-sm font-semibold" style={{ color: colors.ink }}>Trend</h4><button onClick={() => setShowWormGraph(true)} className="text-xs hover:underline" style={{ color: colors.inkSecondary }}>Expand</button></div><WormGraphMini history={gameState.history} players={gameState.players} totalSeats={gameState.totalSeats} /></div>}
             <RoundHistoryPanel history={gameState.history} players={gameState.players} />
             <div className="rounded p-4" style={{ backgroundColor: colors.paper1, border: borders.outer }}>
-              <h3 className="font-semibold mb-3" style={{ color: colors.ink }}>Players</h3>
+              <h3 className="font-semibold mb-3 flex items-center gap-2" style={{ color: colors.ink }}>
+                <Trophy className="w-4 h-4" /> Scoreboard
+              </h3>
               <div className="space-y-2">
-                {gameState.players.map(player => {
+                {[...gameState.players]
+                  .sort((a, b) => getPlayerPCap(b) - getPlayerPCap(a) || b.seats - a.seats)
+                  .map((player, rank) => {
                   const isCurrent = player.id === currentTurnPlayerId, isSpeaker = player.id === speakerId, isMe = player.id === playerId;
                   const ideology = getIdeologyLabel(player.ideologyProfile);
+                  const pCap = getPlayerPCap(player);
+                  const isLeader = rank === 0;
                   return (
                     <div key={player.id} className="p-2 rounded" style={{
                       backgroundColor: isCurrent ? colors.paper3 : colors.paper2,
-                      border: isMe ? `2px solid ${player.color}` : borders.inner
+                      border: isMe ? `2px solid ${player.color}` : isLeader ? `2px solid ${colors.ink}` : borders.inner
                     }}>
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <div className="w-1 h-8 rounded-full" style={{ backgroundColor: player.color }} />
-                          <div className="w-4 h-4 rounded-full" style={{ backgroundColor: player.color }} />
-                          <div className="flex flex-col"><span className="font-medium text-sm" style={{ color: colors.ink }}>{player.name}</span><span className="text-xs" style={{ color: colors.inkSecondary }}>{player.playerName}</span></div>
+                          <span className="w-4 text-xs font-bold text-center" style={{ color: colors.inkSecondary }}>{rank + 1}</span>
+                          <PlayerSymbol symbolId={player.symbolId || 'landmark'} color={player.color} size="sm" />
+                          <div className="flex flex-col">
+                            <span className="font-medium text-sm" style={{ color: colors.ink }}>{player.name}</span>
+                            <span className="text-xs" style={{ color: colors.inkSecondary }}>{player.playerName}</span>
+                          </div>
                           {isSpeaker && <Star className="w-4 h-4" style={{ color: colors.warning }} />}
+                          {isLeader && <Trophy className="w-3 h-3" style={{ color: '#D4AF37' }} />}
                         </div>
-                        <div className="text-right"><div className="text-sm font-bold" style={{ color: colors.ink }}>{player.seats}</div><div className="text-xs" style={{ color: colors.inkSecondary }}>{getPlayerPCap(player)} PCap</div></div>
+                        <div className="text-right">
+                          <div className="text-sm font-bold" style={{ color: colors.ink }}>{pCap} <span className="font-normal text-xs" style={{ color: colors.inkSecondary }}>PCap</span></div>
+                          <div className="text-xs" style={{ color: colors.inkSecondary }}>{player.seats} seats</div>
+                        </div>
                       </div>
                       {gameConfig.ideologyMode === 'derived' && (
                         <div className="mt-2 pt-2" style={{ borderTop: `1px solid ${colors.paper3}` }}>
                           <div className="grid grid-cols-2 gap-1 text-xs">
                             <div className="flex items-center gap-1">
-                              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: ideology.social === 'Progressive' ? '#3b82f6' : ideology.social === 'Conservative' ? '#ef4444' : colors.inkSecondary }} />
+                              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: getSocialColor(player.ideologyProfile.socialScore) }} />
                               <span style={{ color: colors.inkSecondary }}>{ideology.socialStrength === 'Unknown' ? '?' : ideology.social}</span>
                             </div>
                             <div className="flex items-center gap-1">
-                              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: ideology.economic === 'Interventionist' ? '#22c55e' : ideology.economic === 'Market' ? '#eab308' : colors.inkSecondary }} />
+                              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: getEconomicColor(player.ideologyProfile.economicScore) }} />
                               <span style={{ color: colors.inkSecondary }}>{ideology.economicStrength === 'Unknown' ? '?' : ideology.economic}</span>
                             </div>
                           </div>
                           <div className="mt-1 flex gap-1">
-                            <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: colors.paper3 }}><div className="h-full" style={{ width: `${player.ideologyProfile.socialScore}%`, background: 'linear-gradient(to right, #ef4444, #3b82f6)' }} /></div>
-                            <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: colors.paper3 }}><div className="h-full" style={{ width: `${player.ideologyProfile.economicScore}%`, background: 'linear-gradient(to right, #eab308, #22c55e)' }} /></div>
+                            <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: colors.paper3 }}>
+                              <div className="h-full" style={{ width: `${player.ideologyProfile.socialScore}%`, background: `linear-gradient(to right, ${SOCIAL_COLORS.conservative}, ${SOCIAL_COLORS.progressive})` }} />
+                            </div>
+                            <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: colors.paper3 }}>
+                              <div className="h-full" style={{ width: `${player.ideologyProfile.economicScore}%`, background: `linear-gradient(to right, ${ECONOMIC_COLORS.market}, ${ECONOMIC_COLORS.interventionist})` }} />
+                            </div>
                           </div>
                         </div>
                       )}
