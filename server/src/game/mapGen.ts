@@ -103,16 +103,16 @@ interface BoundingBox {
 
 // State bounding boxes aligned with svg-maps/australia geographic paths
 // viewBox: 6.5 4.8 273 252.8 - coordinates are in 0-100 system
-// These bounds ensure seats are placed within the actual state boundaries
+// Tightened bounds to stay well within actual state shapes (conservative)
 const STATE_BOUNDS: Record<StateCode, BoundingBox> = {
-  WA:  { x: 10, y: 15, width: 28, height: 55 },  // Western third
-  NT:  { x: 42, y: 8,  width: 20, height: 34 },  // Top center (north)
-  SA:  { x: 42, y: 48, width: 26, height: 30 },  // Center-south
-  QLD: { x: 65, y: 5,  width: 33, height: 43 },  // Northeast (upper right)
-  NSW: { x: 70, y: 50, width: 28, height: 26 },  // Southeast coast
-  VIC: { x: 70, y: 74, width: 20, height: 10 },  // Bottom corner (southeast tip)
-  TAS: { x: 78, y: 88, width: 10, height: 10 },  // Island (below mainland)
-  ACT: { x: 87, y: 71, width: 4,  height: 4 },   // Small region within NSW
+  WA:  { x: 12, y: 18, width: 24, height: 48 },  // Western third - tighter
+  NT:  { x: 44, y: 10, width: 16, height: 30 },  // Top center (north) - tighter
+  SA:  { x: 44, y: 50, width: 22, height: 26 },  // Center-south - tighter
+  QLD: { x: 67, y: 8,  width: 26, height: 38 },  // Northeast - much tighter on right edge
+  NSW: { x: 72, y: 52, width: 22, height: 22 },  // Southeast coast - tighter
+  VIC: { x: 72, y: 75, width: 16, height: 8 },   // Bottom corner - tighter
+  TAS: { x: 79, y: 89, width: 8,  height: 8 },   // Island - tighter
+  ACT: { x: 88, y: 72, width: 2,  height: 2 },   // Small region - very tight
 };
 
 // State ideology biases (subtle flavor)

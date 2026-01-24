@@ -300,7 +300,11 @@ export function GameBoard(props: GameBoardProps) {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-1 h-10 rounded-full" style={{ backgroundColor: myColor }} />
-              <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-lg" style={{ backgroundColor: myColor, border: borders.outer }}>{currentPlayer?.name.charAt(0)}</div>
+              <PlayerSymbol
+                symbolId={currentPlayer?.symbolId || 'landmark'}
+                color={myColor}
+                size="lg"
+              />
               <div><div className="font-bold" style={{ color: colors.ink }}>{currentPlayer?.name}</div><div className="text-xs" style={{ color: colors.inkSecondary }}>{currentPlayer?.playerName} &bull; {currentPlayer?.seats} seats &bull; {currentPlayer ? getPlayerPCap(currentPlayer) : 0} PCap</div></div>
             </div>
             <div className="flex-1 flex justify-center">
