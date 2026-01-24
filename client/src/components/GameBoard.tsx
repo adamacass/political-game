@@ -119,6 +119,70 @@ function PCapToast({ changes, players }: { changes: PCapChangeRecord[]; players:
   );
 }
 
+// Seat capture notification toast - shows with party color hue
+interface SeatCaptureEvent {
+  seatName: string;
+  toPlayerId: string;
+  fromPlayerId: string | null;
+  timestamp: number;
+}
+
+function SeatCaptureToast({ captures, players }: { captures: SeatCaptureEvent[]; players: Player[] }) {
+  const [visibleCaptures, setVisibleCaptures] = useState<SeatCaptureEvent[]>([]);
+
+  useEffect(() => {
+    if (captures.length > 0) {
+      setVisibleCaptures(captures.slice(-3)); // Show last 3 captures
+      const t = setTimeout(() => setVisibleCaptures([]), 4000);
+      return () => clearTimeout(t);
+    }
+  }, [captures]);
+
+  if (visibleCaptures.length === 0) return null;
+
+  return (
+    <div className="fixed top-36 right-4 z-50 space-y-2 max-w-sm">
+      {visibleCaptures.map((capture, i) => {
+        const winner = players.find(p => p.id === capture.toPlayerId);
+        const loser = capture.fromPlayerId ? players.find(p => p.id === capture.fromPlayerId) : null;
+
+        return (
+          <div
+            key={`${capture.seatName}-${capture.timestamp}-${i}`}
+            className="p-3 rounded animate-slide-in"
+            style={{
+              backgroundColor: winner?.color ? `${winner.color}15` : colors.paper1, // Party color with low opacity
+              border: borders.outer,
+              borderLeftWidth: '4px',
+              borderLeftColor: winner?.color || colors.ink
+            }}
+          >
+            <div className="flex items-center gap-2">
+              <Map className="w-5 h-5" style={{ color: winner?.color || colors.ink }} />
+              <div className="flex-1">
+                <div className="font-medium text-sm" style={{ color: colors.ink }}>
+                  {winner?.name || 'Unknown'} captured <span className="font-bold">{capture.seatName}</span>
+                </div>
+                {loser && (
+                  <div className="text-xs" style={{ color: colors.inkSecondary }}>
+                    Taken from {loser.name}
+                  </div>
+                )}
+              </div>
+              <div
+                className="w-6 h-6 rounded-full flex items-center justify-center"
+                style={{ backgroundColor: winner?.color, border: `1px solid ${colors.rule}` }}
+              >
+                <CheckCircle2 className="w-4 h-4" style={{ color: colors.paper1 }} />
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function RoundHistoryPanel({ history, players }: { history: GameState['history']; players: Player[] }) {
   const [expanded, setExpanded] = useState(false);
   if (history.length === 0) return null;
@@ -207,9 +271,26 @@ export function GameBoard(props: GameBoardProps) {
   const hasCampaigned = gameState.playersCampaigned.includes(playerId);
   const roundPCapChanges = (gameState as any).roundPCapChanges || [];
 
+  // Extract recent seat captures from event log for notifications
+  const recentSeatCaptures = useMemo(() => {
+    const now = Date.now();
+    const recentThreshold = 10000; // 10 seconds
+    return gameState.eventLog
+      .filter((e): e is Extract<typeof e, { type: 'seat_captured' }> =>
+        e.type === 'seat_captured' && (now - e.timestamp) < recentThreshold
+      )
+      .map(e => ({
+        seatName: e.seatName,
+        toPlayerId: e.toPlayerId,
+        fromPlayerId: e.fromPlayerId,
+        timestamp: e.timestamp
+      }));
+  }, [gameState.eventLog]);
+
   return (
     <div className="min-h-screen" style={{ backgroundColor: colors.paper2 }}>
       <PCapToast changes={roundPCapChanges} players={gameState.players} />
+      <SeatCaptureToast captures={recentSeatCaptures} players={gameState.players} />
 
       {/* Top header bar - ballot paper style with party color stripe */}
       <div className="sticky top-0 z-40" style={{ backgroundColor: colors.paper1, borderBottom: borders.outer }}>
