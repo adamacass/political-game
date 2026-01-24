@@ -150,8 +150,8 @@ export function Lobby({
     );
   }
 
-  // Create/Join form
-  if (!gameState) {
+  // Create/Join form - show if no game state or no room joined yet
+  if (!gameState || !gameState.roomId) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: colors.paper2 }}>
         <div className="rounded-lg p-8 w-full max-w-md" style={{ backgroundColor: colors.paper1, border: `2px solid ${colors.rule}` }}>
