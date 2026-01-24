@@ -296,11 +296,17 @@ function generatePosition(
   }
 
   // If we couldn't find a non-overlapping position, use jittered position
+  // with clamping to ensure we stay within bounds
   const x = bounds.x + rng.random() * bounds.width;
   const y = bounds.y + rng.random() * bounds.height;
   const jitterX = (rng.random() - 0.5) * 1.5;
   const jitterY = (rng.random() - 0.5) * 1.5;
-  return { x: x + jitterX, y: y + jitterY };
+
+  // Clamp to bounds to prevent seats from appearing outside state boundaries
+  const finalX = Math.max(bounds.x, Math.min(bounds.x + bounds.width, x + jitterX));
+  const finalY = Math.max(bounds.y, Math.min(bounds.y + bounds.height, y + jitterY));
+
+  return { x: finalX, y: finalY };
 }
 
 function generateIdeology(state: StateCode, rng: SeededRNG): SeatIdeology {

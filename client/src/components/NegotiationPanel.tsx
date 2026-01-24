@@ -346,6 +346,13 @@ function SelectableDetailedCard({ handCard, selected, onClick, showFull }: { han
         {selected && <Check className="w-3 h-3" style={{ color: colors.ink }} />}
       </div>
 
+      {/* Artwork box */}
+      {card.artworkUrl && (
+        <div className="mt-1 mb-1 rounded overflow-hidden" style={{ width: '100%', height: '40px', border: `1px solid ${colors.rule}` }}>
+          <img src={card.artworkUrl} alt={card.name} className="w-full h-full object-cover" />
+        </div>
+      )}
+
       <div className="font-medium mt-1" style={{ color: colors.ink }}>{card.name}</div>
       {isCampaign && <div className="font-medium" style={{ color: colors.success }}>+{(card as CampaignCard).seatDelta}</div>}
 
@@ -375,6 +382,13 @@ function FullCardDisplay({ handCard }: { handCard: HandCard }) {
         </span>
         {isNew && <span className="text-xs font-medium" style={{ color: colors.warning }}>NEW</span>}
       </div>
+
+      {/* Artwork box */}
+      {card.artworkUrl && (
+        <div className="mb-2 rounded overflow-hidden" style={{ width: '100%', height: '60px', border: `1px solid ${colors.rule}` }}>
+          <img src={card.artworkUrl} alt={card.name} className="w-full h-full object-cover" />
+        </div>
+      )}
 
       <div className="font-medium text-sm" style={{ color: colors.ink }}>{card.name}</div>
       <div className="text-xs mt-0.5" style={{ color: colors.inkSecondary }}>{card.description}</div>

@@ -632,7 +632,8 @@ function CardDisplayFull({ handCard, selected, onClick, activeIssue, playerProfi
   const stanceTable = 'stanceTable' in card ? card.stanceTable : null;
 
   // Determine if card should be blurred based on current phase
-  const shouldBlur = currentPhase === 'campaign' && !isCampaign || currentPhase === 'policy_proposal' && isCampaign;
+  const policyPhases = ['policy_proposal', 'policy_vote', 'policy_resolution'];
+  const shouldBlur = (currentPhase === 'campaign' && !isCampaign) || (policyPhases.includes(currentPhase) && isCampaign);
 
   return (
     <div onClick={onClick} className={`relative p-3 rounded cursor-pointer transition-all ${shouldBlur ? 'opacity-50' : ''}`} style={{
