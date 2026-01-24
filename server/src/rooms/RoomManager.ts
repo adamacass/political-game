@@ -44,18 +44,19 @@ class RoomManager {
 
   // Join room - returns { success, playerId?, error? }
   joinRoom(
-    roomId: string, 
-    socketId: string, 
-    playerName: string, 
-    partyName: string, 
+    roomId: string,
+    socketId: string,
+    playerName: string,
+    partyName: string,
     colorId?: PartyColorId,
+    symbolId?: string,
     socialIdeology?: SocialIdeology,
     economicIdeology?: EconomicIdeology
   ): JoinResult {
     const normalizedRoomId = roomId.toUpperCase();
     console.log(`[RoomManager] joinRoom called: roomId=${normalizedRoomId}, socketId=${socketId}`);
     console.log(`[RoomManager] Available rooms: ${Array.from(this.rooms.keys()).join(', ')}`);
-    
+
     const room = this.rooms.get(normalizedRoomId);
     if (!room) {
       console.log(`[RoomManager] Room ${normalizedRoomId} not found in ${this.rooms.size} rooms`);
@@ -64,10 +65,11 @@ class RoomManager {
 
     const playerId = uuidv4();
     const player = room.engine.addPlayer(
-      playerId, 
-      playerName, 
-      partyName, 
+      playerId,
+      playerName,
+      partyName,
       colorId,
+      symbolId,
       socialIdeology,
       economicIdeology
     );

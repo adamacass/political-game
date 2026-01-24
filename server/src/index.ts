@@ -69,10 +69,10 @@ io.on('connection', (socket) => {
   };
 
   // Create room
-  socket.on('create_room', ({ playerName, partyName, colorId, configOverrides, socialIdeology, economicIdeology }) => {
+  socket.on('create_room', ({ playerName, partyName, colorId, symbolId, configOverrides, socialIdeology, economicIdeology }) => {
     try {
       const roomId = roomManager.createRoom(configOverrides);
-      const result = roomManager.joinRoom(roomId, socket.id, playerName, partyName, colorId, socialIdeology, economicIdeology);
+      const result = roomManager.joinRoom(roomId, socket.id, playerName, partyName, colorId, symbolId, socialIdeology, economicIdeology);
       
       if (result.success && result.playerId) {
         currentRoomId = roomId;
@@ -92,9 +92,9 @@ io.on('connection', (socket) => {
   });
 
   // Join room
-  socket.on('join_room', ({ roomId, playerName, partyName, colorId, socialIdeology, economicIdeology }) => {
+  socket.on('join_room', ({ roomId, playerName, partyName, colorId, symbolId, socialIdeology, economicIdeology }) => {
     try {
-      const result = roomManager.joinRoom(roomId, socket.id, playerName, partyName, colorId, socialIdeology, economicIdeology);
+      const result = roomManager.joinRoom(roomId, socket.id, playerName, partyName, colorId, symbolId, socialIdeology, economicIdeology);
       
       if (result.success && result.playerId) {
         currentRoomId = roomId.toUpperCase();
