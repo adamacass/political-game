@@ -19,50 +19,53 @@ interface SeatLayoutProps {
 }
 
 export function SeatLayout({ players, totalSeats, speakerId }: SeatLayoutProps) {
-  // Generate hemicycle layout
+  // Generate hemicycle layout - left to right distribution
   const seatPositions = useMemo(() => {
-    const positions: { x: number; y: number; playerId: string | null; color: string }[] = [];
     const rows = 4;
     const centerX = 150;
     const centerY = 130;
-    
-    let seatIndex = 0;
-    const seatsPerPlayer: Record<string, number> = {};
-    
-    players.forEach(p => {
-      seatsPerPlayer[p.id] = p.seats;
-    });
-    
-    // Distribute seats in arc rows
+
+    // First, generate all seat positions with their angles
+    const allPositions: { x: number; y: number; angle: number }[] = [];
+
     for (let row = 0; row < rows; row++) {
       const radius = 50 + row * 25;
       const seatsInRow = Math.floor(totalSeats / rows) + (row < totalSeats % rows ? 1 : 0);
       const angleStep = Math.PI / (seatsInRow + 1);
-      
-      for (let i = 0; i < seatsInRow && seatIndex < totalSeats; i++) {
+
+      for (let i = 0; i < seatsInRow && allPositions.length < totalSeats; i++) {
         const angle = Math.PI - angleStep * (i + 1);
         const x = centerX + radius * Math.cos(angle);
         const y = centerY - radius * Math.sin(angle);
-        
-        // Find which player owns this seat
-        let assignedPlayer: string | null = null;
-        let assignedColor = '#e5e7eb';
-        
-        let remainingSeats = seatIndex;
-        for (const player of players) {
-          if (remainingSeats < player.seats) {
-            assignedPlayer = player.id;
-            assignedColor = player.color;
-            break;
-          }
-          remainingSeats -= player.seats;
-        }
-        
-        positions.push({ x, y, playerId: assignedPlayer, color: assignedColor });
-        seatIndex++;
+        allPositions.push({ x, y, angle });
       }
     }
-    
+
+    // Sort positions by angle (descending = left to right in hemicycle)
+    allPositions.sort((a, b) => b.angle - a.angle);
+
+    // Assign seats left-to-right to players
+    const positions: { x: number; y: number; playerId: string | null; color: string }[] = [];
+    let seatIndex = 0;
+
+    for (const pos of allPositions) {
+      let assignedPlayer: string | null = null;
+      let assignedColor = '#e5e7eb';
+
+      let remainingSeats = seatIndex;
+      for (const player of players) {
+        if (remainingSeats < player.seats) {
+          assignedPlayer = player.id;
+          assignedColor = player.color;
+          break;
+        }
+        remainingSeats -= player.seats;
+      }
+
+      positions.push({ x: pos.x, y: pos.y, playerId: assignedPlayer, color: assignedColor });
+      seatIndex++;
+    }
+
     return positions;
   }, [players, totalSeats]);
 

@@ -88,16 +88,16 @@ const STATE_PATHS: Record<StateCode, { paths: string[]; labelX: number; labelY: 
 };
 
 // State bounding boxes for seat placement (in 0-100 coordinate system)
-// These map to the actual SVG coordinate space
+// Tightened bounds to stay well within actual state shapes (conservative)
 const STATE_SEAT_BOUNDS: Record<StateCode, { minX: number; maxX: number; minY: number; maxY: number }> = {
-  WA:  { minX: 10, maxX: 38, minY: 15, maxY: 70 },
-  NT:  { minX: 42, maxX: 62, minY: 8, maxY: 42 },
-  SA:  { minX: 42, maxX: 68, minY: 48, maxY: 78 },
-  QLD: { minX: 65, maxX: 98, minY: 5, maxY: 48 },
-  NSW: { minX: 70, maxX: 98, minY: 50, maxY: 76 },
-  VIC: { minX: 70, maxX: 90, minY: 74, maxY: 84 },
-  TAS: { minX: 78, maxX: 88, minY: 88, maxY: 98 },
-  ACT: { minX: 87, maxX: 91, minY: 71, maxY: 75 },
+  WA:  { minX: 12, maxX: 36, minY: 18, maxY: 66 },
+  NT:  { minX: 44, maxX: 60, minY: 10, maxY: 40 },
+  SA:  { minX: 44, maxX: 66, minY: 50, maxY: 76 },
+  QLD: { minX: 67, maxX: 93, minY: 8,  maxY: 46 },
+  NSW: { minX: 72, maxX: 94, minY: 52, maxY: 74 },
+  VIC: { minX: 72, maxX: 88, minY: 75, maxY: 83 },
+  TAS: { minX: 79, maxX: 87, minY: 89, maxY: 97 },
+  ACT: { minX: 88, maxX: 90, minY: 72, maxY: 74 },
 };
 
 interface AustraliaMapProps {
