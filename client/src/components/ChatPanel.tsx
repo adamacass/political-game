@@ -68,7 +68,7 @@ export function ChatPanel({
   };
 
   return (
-    <div className="rounded-lg flex flex-col h-full" style={{ backgroundColor: colors.paper1, border: `2px solid ${colors.rule}` }}>
+    <div className="ballot-paper rounded-lg flex flex-col h-full" style={{ backgroundColor: colors.paper1, border: `2px solid ${colors.rule}` }}>
       {/* Header */}
       <div className="p-3 flex items-center justify-between" style={{ borderBottom: `1px solid ${colors.rule}` }}>
         <h3 className="font-semibold" style={{ color: colors.ink }}>Chat</h3>

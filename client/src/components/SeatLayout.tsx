@@ -72,7 +72,7 @@ export function SeatLayout({ players, totalSeats, speakerId }: SeatLayoutProps) 
   const speaker = players.find(p => p.id === speakerId);
 
   return (
-    <div className="rounded-lg p-4" style={{ backgroundColor: colors.paper1, border: `2px solid ${colors.rule}` }}>
+    <div className="ballot-paper rounded-lg p-4" style={{ backgroundColor: colors.paper1, border: `2px solid ${colors.rule}` }}>
       <div className="flex items-center justify-between mb-2">
         <h3 className="font-semibold" style={{ color: colors.ink }}>Parliament</h3>
         {speaker && (

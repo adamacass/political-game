@@ -94,6 +94,15 @@ function App() {
       console.log('Player reconnected:', playerId);
     });
 
+    newSocket.on('session_restored', ({ success, roomId }) => {
+      if (success) {
+        console.log('Session successfully restored for room:', roomId);
+      } else {
+        console.warn('Failed to restore session for room:', roomId);
+        setError('Could not restore saved game session');
+      }
+    });
+
     newSocket.on('game_exported', ({ eventLog, config, seed, chatLog, history }) => {
       const exportData = {
         exportedAt: new Date().toISOString(),
@@ -119,6 +128,57 @@ function App() {
       newSocket.close();
     };
   }, []);
+
+  // Auto-save to localStorage every 30 seconds
+  useEffect(() => {
+    if (!gameState || !gameState.roomId || gameState.phase === 'waiting') return;
+
+    const saveInterval = setInterval(() => {
+      try {
+        const saveData = {
+          gameState,
+          gameConfig,
+          playerId,
+          timestamp: Date.now(),
+          version: '1.0'
+        };
+        localStorage.setItem(`game_${gameState.roomId}`, JSON.stringify(saveData));
+        console.log('Game auto-saved to localStorage');
+      } catch (err) {
+        console.error('Failed to auto-save game:', err);
+      }
+    }, 30000); // Every 30 seconds
+
+    return () => clearInterval(saveInterval);
+  }, [gameState, gameConfig, playerId]);
+
+  // Restore from localStorage on mount
+  useEffect(() => {
+    if (!socket) return;
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const restoreRoomId = urlParams.get('restore');
+
+    if (restoreRoomId) {
+      try {
+        const savedData = localStorage.getItem(`game_${restoreRoomId}`);
+        if (savedData) {
+          const parsed = JSON.parse(savedData);
+          console.log('Attempting to restore session:', restoreRoomId);
+
+          // Emit restore_session event
+          socket.emit('restore_session', {
+            roomId: restoreRoomId,
+            playerId: parsed.playerId
+          });
+        } else {
+          console.warn('No saved game found for room:', restoreRoomId);
+        }
+      } catch (err) {
+        console.error('Failed to restore saved game:', err);
+      }
+    }
+  }, [socket]);
 
   // Actions
   const createRoom = useCallback((

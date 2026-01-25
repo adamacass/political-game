@@ -116,6 +116,53 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Restore session
+  socket.on('restore_session', ({ roomId, playerId }) => {
+    try {
+      const room = roomManager.getRoom(roomId);
+      if (!room) {
+        socket.emit('session_restored', { success: false, roomId });
+        socket.emit('error', { message: 'Room not found' });
+        return;
+      }
+
+      const state = roomManager.getState(roomId);
+      if (!state) {
+        socket.emit('session_restored', { success: false, roomId });
+        socket.emit('error', { message: 'Room state not found' });
+        return;
+      }
+
+      const player = state.players.find(p => p.id === playerId);
+      if (!player) {
+        socket.emit('session_restored', { success: false, roomId });
+        socket.emit('error', { message: 'Player not found in this room' });
+        return;
+      }
+
+      // Reconnect the player
+      currentRoomId = roomId.toUpperCase();
+      currentPlayerId = playerId;
+      socket.join(currentRoomId);
+
+      socket.emit('session_restored', { success: true, roomId: currentRoomId });
+      socket.emit('room_joined', { roomId: currentRoomId, playerId });
+
+      // Send available colors
+      const availableColors = roomManager.getAvailableColors(currentRoomId);
+      socket.emit('available_colors', { colors: availableColors });
+
+      // Broadcast state to reconnected player
+      broadcastState(currentRoomId);
+
+      console.log(`Session restored for player ${playerId} in room ${currentRoomId}`);
+    } catch (error) {
+      console.error('Error restoring session:', error);
+      socket.emit('session_restored', { success: false, roomId });
+      socket.emit('error', { message: 'Server error restoring session' });
+    }
+  });
+
   // Start game
   socket.on('start_game', () => {
     if (!currentRoomId) {

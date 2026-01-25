@@ -12,6 +12,7 @@ import {
   generateSeatMap, computePlayerSeatCounts, getEligibleSeatsForCapture,
   transferSeat, deriveIdeologyFromCard, getPlayerSeats, computeStateControl, compareStateControl,
 } from './mapGen';
+import { GameLogger } from './GameLogger';
 
 const ISSUES: Issue[] = ['economy', 'cost_of_living', 'housing', 'climate', 'security'];
 
@@ -19,11 +20,13 @@ export class GameEngine {
   private state: GameState;
   private config: GameConfig;
   private rng: SeededRNG;
+  private logger: GameLogger;
 
   constructor(roomId: string, config: Partial<GameConfig> = {}, seed?: string) {
     this.config = mergeConfig(config);
     this.rng = new SeededRNG(seed);
     this.state = this.createInitialState(roomId);
+    this.logger = new GameLogger(roomId);
   }
 
   private createInitialState(roomId: string): GameState {
@@ -162,6 +165,10 @@ export class GameEngine {
     }
     this.logEvent({ type: 'game_started', timestamp: Date.now(), seed: this.rng.getSeed(), config: JSON.stringify(this.config) });
     this.logEvent({ type: 'round_started', timestamp: Date.now(), round: this.state.round, activeIssue: this.state.activeIssue });
+
+    // GameLogger: Log game start
+    this.logger.logGameStart(this.state.players.map(p => ({ playerId: p.id, playerName: p.playerName })));
+
     return true;
   }
 
@@ -413,6 +420,18 @@ export class GameEngine {
 
     // Transfer the seat
     transferSeat(this.state.seats, seatId, playerId);
+
+    // GameLogger: Log seat change
+    const player = this.state.players.find(p => p.id === playerId);
+    this.logger.logSeatChange(
+      this.state.round,
+      this.state.phase,
+      seatId,
+      seat.name,
+      previousOwner,
+      playerId,
+      'seat_capture'
+    );
 
     // Log the seat capture event
     this.logEvent({
@@ -717,9 +736,14 @@ export class GameEngine {
   private awardPCap(playerId: string, pCapType: PCapCard['type'], value: number, reason: string): void {
     const player = this.state.players.find(p => p.id === playerId); if (!player) return;
     const names: Record<PCapCard['type'], string> = { mandate: 'Electoral Mandate', prime_ministership: 'Prime Ministership', landmark_reform: 'Landmark Reform', policy_win: 'Policy Victory', ideological_credibility: 'Ideological Credibility', state_control: 'State Control' };
+    const oldTotal = player.pCapCards.reduce((s, c) => s + c.value, 0);
     player.pCapCards.push({ type: pCapType, value, name: names[pCapType], source: reason, roundAwarded: this.state.round });
+    const newTotal = oldTotal + value;
     this.logPCapChange(playerId, value, 0, reason, 'award');
     this.logEvent({ type: 'pcap_awarded', timestamp: Date.now(), playerId, pCapType, value, reason });
+
+    // GameLogger: Log PCap change
+    this.logger.logPCapChange(this.state.round, this.state.phase, playerId, player.playerName, value, newTotal, reason);
   }
 
   private logPCapChange(playerId: string, pCapDelta: number, seatDelta: number, reason: string, changeType: 'award' | 'penalty'): void {
@@ -758,6 +782,17 @@ export class GameEngine {
 
   private advanceToNextRound(): void {
     this.createHistorySnapshot();
+
+    // GameLogger: Log round end with player standings
+    const playerStandings = this.state.players.map(p => ({
+      playerId: p.id,
+      playerName: p.playerName,
+      seats: p.seats,
+      pCap: p.pCapCards.reduce((s, c) => s + c.value, 0),
+      totalPCapEarned: p.pCapCards.reduce((s, c) => s + c.value, 0)
+    }));
+    this.logger.logRoundEnd(this.state.round, playerStandings);
+
     const decksEmpty = this.state.campaignDeck.length === 0 && this.state.campaignDiscard.length === 0 && this.state.policyDeck.length === 0 && this.state.policyDiscard.length === 0;
     const maxRoundsReached = this.config.maxRounds !== null && this.state.round >= this.config.maxRounds;
     if (decksEmpty || maxRoundsReached) { this.endGame(); return; }
@@ -778,6 +813,17 @@ export class GameEngine {
     if (winners.length === 1) this.state.winner = winners[0][0];
     else { const tied = winners.map(([id]) => this.state.players.find(p => p.id === id)!); const maxSeats = Math.max(...tied.map(p => p.seats)); this.state.winner = tied.find(p => p.seats === maxSeats)?.id || winners[0][0]; }
     this.logEvent({ type: 'game_ended', timestamp: Date.now(), winner: this.state.winner, scores });
+
+    // GameLogger: Log game end
+    const winnerPlayer = this.state.players.find(p => p.id === this.state.winner);
+    if (winnerPlayer) {
+      this.logger.logGameEnd(this.state.round, {
+        playerId: winnerPlayer.id,
+        playerName: winnerPlayer.playerName,
+        seats: winnerPlayer.seats,
+        pCap: scores[winnerPlayer.id]
+      });
+    }
   }
 
   private applySeatChange(playerId: string, delta: number, reason: string): void {
@@ -894,4 +940,10 @@ export class GameEngine {
   private logEvent(event: GameEvent): void { this.state.eventLog.push(event); }
   getEventLog(): GameEvent[] { return [...this.state.eventLog]; }
   updateConfig(newConfig: Partial<GameConfig>): void { this.config = mergeConfig({ ...this.config, ...newConfig }); }
+
+  // GameLogger export methods
+  getGameLog() { return this.logger.export(); }
+  getGameLogJSON(): string { return this.logger.exportJSON(); }
+  getGameLogCSV(): string { return this.logger.exportCSV(); }
+  getGameLogSummary() { return this.logger.getSummary(); }
 }

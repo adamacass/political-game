@@ -54,7 +54,7 @@ export function MySeatsList({ seats, playerId, playerColor }: MySeatsListProps) 
   }, [seats, playerId]);
 
   return (
-    <div className="rounded-lg p-4" style={{ backgroundColor: colors.paper1, border: `2px solid ${colors.rule}` }}>
+    <div className="ballot-paper rounded-lg p-4" style={{ backgroundColor: colors.paper1, border: `2px solid ${colors.rule}` }}>
       {/* Header */}
       <div className="flex items-center gap-2 mb-3" style={{ borderLeft: `4px solid ${playerColor}`, paddingLeft: '8px' }}>
         <MapPin className="w-4 h-4" style={{ color: playerColor }} />
