@@ -141,21 +141,22 @@ io.on('connection', (socket) => {
       }
 
       // Reconnect the player
-      currentRoomId = roomId.toUpperCase();
+      const normalizedRoomId = roomId.toUpperCase();
+      currentRoomId = normalizedRoomId;
       currentPlayerId = playerId;
-      socket.join(currentRoomId);
+      socket.join(normalizedRoomId);
 
-      socket.emit('session_restored', { success: true, roomId: currentRoomId });
-      socket.emit('room_joined', { roomId: currentRoomId, playerId });
+      socket.emit('session_restored', { success: true, roomId: normalizedRoomId });
+      socket.emit('room_joined', { roomId: normalizedRoomId, playerId });
 
       // Send available colors
-      const availableColors = roomManager.getAvailableColors(currentRoomId);
+      const availableColors = roomManager.getAvailableColors(normalizedRoomId);
       socket.emit('available_colors', { colors: availableColors });
 
       // Broadcast state to reconnected player
-      broadcastState(currentRoomId);
+      broadcastState(normalizedRoomId);
 
-      console.log(`Session restored for player ${playerId} in room ${currentRoomId}`);
+      console.log(`Session restored for player ${playerId} in room ${normalizedRoomId}`);
     } catch (error) {
       console.error('Error restoring session:', error);
       socket.emit('session_restored', { success: false, roomId });
