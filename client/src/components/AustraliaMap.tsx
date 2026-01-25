@@ -179,7 +179,7 @@ export function AustraliaMap({
   };
 
   return (
-    <div className="relative rounded-lg p-4" style={{ backgroundColor: colors.paper1, border: `2px solid ${colors.rule}` }}>
+    <div className="relative ballot-paper rounded-lg p-4" style={{ backgroundColor: colors.paper1, border: `2px solid ${colors.rule}` }}>
       <div className="flex items-center justify-between mb-2">
         <h3 className="font-semibold flex items-center gap-2" style={{ color: colors.ink }}>
           <MapPin className="w-4 h-4" />

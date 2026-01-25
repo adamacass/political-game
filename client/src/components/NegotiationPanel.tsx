@@ -83,7 +83,7 @@ export function NegotiationPanel({
   const targetPlayer = selectedPlayer ? gameState.players.find(p => p.id === selectedPlayer) : null;
 
   return (
-    <div className="rounded-lg p-6" style={{ backgroundColor: colors.paper1, border: `2px solid ${colors.rule}` }}>
+    <div className="ballot-paper rounded-lg p-6" style={{ backgroundColor: colors.paper1, border: `2px solid ${colors.rule}` }}>
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold flex items-center gap-2" style={{ color: colors.ink }}>
           <Users className="w-5 h-5" />

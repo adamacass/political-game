@@ -68,6 +68,13 @@ export function Lobby({
   const [economicIdeology, setEconomicIdeology] = useState<EconomicIdeology>('market');
   const [copied, setCopied] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showResume, setShowResume] = useState(false);
+  const [savedGames, setSavedGames] = useState<Array<{
+    roomId: string;
+    playerId: string;
+    timestamp: number;
+    playerName?: string;
+  }>>([]);
 
   const isHost = gameState?.players[0]?.id === playerId;
   const currentPlayer = gameState?.players.find(p => p.id === playerId);
@@ -114,6 +121,46 @@ export function Lobby({
     }
   };
 
+  const loadSavedGames = () => {
+    try {
+      const games: Array<{ roomId: string; playerId: string; timestamp: number; playerName?: string }> = [];
+
+      // Iterate through localStorage to find saved games
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('game_')) {
+          const data = localStorage.getItem(key);
+          if (data) {
+            try {
+              const parsed = JSON.parse(data);
+              const roomId = key.replace('game_', '');
+              games.push({
+                roomId,
+                playerId: parsed.playerId,
+                timestamp: parsed.timestamp,
+                playerName: parsed.gameState?.players?.find((p: any) => p.id === parsed.playerId)?.playerName
+              });
+            } catch (err) {
+              console.error('Failed to parse saved game:', err);
+            }
+          }
+        }
+      }
+
+      // Sort by timestamp, newest first
+      games.sort((a, b) => b.timestamp - a.timestamp);
+      setSavedGames(games);
+      setShowResume(true);
+    } catch (err) {
+      console.error('Failed to load saved games:', err);
+    }
+  };
+
+  const handleResumeGame = (roomId: string) => {
+    // Navigate to restore URL
+    window.location.href = `/?restore=${roomId}`;
+  };
+
   // Input styling - ballot paper style
   const inputStyle = {
     backgroundColor: colors.paper1,
@@ -125,7 +172,7 @@ export function Lobby({
   if (mode === 'choose') {
     return (
       <div className="min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: colors.paper2 }}>
-        <div className="rounded-lg p-8 w-full max-w-md" style={{ backgroundColor: colors.paper1, border: `2px solid ${colors.rule}` }}>
+        <div className="ballot-paper rounded-lg p-8 w-full max-w-md" style={{ backgroundColor: colors.paper1, border: `2px solid ${colors.rule}` }}>
           <h1 className="text-3xl font-bold text-center mb-2" style={{ color: colors.ink }}>Political Game</h1>
           <p className="text-center mb-8" style={{ color: colors.inkSecondary }}>Compete for seats in parliament</p>
 
@@ -144,7 +191,65 @@ export function Lobby({
             >
               Join Existing Game
             </button>
+            <button
+              onClick={loadSavedGames}
+              className="w-full py-4 px-6 rounded font-semibold text-lg transition-all hover:opacity-90"
+              style={{ backgroundColor: colors.paper3, color: colors.ink, border: `2px solid ${colors.rule}` }}
+            >
+              Resume Saved Game
+            </button>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Resume saved games modal
+  if (showResume) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: colors.paper2 }}>
+        <div className="ballot-paper rounded-lg p-8 w-full max-w-md" style={{ backgroundColor: colors.paper1, border: `2px solid ${colors.rule}` }}>
+          <button
+            onClick={() => setShowResume(false)}
+            className="mb-4 hover:opacity-70"
+            style={{ color: colors.inkSecondary }}
+          >
+            &larr; Back
+          </button>
+
+          <h2 className="text-2xl font-bold mb-2" style={{ color: colors.ink }}>Resume Saved Game</h2>
+          <p className="mb-6" style={{ color: colors.inkSecondary }}>
+            Select a game to resume
+          </p>
+
+          {savedGames.length === 0 ? (
+            <div className="text-center py-8" style={{ color: colors.inkSecondary }}>
+              No saved games found
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {savedGames.map((game) => (
+                <button
+                  key={game.roomId}
+                  onClick={() => handleResumeGame(game.roomId)}
+                  className="w-full p-4 rounded text-left transition-all hover:opacity-90"
+                  style={{ backgroundColor: colors.paper2, border: `2px solid ${colors.rule}` }}
+                >
+                  <div className="font-semibold" style={{ color: colors.ink }}>
+                    Room: {game.roomId}
+                  </div>
+                  {game.playerName && (
+                    <div className="text-sm" style={{ color: colors.inkSecondary }}>
+                      Player: {game.playerName}
+                    </div>
+                  )}
+                  <div className="text-xs mt-1" style={{ color: colors.inkSecondary }}>
+                    Saved: {new Date(game.timestamp).toLocaleString()}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -154,7 +259,7 @@ export function Lobby({
   if (!gameState || !gameState.roomId) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: colors.paper2 }}>
-        <div className="rounded-lg p-8 w-full max-w-md" style={{ backgroundColor: colors.paper1, border: `2px solid ${colors.rule}` }}>
+        <div className="ballot-paper rounded-lg p-8 w-full max-w-md" style={{ backgroundColor: colors.paper1, border: `2px solid ${colors.rule}` }}>
           <button
             onClick={() => setMode('choose')}
             className="mb-4 hover:opacity-70"
@@ -283,7 +388,7 @@ export function Lobby({
     <div className="min-h-screen p-4" style={{ backgroundColor: colors.paper2 }}>
       <div className="max-w-4xl mx-auto">
         {/* Room header */}
-        <div className="rounded-lg p-6 mb-6" style={{ backgroundColor: colors.paper1, border: `2px solid ${colors.rule}` }}>
+        <div className="ballot-paper rounded-lg p-6 mb-6" style={{ backgroundColor: colors.paper1, border: `2px solid ${colors.rule}` }}>
           <div className="flex items-center justify-between">
             <div>
               <div className="text-sm" style={{ color: colors.inkSecondary }}>Room Code</div>
@@ -331,7 +436,7 @@ export function Lobby({
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Players list */}
-          <div className="lg:col-span-2 rounded-lg p-6" style={{ backgroundColor: colors.paper1, border: `2px solid ${colors.rule}` }}>
+          <div className="ballot-paper lg:col-span-2 rounded-lg p-6" style={{ backgroundColor: colors.paper1, border: `2px solid ${colors.rule}` }}>
             <h3 className="font-semibold text-lg mb-4 flex items-center gap-2" style={{ color: colors.ink }}>
               <Users className="w-5 h-5" />
               Players ({gameState.players.length}/5)
@@ -399,7 +504,7 @@ export function Lobby({
           </div>
 
           {/* Settings panel */}
-          <div className="rounded-lg p-6" style={{ backgroundColor: colors.paper1, border: `2px solid ${colors.rule}` }}>
+          <div className="ballot-paper rounded-lg p-6" style={{ backgroundColor: colors.paper1, border: `2px solid ${colors.rule}` }}>
             <h3 className="font-semibold text-lg mb-4 flex items-center gap-2" style={{ color: colors.ink }}>
               <Settings className="w-5 h-5" />
               Game Settings

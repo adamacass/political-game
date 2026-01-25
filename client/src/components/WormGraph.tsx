@@ -105,7 +105,7 @@ export function WormGraph({ history, players, totalSeats, currentRound }: WormGr
 
   if (history.length === 0) {
     return (
-      <div className="rounded-lg p-4" style={{ backgroundColor: colors.paper1, border: `2px solid ${colors.rule}` }}>
+      <div className="ballot-paper rounded-lg p-4" style={{ backgroundColor: colors.paper1, border: `2px solid ${colors.rule}` }}>
         <h3 className="text-lg font-semibold mb-2" style={{ color: colors.ink }}>Polling Worm</h3>
         <div className="h-40 flex items-center justify-center" style={{ color: colors.inkSecondary }}>
           No round data yet
@@ -115,7 +115,7 @@ export function WormGraph({ history, players, totalSeats, currentRound }: WormGr
   }
 
   return (
-    <div className="rounded-lg p-4" style={{ backgroundColor: colors.paper1, border: `2px solid ${colors.rule}` }}>
+    <div className="ballot-paper rounded-lg p-4" style={{ backgroundColor: colors.paper1, border: `2px solid ${colors.rule}` }}>
       <div className="flex justify-between items-center mb-2">
         <h3 className="text-lg font-semibold" style={{ color: colors.ink }}>Polling Worm</h3>
         <span className="text-sm" style={{ color: colors.inkSecondary }}>
