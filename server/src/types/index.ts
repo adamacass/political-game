@@ -549,6 +549,9 @@ export interface ClientToServerEvents {
   'respond_to_offer': (data: { offerId: string; accept: boolean }) => void;
   'cancel_offer': (data: { offerId: string }) => void;
   'negotiation_ready': () => void;
+
+  // Session restore
+  'restore_session': (data: { roomId: string; playerId: string }) => void;
 }
 
 export interface ServerToClientEvents {
@@ -563,6 +566,7 @@ export interface ServerToClientEvents {
   'trade_offer_received': (data: { offer: TradeOffer }) => void;
   'trade_offer_updated': (data: { offer: TradeOffer }) => void;
   'available_colors': (data: { colors: PartyColorId[] }) => void;
+  'session_restored': (data: { success: boolean; roomId: string }) => void;
 }
 
 // ============================================================
