@@ -1,19 +1,17 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { 
-  GameState, 
-  GameConfig, 
+import {
+  GameState,
+  GameConfig,
   ChatMessage,
   PartyColorId,
-  SocialIdeology,
-  EconomicIdeology,
-  TradeOffer,
+  ActionType,
 } from './types';
 import { Lobby } from './components/Lobby';
 import { GameBoard } from './components/GameBoard';
 
-const SOCKET_URL = import.meta.env.PROD 
-  ? 'https://political-game-1.onrender.com'
+const SOCKET_URL = import.meta.env.PROD
+  ? window.location.origin
   : 'http://localhost:3001';
 
 function App() {
@@ -21,11 +19,10 @@ function App() {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [gameConfig, setGameConfig] = useState<GameConfig | null>(null);
   const [playerId, setPlayerId] = useState<string>('');
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [roomId, setRoomId] = useState<string | null>(null);
   const [availableColors, setAvailableColors] = useState<PartyColorId[]>([]);
-  const [error, setError] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
 
-  // Initialize socket connection
   useEffect(() => {
     const newSocket = io(SOCKET_URL, {
       transports: ['websocket', 'polling'],
@@ -33,7 +30,7 @@ function App() {
 
     newSocket.on('connect', () => {
       console.log('Connected to server');
-      setError('');
+      setError(null);
     });
 
     newSocket.on('disconnect', () => {
@@ -45,283 +42,137 @@ function App() {
       setError('Unable to connect to server');
     });
 
-    newSocket.on('room_created', ({ roomId }) => {
-      console.log('Room created:', roomId);
+    newSocket.on('room_created', ({ roomId: rid }) => {
+      console.log('Room created:', rid);
+      setRoomId(rid);
     });
 
-    newSocket.on('room_joined', ({ roomId, playerId: pid }) => {
-      console.log('Joined room:', roomId, 'as', pid);
+    newSocket.on('room_joined', ({ roomId: rid, playerId: pid }) => {
+      console.log('Joined room:', rid, 'as', pid);
       setPlayerId(pid);
+      setRoomId(rid);
     });
 
     newSocket.on('state_update', ({ state, config }) => {
       setGameState(state);
       setGameConfig(config);
-      
-      // Sync chat messages from state
-      if (state.chatMessages) {
-        setChatMessages(state.chatMessages);
-      }
     });
 
-    newSocket.on('chat_message', ({ message }) => {
-      setChatMessages(prev => {
-        // Avoid duplicates
-        if (prev.find(m => m.id === message.id)) return prev;
-        return [...prev, message];
-      });
+    newSocket.on('chat_message', ({ message }: { message: ChatMessage }) => {
+      console.log('Chat:', message.senderName, message.content);
     });
 
     newSocket.on('available_colors', ({ colors }) => {
       setAvailableColors(colors);
     });
 
-    newSocket.on('trade_offer_received', ({ offer }) => {
-      // Could show a notification here
-      console.log('Trade offer received:', offer);
-    });
-
     newSocket.on('error', ({ message }) => {
       setError(message);
-      setTimeout(() => setError(''), 5000);
+      setTimeout(() => setError(null), 5000);
     });
 
-    newSocket.on('player_disconnected', ({ playerId }) => {
-      console.log('Player disconnected:', playerId);
+    newSocket.on('player_disconnected', ({ playerId: pid }) => {
+      console.log('Player disconnected:', pid);
     });
 
-    newSocket.on('player_reconnected', ({ playerId }) => {
-      console.log('Player reconnected:', playerId);
+    newSocket.on('player_reconnected', ({ playerId: pid }) => {
+      console.log('Player reconnected:', pid);
     });
 
-    newSocket.on('session_restored', ({ success, roomId }) => {
+    newSocket.on('session_restored', ({ success, roomId: rid }) => {
       if (success) {
-        console.log('Session successfully restored for room:', roomId);
+        console.log('Session restored for room:', rid);
       } else {
-        console.warn('Failed to restore session for room:', roomId);
         setError('Could not restore saved game session');
       }
     });
 
     newSocket.on('game_exported', ({ eventLog, config, seed, chatLog, history }) => {
-      const exportData = {
-        exportedAt: new Date().toISOString(),
-        seed,
-        config,
-        eventLog,
-        chatLog,
-        history,
-      };
-      
+      const exportData = { exportedAt: new Date().toISOString(), seed, config, eventLog, chatLog, history };
       const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `game-log-${gameState?.roomId || 'unknown'}-${Date.now()}.json`;
+      a.download = `the-house-${Date.now()}.json`;
       a.click();
       URL.revokeObjectURL(url);
     });
 
     setSocket(newSocket);
-
-    return () => {
-      newSocket.close();
-    };
+    return () => { newSocket.close(); };
   }, []);
 
-  // Auto-save to localStorage every 30 seconds
-  useEffect(() => {
-    if (!gameState || !gameState.roomId || gameState.phase === 'waiting') return;
-
-    const saveInterval = setInterval(() => {
-      try {
-        const saveData = {
-          gameState,
-          gameConfig,
-          playerId,
-          timestamp: Date.now(),
-          version: '1.0'
-        };
-        localStorage.setItem(`game_${gameState.roomId}`, JSON.stringify(saveData));
-        console.log('Game auto-saved to localStorage');
-      } catch (err) {
-        console.error('Failed to auto-save game:', err);
-      }
-    }, 30000); // Every 30 seconds
-
-    return () => clearInterval(saveInterval);
-  }, [gameState, gameConfig, playerId]);
-
-  // Restore from localStorage on mount
+  // Session restore
   useEffect(() => {
     if (!socket) return;
-
     const urlParams = new URLSearchParams(window.location.search);
     const restoreRoomId = urlParams.get('restore');
-
     if (restoreRoomId) {
       try {
         const savedData = localStorage.getItem(`game_${restoreRoomId}`);
         if (savedData) {
           const parsed = JSON.parse(savedData);
-          console.log('Attempting to restore session:', restoreRoomId);
-
-          // Emit restore_session event
-          socket.emit('restore_session', {
-            roomId: restoreRoomId,
-            playerId: parsed.playerId
-          });
-        } else {
-          console.warn('No saved game found for room:', restoreRoomId);
+          socket.emit('restore_session', { roomId: restoreRoomId, playerId: parsed.playerId });
         }
       } catch (err) {
-        console.error('Failed to restore saved game:', err);
+        console.error('Failed to restore:', err);
       }
     }
   }, [socket]);
 
-  // Actions
+  // Auto-save
+  useEffect(() => {
+    if (!gameState || !gameState.roomId || gameState.phase === 'waiting') return;
+    const interval = setInterval(() => {
+      try {
+        localStorage.setItem(`game_${gameState.roomId}`, JSON.stringify({ playerId, timestamp: Date.now() }));
+      } catch { /* ignore */ }
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [gameState, playerId]);
+
+  // Room actions
   const createRoom = useCallback((
-    playerName: string,
-    partyName: string,
-    colorId?: PartyColorId,
-    symbolId?: string,
-    socialIdeology?: SocialIdeology,
-    economicIdeology?: EconomicIdeology
+    playerName: string, partyName: string, colorId: string, symbolId: string,
+    socialIdeology: string, economicIdeology: string
   ) => {
-    socket?.emit('create_room', {
-      playerName,
-      partyName,
-      colorId,
-      symbolId,
-      socialIdeology,
-      economicIdeology,
-    });
+    socket?.emit('create_room', { playerName, partyName, colorId, symbolId, socialIdeology, economicIdeology });
   }, [socket]);
 
   const joinRoom = useCallback((
-    roomId: string,
-    playerName: string,
-    partyName: string,
-    colorId?: PartyColorId,
-    symbolId?: string,
-    socialIdeology?: SocialIdeology,
-    economicIdeology?: EconomicIdeology
+    rid: string, playerName: string, partyName: string, colorId: string,
+    symbolId: string, socialIdeology: string, economicIdeology: string
   ) => {
-    socket?.emit('join_room', {
-      roomId,
-      playerName,
-      partyName,
-      colorId,
-      symbolId,
-      socialIdeology,
-      economicIdeology,
-    });
+    socket?.emit('join_room', { roomId: rid, playerName, partyName, colorId, symbolId, socialIdeology, economicIdeology });
   }, [socket]);
 
-  const startGame = useCallback(() => {
-    socket?.emit('start_game');
+  const startGame = useCallback(() => { socket?.emit('start_game'); }, [socket]);
+
+  // Game actions
+  const performAction = useCallback((
+    actionType: ActionType, targetSeatId?: string, targetPlayerId?: string, fundsSpent?: number
+  ) => {
+    socket?.emit('perform_action', { actionType, targetSeatId, targetPlayerId, fundsSpent });
   }, [socket]);
 
-  const updateConfig = useCallback((config: Partial<GameConfig>) => {
-    socket?.emit('update_config', { config });
-  }, [socket]);
-
-  const drawCard = useCallback((deckType: 'campaign' | 'policy') => {
-    socket?.emit('draw_card', { deckType });
-  }, [socket]);
-
-  const playCampaign = useCallback((cardId: string) => {
-    socket?.emit('play_campaign', { cardId });
-  }, [socket]);
-
-  const selectTarget = useCallback((targetPlayerId: string) => {
-    socket?.emit('select_campaign_target', { targetPlayerId });
-  }, [socket]);
-
-  const skipCampaign = useCallback(() => {
-    socket?.emit('skip_campaign');
-  }, [socket]);
-
-  const skipAndReplace = useCallback((cardId: string) => {
-    socket?.emit('skip_and_replace', { cardId });
-  }, [socket]);
-
-  const proposePolicy = useCallback((cardId: string) => {
-    socket?.emit('propose_policy', { cardId });
-  }, [socket]);
-
-  const skipProposal = useCallback(() => {
-    socket?.emit('skip_proposal');
-  }, [socket]);
-
-  const castVote = useCallback((vote: 'yes' | 'no') => {
-    socket?.emit('cast_vote', { vote });
-  }, [socket]);
-
-  const acknowledgeWildcard = useCallback(() => {
-    socket?.emit('acknowledge_wildcard');
-  }, [socket]);
-
-  const adjustIssue = useCallback((direction: -1 | 0 | 1) => {
-    socket?.emit('adjust_issue', { direction });
-  }, [socket]);
-
-  const exportGame = useCallback(() => {
-    socket?.emit('export_game');
-  }, [socket]);
-
+  const endTurn = useCallback(() => { socket?.emit('end_turn'); }, [socket]);
+  const proposeBill = useCallback((billId: string) => { socket?.emit('propose_bill', { billId }); }, [socket]);
+  const skipProposal = useCallback(() => { socket?.emit('skip_proposal'); }, [socket]);
+  const castVote = useCallback((vote: 'aye' | 'no') => { socket?.emit('cast_vote', { vote }); }, [socket]);
+  const acknowledgeEvent = useCallback(() => { socket?.emit('acknowledge_event'); }, [socket]);
+  const acknowledgeResult = useCallback(() => { socket?.emit('acknowledge_result'); }, [socket]);
   const sendChat = useCallback((content: string, recipientId: string | null) => {
     socket?.emit('send_chat', { content, recipientId });
   }, [socket]);
+  const forceAdvance = useCallback(() => { socket?.emit('force_advance_phase'); }, [socket]);
 
-  const makeTradeOffer = useCallback((toPlayerId: string, offeredCardIds: string[], requestedCardIds: string[]) => {
-    socket?.emit('make_trade_offer', { toPlayerId, offeredCardIds, requestedCardIds });
-  }, [socket]);
-
-  const respondToOffer = useCallback((offerId: string, accept: boolean) => {
-    socket?.emit('respond_to_offer', { offerId, accept });
-  }, [socket]);
-
-  const cancelOffer = useCallback((offerId: string) => {
-    socket?.emit('cancel_offer', { offerId });
-  }, [socket]);
-
-  const negotiationReady = useCallback(() => {
-    socket?.emit('negotiation_ready');
-  }, [socket]);
-
-const selectNewAgenda = useCallback((issue: string) => {
-  socket?.emit('select_new_agenda', { issue });
-}, [socket]);
-
-const captureSeat = useCallback((seatId: string) => {
-  socket?.emit('resolve_capture_seat', { seatId });
-}, [socket]);
-
-const forceAdvancePhase = useCallback(() => {
-  socket?.emit('force_advance_phase');
-}, [socket]);
-
-const hostSkipCampaign = useCallback(() => {
-  socket?.emit('host_skip_campaign');
-}, [socket]);
-
-const hostSkipToPolicy = useCallback(() => {
-  socket?.emit('host_skip_to_policy');
-}, [socket]);
-
-const hostSkipToNextRound = useCallback(() => {
-  socket?.emit('host_skip_to_next_round');
-}, [socket]);
-
-  // Render
   const isInGame = gameState && gameState.phase !== 'waiting';
 
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen" style={{ backgroundColor: 'var(--bg-primary)' }}>
       {error && (
-        <div className="fixed top-4 right-4 z-50 px-4 py-2 bg-red-500 text-white rounded-lg shadow-lg">
+        <div className="fixed top-4 right-4 z-50 px-4 py-3 font-mono text-sm"
+          style={{ backgroundColor: 'var(--no-red)', color: 'var(--parchment)', border: '1px solid #7f0000' }}>
           {error}
         </div>
       )}
@@ -329,38 +180,28 @@ const hostSkipToNextRound = useCallback(() => {
       {!isInGame ? (
         <Lobby
           gameState={gameState}
-          gameConfig={gameConfig}
           playerId={playerId}
+          roomId={roomId}
           availableColors={availableColors}
-          onStartGame={startGame}
-          onUpdateConfig={updateConfig}
+          error={error}
           onCreateRoom={createRoom}
           onJoinRoom={joinRoom}
+          onStartGame={startGame}
         />
       ) : (
         <GameBoard
           gameState={gameState}
-          gameConfig={gameConfig!}
+          config={gameConfig!}
           playerId={playerId}
-          chatMessages={chatMessages}
-          onDrawCard={drawCard}
-          onPlayCampaign={playCampaign}
-          onSelectTarget={selectTarget}
-          onSkipCampaign={skipCampaign}
-          onSkipAndReplace={skipAndReplace}
-          onProposePolicy={proposePolicy}
+          onAction={performAction}
+          onEndTurn={endTurn}
+          onProposeBill={proposeBill}
           onSkipProposal={skipProposal}
           onCastVote={castVote}
-          onAcknowledgeWildcard={acknowledgeWildcard}
-          onExportGame={exportGame}
+          onAcknowledgeEvent={acknowledgeEvent}
+          onAcknowledgeResult={acknowledgeResult}
           onSendChat={sendChat}
-          onMakeTradeOffer={makeTradeOffer}
-          onRespondToOffer={respondToOffer}
-          onCancelOffer={cancelOffer}
-          onNegotiationReady={negotiationReady}
-          onSelectNewAgenda={selectNewAgenda}
-          onCaptureSeat={captureSeat}
-          onForceAdvance={forceAdvancePhase}
+          onForceAdvance={forceAdvance}
         />
       )}
     </div>

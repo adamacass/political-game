@@ -1,31 +1,35 @@
 // ============================================================
-// CORE TYPES FOR POLITICAL BOARD GAME
+// THE HOUSE - Australian Political Strategy Game
+// Complete type system for action-based gameplay
 // ============================================================
 
-export type Issue = 'economy' | 'cost_of_living' | 'housing' | 'climate' | 'security';
+export type Issue = 'economy' | 'health' | 'housing' | 'climate' | 'security' | 'education';
 export type SocialIdeology = 'progressive' | 'conservative';
 export type EconomicIdeology = 'market' | 'interventionist';
 export type IdeologyStance = 'favoured' | 'neutral' | 'opposed';
+
 export type Phase =
   | 'waiting'
-  | 'draw'
-  | 'negotiation'
-  | 'campaign'
-  | 'campaign_targeting'
-  | 'seat_capture'          // NEW: Player selecting seats to capture
-  | 'policy_proposal'
-  | 'policy_vote'
-  | 'policy_resolution'
-  | 'agenda_selection'      // NEW: Proposer picks new agenda after matching policy
-  | 'wildcard_resolution'
+  | 'budget'
+  | 'action'
+  | 'legislation_propose'
+  | 'legislation_vote'
+  | 'legislation_result'
+  | 'event'
   | 'game_over';
-export type CardType = 'campaign' | 'policy' | 'wildcard';
-export type PCapType = 'mandate' | 'prime_ministership' | 'landmark_reform' | 'policy_win' | 'ideological_credibility' | 'state_control';
-export type IdeologyMode = 'random' | 'choose' | 'derived';  // NEW: derived mode
-export type SeatIdeologyMode = 'random' | 'realistic';  // NEW: Seat ideology distribution mode
+
+export type ActionType =
+  | 'campaign'
+  | 'policy_speech'
+  | 'attack_ad'
+  | 'fundraise'
+  | 'media_blitz'
+  | 'pork_barrel';
+
+export type PCapType = 'mandate' | 'prime_ministership' | 'legislation' | 'state_control' | 'approval_bonus';
 
 // ============================================================
-// SEAT MAP TYPES (Australian Electoral Map)
+// SEAT MAP TYPES
 // ============================================================
 
 export type SeatId = string;
@@ -42,194 +46,111 @@ export interface Seat {
   id: SeatId;
   name: string;
   state: StateCode;
-  x: number;        // 0-100 relative coordinate on map
-  y: number;        // 0-100 relative coordinate on map
+  x: number;
+  y: number;
+  chamberRow: number;
+  chamberCol: number;
+  chamberAngle: number;
   ideology: SeatIdeology;
   ownerPlayerId: string | null;
-  // Artwork (optional, for future implementation)
-  artworkUrl?: string;           // URL to seat artwork/icon
-  thumbnailUrl?: string;         // URL to smaller thumbnail
+  margin: number; // 0-100, how safe/marginal the seat is (lower = more marginal)
+  lastCampaignedBy: string | null;
+  contested: boolean;
 }
 
-// Pending seat capture state machine
-export interface PendingSeatCapture {
-  actorId: string;
-  cardId: string;
-  cardName: string;
-  remaining: number;           // Seats left to capture
-  ideologyAxis: 'econ' | 'social';
-  ideologyBucket: EconBucket | SocialBucket;
-  eligibleSeatIds: SeatId[];   // Precomputed eligible seats
-}
-
-// State control tracking (player who has majority of seats in a state)
 export interface StateControl {
   state: StateCode;
-  controllerId: string | null;  // Player ID who controls the state (null if tied/no majority)
-  seatCount: number;            // Seats owned by controller
-  totalSeats: number;           // Total seats in state
+  controllerId: string | null;
+  seatCount: number;
+  totalSeats: number;
 }
 
-// Party colors available for selection
+// ============================================================
+// PARTY COLORS
+// ============================================================
+
 export const PARTY_COLORS = [
-  { id: 'red', hex: '#E53935', name: 'Red' },
-  { id: 'blue', hex: '#1E88E5', name: 'Blue' },
-  { id: 'green', hex: '#43A047', name: 'Green' },
-  { id: 'orange', hex: '#FB8C00', name: 'Orange' },
-  { id: 'purple', hex: '#8E24AA', name: 'Purple' },
-  { id: 'teal', hex: '#00897B', name: 'Teal' },
-  { id: 'pink', hex: '#D81B60', name: 'Pink' },
-  { id: 'indigo', hex: '#3949AB', name: 'Indigo' },
+  { id: 'labor', hex: '#CC2936', name: 'Labor Red' },
+  { id: 'liberal', hex: '#1B3A8C', name: 'Liberal Blue' },
+  { id: 'greens', hex: '#10A651', name: 'Greens' },
+  { id: 'national', hex: '#0D5E3B', name: 'National Green' },
+  { id: 'teal', hex: '#008B8B', name: 'Teal Independent' },
+  { id: 'orange', hex: '#D4710E', name: 'Centre Alliance' },
+  { id: 'purple', hex: '#6A1B78', name: 'Purple' },
+  { id: 'gold', hex: '#B8860B', name: 'Gold' },
 ] as const;
 
 export type PartyColorId = typeof PARTY_COLORS[number]['id'];
 
 // ============================================================
-// CARD DEFINITIONS
+// BILLS (replace policy cards)
 // ============================================================
 
-export interface CampaignCard {
+export interface Bill {
   id: string;
   name: string;
-  description: string;
-  seatDelta: number;
-  issue?: Issue;
-  policyLink?: string;  // Links to policy ID for synergy bonus
-  stanceTable?: {       // Ideology stances for campaigns
-    progressive: IdeologyStance;
-    conservative: IdeologyStance;
-    market: IdeologyStance;
-    interventionist: IdeologyStance;
-  };
-  conditional?: {
-    type: 'leader_penalty' | 'underdog_bonus' | 'issue_match';
-    modifier: number;
-  };
-  // NEW: Ideology for seat capture targeting
-  ideology?: {
-    econ?: EconBucket;
-    social?: SocialBucket;
-  };
-  // Artwork (optional)
-  artworkUrl?: string;           // URL to card artwork
-  thumbnailUrl?: string;         // URL to smaller thumbnail
-}
-
-export interface PolicyCard {
-  id: string;
-  name: string;
+  shortName: string;
   description: string;
   issue: Issue;
-  proposerReward: PCapType;
-  proposerRewardValue: number;
-  campaignLinks?: string[];  // Campaign IDs that synergize
   stanceTable: {
     progressive: IdeologyStance;
     conservative: IdeologyStance;
     market: IdeologyStance;
     interventionist: IdeologyStance;
   };
-  ongoingEffect?: {
-    id: string;
-    description: string;
-    modifier: Record<string, number>;
-  };
-  // Artwork (optional)
-  artworkUrl?: string;           // URL to card artwork
-  thumbnailUrl?: string;         // URL to smaller thumbnail
+  budgetImpact: number; // negative = costs money, positive = revenue
+  approvalImpact: number; // how it affects proposer approval if passed
+  pCapReward: number;
+  isLandmark: boolean;
 }
 
-export interface WildcardCard {
+// ============================================================
+// POLITICAL EVENTS (replace wildcard cards)
+// ============================================================
+
+export interface PoliticalEvent {
   id: string;
   name: string;
+  headline: string;
   description: string;
-  effect: {
-    type: 'leader_erosion' | 'all_players' | 'proposer' | 'issue_conditional';
-    seatDelta: number;
-    issue?: Issue;
-    issueBonus?: number;
-  };
-  // Artwork (optional)
-  artworkUrl?: string;           // URL to card artwork
-  thumbnailUrl?: string;         // URL to smaller thumbnail
+  category: 'scandal' | 'economic' | 'international' | 'social' | 'media' | 'disaster';
+  effects: EventEffect[];
 }
 
-export interface PCapCard {
-  type: PCapType;
-  value: number;
-  name: string;
-  source: string;
-  roundAwarded: number;
+export interface EventEffect {
+  target: 'leader' | 'trailer' | 'all' | 'random' | 'proposer';
+  type: 'approval' | 'funds' | 'seats';
+  amount: number;
+  condition?: string;
 }
 
 // ============================================================
-// HAND CARD WITH METADATA
+// PLAYER ACTION
 // ============================================================
 
-export interface HandCard {
-  card: CampaignCard | PolicyCard;
-  isNew: boolean;        // Marked as newly drawn (for UI highlighting)
-  drawnRound: number;    // Round when card was drawn
-}
-
-// ============================================================
-// DERIVED IDEOLOGY PROFILE
-// ============================================================
-
-export interface IdeologyProfile {
-  // Track votes and proposals by stance
-  progressiveActions: number;
-  conservativeActions: number;
-  marketActions: number;
-  interventionistActions: number;
-  
-  // Calculated percentages (0-100)
-  socialScore: number;      // 0 = conservative, 100 = progressive
-  economicScore: number;    // 0 = market, 100 = interventionist
-  
-  // Dominant ideology labels (derived)
-  dominantSocial: SocialIdeology | 'neutral';
-  dominantEconomic: EconomicIdeology | 'neutral';
-}
-
-// ============================================================
-// NEGOTIATION / CARD TRADING
-// ============================================================
-
-export type TradeOfferStatus = 'pending' | 'accepted' | 'rejected' | 'expired' | 'countered';
-
-export interface TradeOffer {
-  id: string;
-  fromPlayerId: string;
-  toPlayerId: string;
-  offeredCardIds: string[];      // Cards being offered
-  requestedCardIds: string[];    // Cards being requested
-  status: TradeOfferStatus;
-  timestamp: number;
-  expiresAt: number;
-  counterOfferId?: string;       // If this is a counter to another offer
-}
-
-export interface NegotiationState {
-  activeOffers: TradeOffer[];
-  completedTrades: {
-    offer: TradeOffer;
-    completedAt: number;
-  }[];
-  playersReady: string[];        // Players who've marked ready to proceed
-}
-
-// ============================================================
-// CAMPAIGN TARGETING
-// ============================================================
-
-export interface PendingCampaign {
+export interface PlayerAction {
+  type: ActionType;
   playerId: string;
-  cardId: string;
-  card: CampaignCard;
-  calculatedDelta: number;       // Seats to gain
-  agendaBonus: number;
-  requiresTarget: boolean;       // True if delta > 0 and multiple opponents
+  targetSeatId?: SeatId;
+  targetPlayerId?: string;
+  fundsSpent?: number;
+  result?: ActionResult;
+  timestamp: number;
+}
+
+export interface ActionResult {
+  success: boolean;
+  message: string;
+  seatCaptured?: boolean;
+  approvalChange?: number;
+  fundsChange?: number;
+  pCapChange?: number;
+}
+
+export interface ActionCost {
+  ap: number;
+  funds: number;
+  description: string;
 }
 
 // ============================================================
@@ -247,62 +168,30 @@ export interface ChatMessage {
 }
 
 // ============================================================
-// HISTORY SNAPSHOT (for worm graph)
+// HISTORY SNAPSHOT
 // ============================================================
-
-export interface CampaignPlayedRecord {
-  playerId: string;
-  cardId: string;
-  cardName: string;
-  seatDelta: number;
-  agendaBonus: number;
-  targetId?: string;             // NEW: Who was targeted
-}
-
-export interface PolicyResultRecord {
-  cardId: string;
-  cardName: string;
-  proposerId: string;
-  passed: boolean;
-  yesVotes: number;
-  noVotes: number;
-  voterBreakdown: { playerId: string; vote: 'yes' | 'no'; seatWeight: number }[];
-}
-
-export interface WildcardRecord {
-  cardId: string;
-  cardName: string;
-  effects: { playerId: string; seatDelta: number }[];
-}
-
-export interface TradeRecord {
-  fromPlayerId: string;
-  toPlayerId: string;
-  cardsExchanged: number;
-}
-
-export interface PCapChangeRecord {
-  playerId: string;
-  pCapDelta: number;
-  seatDelta: number;
-  reason: string;
-  changeType: 'award' | 'penalty';
-  timestamp: number;
-}
 
 export interface HistorySnapshot {
   round: number;
   timestamp: number;
   activeIssue: Issue;
   seatCounts: Record<string, number>;
-  pCapCounts: Record<string, number>;
-  ideologyProfiles: Record<string, IdeologyProfile>;
-  campaignsPlayed: CampaignPlayedRecord[];
-  policyResult: PolicyResultRecord | null;
-  wildcardDrawn: WildcardRecord | null;
-  tradesCompleted: TradeRecord[];
-  issueChangedTo: Issue | null;
-  pCapChanges: PCapChangeRecord[];
+  approvalRatings: Record<string, number>;
+  fundBalances: Record<string, number>;
+  pCapTotals: Record<string, number>;
+  billResult: BillResult | null;
+  eventOccurred: string | null;
+  actionsPerformed: PlayerAction[];
+}
+
+export interface BillResult {
+  billId: string;
+  billName: string;
+  proposerId: string;
+  passed: boolean;
+  yesWeight: number;
+  noWeight: number;
+  voterBreakdown: { playerId: string; vote: 'aye' | 'no'; seatWeight: number }[];
 }
 
 // ============================================================
@@ -311,114 +200,105 @@ export interface HistorySnapshot {
 
 export interface Player {
   id: string;
-  name: string;              // Party name
-  playerName: string;        // Human player name
-  colorId: PartyColorId;     // Selected color ID
-  color: string;             // Hex color
-  symbolId: string;          // Selected political symbol ID
+  name: string;
+  playerName: string;
+  colorId: PartyColorId;
+  color: string;
+  symbolId: string;
 
-  // Ideology (fixed or derived based on mode)
   socialIdeology: SocialIdeology;
   economicIdeology: EconomicIdeology;
-  ideologyProfile: IdeologyProfile;   // Action-based tracking
 
   seats: number;
-  hand: HandCard[];          // Includes metadata
-  pCapCards: PCapCard[];
-  connected: boolean;
+  funds: number;
+  approval: number; // -100 to 100
+  pcap: number;
+  actionPoints: number;
+  maxActionPoints: number;
 
-  // Round state
-  hasSkippedThisRound: boolean;    // For skip & replace limit
+  connected: boolean;
+  isHost: boolean;
+
+  // Round tracking
+  actionsThisRound: PlayerAction[];
+  hasProposed: boolean;
+  hasVoted: boolean;
+
+  // Stats
+  totalSeatsWon: number;
+  totalSeatsLost: number;
+  billsProposed: number;
+  billsPassed: number;
+  campaignsRun: number;
+}
+
+// ============================================================
+// PENDING LEGISLATION
+// ============================================================
+
+export interface PendingLegislation {
+  bill: Bill;
+  proposerId: string;
+  votes: LegislationVote[];
+  amendments: string[];
+}
+
+export interface LegislationVote {
+  playerId: string;
+  vote: 'aye' | 'no';
+  seatWeight: number;
 }
 
 // ============================================================
 // GAME STATE
 // ============================================================
 
-export interface Vote {
-  playerId: string;
-  vote: 'yes' | 'no';
-  seatWeight: number;
-}
-
 export interface GameState {
   roomId: string;
   seed: string;
   phase: Phase;
   round: number;
+  maxRounds: number;
 
-  // Players
   players: Player[];
   turnOrder: string[];
   currentPlayerIndex: number;
   speakerIndex: number;
 
-  // Decks
-  campaignDeck: string[];
-  campaignDiscard: string[];
-  policyDeck: string[];
-  policyDiscard: string[];
-  wildcardDeck: string[];
-  wildcardDiscard: string[];
-
-  // Board state
+  // Board
   totalSeats: number;
-  activeIssue: Issue;
-  issueTrack: Issue[];
-
-  // NEW: Australian Electoral Map - Seat ownership is authoritative source of truth
   seats: Record<SeatId, Seat>;
-  mapSeed: string;
-
-  // State control tracking (for PCap awards)
   stateControl: Record<StateCode, StateControl>;
+  activeIssue: Issue;
 
-  // Current round tracking
-  playersDrawn: string[];
-  playersCampaigned: string[];
-  proposedPolicy: PolicyCard | null;
-  proposerId: string | null;
-  votes: Vote[];
-  pendingWildcard: WildcardCard | null;
+  // Budget tracking
+  nationalBudget: number;
+  budgetSurplus: boolean;
 
-  // NEW: Campaign targeting
-  pendingCampaign: PendingCampaign | null;
+  // Legislation
+  availableBills: Bill[];
+  pendingLegislation: PendingLegislation | null;
+  passedBills: Bill[];
+  failedBills: Bill[];
 
-  // NEW: Seat capture targeting
-  pendingSeatCapture: PendingSeatCapture | null;
+  // Events
+  currentEvent: PoliticalEvent | null;
+  pastEvents: PoliticalEvent[];
 
-  // NEW: Negotiation state
-  negotiation: NegotiationState;
-  
-  // Track campaigns for policy synergy
-  campaignsPlayedByPlayer: Record<string, string[]>;
-  
-  // Round metrics
-  roundSeatChanges: Record<string, number>;
-  roundCampaignsPlayed: CampaignPlayedRecord[];
-  roundPolicyResult: PolicyResultRecord | null;
-  roundWildcardDrawn: WildcardRecord | null;
-  roundIssueChangedTo: Issue | null;
-  roundTradesCompleted: TradeRecord[];
-  roundPCapChanges: PCapChangeRecord[];
-  
-  // Ongoing effects
-  activeEffects: { policyId: string; effectId: string; modifier: Record<string, number> }[];
-  
+  // Round tracking
+  playersActed: string[];
+  roundActions: PlayerAction[];
+
   // Event log
   eventLog: GameEvent[];
-  
-  // Chat messages
   chatMessages: ChatMessage[];
-  
-  // History snapshots
   history: HistorySnapshot[];
-  
-  // Game over data
+
+  // Game over
   winner: string | null;
   finalScores: Record<string, number> | null;
-  
-  // Taken colors (for lobby)
+
+  // Lobby
   takenColors: PartyColorId[];
 }
 
@@ -428,33 +308,24 @@ export interface GameState {
 
 export type GameEvent =
   | { type: 'game_started'; timestamp: number; seed: string; config: string }
-  | { type: 'player_joined'; timestamp: number; playerId: string; playerName: string; partyName: string; colorId: PartyColorId; symbolId: string }
+  | { type: 'player_joined'; timestamp: number; playerId: string; playerName: string; partyName: string; colorId: PartyColorId }
   | { type: 'round_started'; timestamp: number; round: number; activeIssue: Issue }
-  | { type: 'card_drawn'; timestamp: number; playerId: string; cardType: 'campaign' | 'policy'; cardId: string }
-  | { type: 'card_replaced'; timestamp: number; playerId: string; discardedCardId: string; newCardId: string; newCardType: 'campaign' | 'policy' }
-  | { type: 'campaign_played'; timestamp: number; playerId: string; cardId: string; seatDelta: number; agendaBonus: number; targetId?: string }
-  | { type: 'policy_proposed'; timestamp: number; playerId: string; cardId: string }
-  | { type: 'vote_cast'; timestamp: number; playerId: string; vote: 'yes' | 'no'; seatWeight: number }
-  | { type: 'policy_resolved'; timestamp: number; passed: boolean; yesVotes: number; noVotes: number }
-  | { type: 'pcap_awarded'; timestamp: number; playerId: string; pCapType: PCapType; value: number; reason: string }
-  | { type: 'wildcard_drawn'; timestamp: number; playerId: string; cardId: string }
-  | { type: 'wildcard_resolved'; timestamp: number; cardId: string; effects: { playerId: string; seatDelta: number }[] }
-  | { type: 'seats_changed'; timestamp: number; playerId: string; delta: number; newTotal: number; reason: string }
-  | { type: 'seat_captured'; timestamp: number; seatId: SeatId; seatName: string; fromPlayerId: string | null; toPlayerId: string; ideology: SeatIdeology }
-  | { type: 'issue_changed'; timestamp: number; oldIssue: Issue; newIssue: Issue; changedBy: string }
+  | { type: 'budget_distributed'; timestamp: number; amounts: Record<string, number> }
+  | { type: 'action_performed'; timestamp: number; action: PlayerAction }
+  | { type: 'seat_captured'; timestamp: number; seatId: SeatId; seatName: string; fromPlayerId: string | null; toPlayerId: string }
+  | { type: 'seat_lost'; timestamp: number; seatId: SeatId; seatName: string; fromPlayerId: string; reason: string }
+  | { type: 'bill_proposed'; timestamp: number; playerId: string; billId: string }
+  | { type: 'vote_cast'; timestamp: number; playerId: string; vote: 'aye' | 'no'; seatWeight: number }
+  | { type: 'bill_resolved'; timestamp: number; billId: string; passed: boolean; yesWeight: number; noWeight: number }
+  | { type: 'pcap_awarded'; timestamp: number; playerId: string; amount: number; reason: string }
+  | { type: 'event_occurred'; timestamp: number; eventId: string; eventName: string }
+  | { type: 'approval_changed'; timestamp: number; playerId: string; delta: number; newApproval: number; reason: string }
+  | { type: 'funds_changed'; timestamp: number; playerId: string; delta: number; newFunds: number; reason: string }
+  | { type: 'issue_changed'; timestamp: number; oldIssue: Issue; newIssue: Issue; reason: string }
+  | { type: 'state_control_changed'; timestamp: number; state: StateCode; oldController: string | null; newController: string | null }
   | { type: 'chat_message'; timestamp: number; senderId: string; recipientId: string | null; content: string }
-  | { type: 'card_refilled'; timestamp: number; playerId: string; cardType: 'campaign' | 'policy'; cardId: string }
-  | { type: 'trade_offered'; timestamp: number; offerId: string; fromPlayerId: string; toPlayerId: string }
-  | { type: 'trade_accepted'; timestamp: number; offerId: string }
-  | { type: 'trade_rejected'; timestamp: number; offerId: string }
-  | { type: 'trade_completed'; timestamp: number; offerId: string; fromPlayerId: string; toPlayerId: string; cardsExchanged: number }
-  | { type: 'ideology_updated'; timestamp: number; playerId: string; profile: IdeologyProfile }
-  | { type: 'negotiation_ready'; timestamp: number; playerId: string }
   | { type: 'game_ended'; timestamp: number; winner: string; scores: Record<string, number> }
-  | { type: 'phase_skipped'; timestamp: number; fromPhase: Phase }
-  | { type: 'speaker_tiebreak'; timestamp: number; speakerId: string; decision: 'passed' | 'failed' }
-  | { type: 'agenda_selection_triggered'; timestamp: number; playerId: string; reason: string }
-  | { type: 'policy_synergy'; timestamp: number; playerId: string; campaignId: string; policyId: string };
+  | { type: 'phase_changed'; timestamp: number; fromPhase: Phase; toPhase: Phase };
 
 // ============================================================
 // GAME CONFIGURATION
@@ -462,95 +333,47 @@ export type GameEvent =
 
 export interface GameConfig {
   totalSeats: number;
-  handLimit: number;
-  maxRounds: number | null;
-  ideologyMode: IdeologyMode;
-  agendaBonus: number;
-  campaignCardsPerTurn: number;
-  seatTransferRule: 'from_leader' | 'proportional' | 'from_all_equal' | 'player_choice';  // NEW: player_choice
-  proposalsPerRound: number;
-  policyProposalRule: 'speaker_only' | 'any_player';
-  voteTieBreaker: 'fails' | 'speaker_decides';
-  ideologyRewards: {
-    singleFavoured: number;
-    doubleFavoured: number;
-    neutral: number;
-    opposed: number;
-  };
-  contraryBacklashSeats: number;
-  issueAdjustmentRule: 'most_seats_gained' | 'speaker_choice' | 'random';
+  maxRounds: number;
+  actionPointsPerRound: number;
+  startingFunds: number;
+  startingApproval: number;
+  incomePerSeat: number;
+  campaignBaseCost: number;
+  campaignBaseChance: number;
+  attackAdCost: number;
+  mediaBlitzCost: number;
+  porkBarrelCost: number;
+  fundraiseAmount: number;
   mandateValue: number;
   pmValue: number;
-  wildcardOnPolicyPass: boolean;
-  autoRefillHand: boolean;
-  
-  // NEW options
-  enableNegotiation: boolean;           // Allow card trading phase
-  negotiationTimeLimit: number;         // Seconds for negotiation (0 = unlimited until all ready)
-  enableSeatTargeting: boolean;         // Allow choosing who to take seats from
-  allowSkipReplace: boolean;            // Allow skipping turn to replace a card
-  skipReplacesPerRound: number;         // Max skip-replaces per player per round
-
-  // Seat map options
-  seatIdeologyMode: SeatIdeologyMode;   // Random (state-grouped) vs Realistic (voting pattern based)
-  stateControlValue: number;            // PCap value for gaining control of a state
+  billPoolSize: number;
+  majorityThreshold: number; // seats for instant win
+  enableEvents: boolean;
+  enableChat: boolean;
+  seatIdeologyMode: 'random' | 'realistic';
+  stateControlValue: number;
 }
 
 // ============================================================
 // SOCKET MESSAGES
 // ============================================================
 
-export interface JoinRoomData {
-  roomId: string;
-  playerName: string;
-  partyName: string;
-  colorId?: PartyColorId;
-  symbolId?: string;
-  socialIdeology?: SocialIdeology;
-  economicIdeology?: EconomicIdeology;
-}
-
-export interface CreateRoomData {
-  playerName: string;
-  partyName: string;
-  colorId?: PartyColorId;
-  symbolId?: string;
-  configOverrides?: Partial<GameConfig>;
-  socialIdeology?: SocialIdeology;
-  economicIdeology?: EconomicIdeology;
-}
-
 export interface ClientToServerEvents {
-  'join_room': (data: JoinRoomData) => void;
-  'create_room': (data: CreateRoomData) => void;
+  'join_room': (data: { roomId: string; playerName: string; partyName: string; colorId?: PartyColorId; symbolId?: string; socialIdeology?: SocialIdeology; economicIdeology?: EconomicIdeology }) => void;
+  'create_room': (data: { playerName: string; partyName: string; colorId?: PartyColorId; symbolId?: string; socialIdeology?: SocialIdeology; economicIdeology?: EconomicIdeology; configOverrides?: Partial<GameConfig> }) => void;
   'start_game': () => void;
-  'draw_card': (data: { deckType: 'campaign' | 'policy' }) => void;
-  'play_campaign': (data: { cardId: string }) => void;
-  'select_campaign_target': (data: { targetPlayerId: string }) => void;
-  'skip_campaign': () => void;
-  'skip_and_replace': (data: { cardId: string }) => void;
-  'propose_policy': (data: { cardId: string }) => void;
+  'perform_action': (data: { actionType: ActionType; targetSeatId?: string; targetPlayerId?: string; fundsSpent?: number }) => void;
+  'end_turn': () => void;
+  'propose_bill': (data: { billId: string }) => void;
   'skip_proposal': () => void;
-  'cast_vote': (data: { vote: 'yes' | 'no' }) => void;
-  'acknowledge_wildcard': () => void;
-  'adjust_issue': (data: { direction: -1 | 0 | 1 }) => void;
+  'cast_vote': (data: { vote: 'aye' | 'no' }) => void;
+  'acknowledge_event': () => void;
+  'acknowledge_result': () => void;
   'update_config': (data: { config: Partial<GameConfig> }) => void;
   'request_state': () => void;
   'export_game': () => void;
   'send_chat': (data: { content: string; recipientId: string | null }) => void;
-  'select_new_agenda': (data: { issue: Issue }) => void;
   'force_advance_phase': () => void;
-
-  // Seat capture (Australian map)
-  'resolve_capture_seat': (data: { seatId: SeatId }) => void;
-
-  // Negotiation
-  'make_trade_offer': (data: { toPlayerId: string; offeredCardIds: string[]; requestedCardIds: string[] }) => void;
-  'respond_to_offer': (data: { offerId: string; accept: boolean }) => void;
-  'cancel_offer': (data: { offerId: string }) => void;
-  'negotiation_ready': () => void;
-
-  // Session restore
   'restore_session': (data: { roomId: string; playerId: string }) => void;
 }
 
@@ -563,28 +386,6 @@ export interface ServerToClientEvents {
   'player_disconnected': (data: { playerId: string }) => void;
   'player_reconnected': (data: { playerId: string }) => void;
   'chat_message': (data: { message: ChatMessage }) => void;
-  'trade_offer_received': (data: { offer: TradeOffer }) => void;
-  'trade_offer_updated': (data: { offer: TradeOffer }) => void;
   'available_colors': (data: { colors: PartyColorId[] }) => void;
   'session_restored': (data: { success: boolean; roomId: string }) => void;
-}
-
-// ============================================================
-// ANALYTICS
-// ============================================================
-
-export interface GameAnalytics {
-  totalRounds: number;
-  policiesProposed: number;
-  policiesPassed: number;
-  seatLeaderChanges: number;
-  tradesCompleted: number;
-  scoreBreakdown: Record<string, {
-    proposerRewards: number;
-    ideologyAlignment: number;
-    endgameAwards: number;
-    total: number;
-  }>;
-  seatHistoryPerRound: Record<string, number[]>;
-  winnerWasSeatLeader: boolean;
 }

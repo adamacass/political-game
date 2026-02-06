@@ -1,5 +1,5 @@
 import { GameEngine } from '../game/GameEngine';
-import { GameConfig, ChatMessage, PartyColorId, SocialIdeology, EconomicIdeology } from '../types';
+import { GameConfig, ChatMessage, PartyColorId, SocialIdeology, EconomicIdeology, ActionType } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
 interface Room {
@@ -25,18 +25,17 @@ class RoomManager {
   createRoom(configOverrides?: Partial<GameConfig>): string {
     const roomId = this.generateRoomCode().toUpperCase();
     const engine = new GameEngine(roomId, configOverrides || {});
-    
+
     const room: Room = {
       id: roomId,
       engine,
-      hostId: '', // Will be set when first player joins
+      hostId: '',
       socketToPlayer: new Map(),
       playerToSocket: new Map(),
       createdAt: Date.now(),
       lastActivity: Date.now(),
     };
-    
-    // Store with uppercase key for consistent lookup
+
     this.rooms.set(roomId, room);
     console.log(`[RoomManager] Created room ${roomId}, total rooms: ${this.rooms.size}`);
     return roomId;
@@ -93,7 +92,7 @@ class RoomManager {
     return { success: true, playerId };
   }
 
-  // Get room (returns room with engine)
+  // Get room
   getRoom(roomId: string): Room | undefined {
     const normalizedId = roomId.toUpperCase();
     const room = this.rooms.get(normalizedId);
@@ -140,52 +139,35 @@ class RoomManager {
     return room.engine.startGame();
   }
 
-  // Draw card
-  drawCard(roomId: string, playerId: string, deckType: 'campaign' | 'policy'): boolean {
+  // Perform action
+  performAction(
+    roomId: string,
+    playerId: string,
+    actionType: ActionType,
+    targetSeatId?: string,
+    targetPlayerId?: string,
+    fundsSpent?: number
+  ): boolean {
     const room = this.rooms.get(roomId.toUpperCase());
     if (!room) return false;
     room.lastActivity = Date.now();
-    return room.engine.drawCard(playerId, deckType);
+    return room.engine.performAction(playerId, actionType, targetSeatId, targetPlayerId, fundsSpent);
   }
 
-  // Play campaign card
-  playCampaignCard(roomId: string, playerId: string, cardId: string): boolean {
+  // End turn
+  endTurn(roomId: string, playerId: string): boolean {
     const room = this.rooms.get(roomId.toUpperCase());
     if (!room) return false;
     room.lastActivity = Date.now();
-    return room.engine.playCampaignCard(playerId, cardId);
+    return room.engine.endTurn(playerId);
   }
 
-  // Select campaign target
-  selectCampaignTarget(roomId: string, playerId: string, targetPlayerId: string): boolean {
+  // Propose bill
+  proposeBill(roomId: string, playerId: string, billId: string): boolean {
     const room = this.rooms.get(roomId.toUpperCase());
     if (!room) return false;
     room.lastActivity = Date.now();
-    return room.engine.selectCampaignTarget(playerId, targetPlayerId);
-  }
-
-  // Skip campaign
-  skipCampaign(roomId: string, playerId: string): boolean {
-    const room = this.rooms.get(roomId.toUpperCase());
-    if (!room) return false;
-    room.lastActivity = Date.now();
-    return room.engine.skipCampaign(playerId);
-  }
-
-  // Skip and replace
-  skipAndReplace(roomId: string, playerId: string, cardId: string): boolean {
-    const room = this.rooms.get(roomId.toUpperCase());
-    if (!room) return false;
-    room.lastActivity = Date.now();
-    return room.engine.skipAndReplace(playerId, cardId);
-  }
-
-  // Propose policy
-  proposePolicy(roomId: string, playerId: string, cardId: string): boolean {
-    const room = this.rooms.get(roomId.toUpperCase());
-    if (!room) return false;
-    room.lastActivity = Date.now();
-    return room.engine.proposePolicy(playerId, cardId);
+    return room.engine.proposeBill(playerId, billId);
   }
 
   // Skip proposal
@@ -197,89 +179,36 @@ class RoomManager {
   }
 
   // Cast vote
-  castVote(roomId: string, playerId: string, vote: 'yes' | 'no'): boolean {
+  castVote(roomId: string, playerId: string, vote: 'aye' | 'no'): boolean {
     const room = this.rooms.get(roomId.toUpperCase());
     if (!room) return false;
     room.lastActivity = Date.now();
     return room.engine.castVote(playerId, vote);
   }
 
-  // Acknowledge wildcard
-  acknowledgeWildcard(roomId: string, playerId: string): boolean {
+  // Acknowledge legislation result
+  acknowledgeLegislationResult(roomId: string, playerId: string): boolean {
     const room = this.rooms.get(roomId.toUpperCase());
     if (!room) return false;
     room.lastActivity = Date.now();
-    return room.engine.acknowledgeWildcard(playerId);
+    return room.engine.acknowledgeLegislationResult(playerId);
   }
 
-  // Select new agenda
-  selectNewAgenda(roomId: string, playerId: string, issue: string): boolean {
+  // Acknowledge event
+  acknowledgeEvent(roomId: string, playerId: string): boolean {
     const room = this.rooms.get(roomId.toUpperCase());
     if (!room) return false;
     room.lastActivity = Date.now();
-    return room.engine.selectNewAgenda(playerId, issue as any);
-  }
-
-  // Adjust issue (legacy - may not be used)
-  adjustIssue(roomId: string, playerId: string, direction: number): boolean {
-    const room = this.rooms.get(roomId.toUpperCase());
-    if (!room) return false;
-    room.lastActivity = Date.now();
-    // If engine has this method, call it; otherwise return false
-    if (typeof (room.engine as any).adjustIssue === 'function') {
-      return (room.engine as any).adjustIssue(playerId, direction);
-    }
-    return false;
+    return room.engine.acknowledgeEvent(playerId);
   }
 
   // Force advance phase (host only)
   forceAdvancePhase(roomId: string, playerId: string): boolean {
     const room = this.rooms.get(roomId.toUpperCase());
     if (!room) return false;
-    // Check if player is host
     if (room.hostId !== playerId) return false;
     room.lastActivity = Date.now();
     return room.engine.forceAdvancePhase();
-  }
-
-  // Make trade offer
-  makeTradeOffer(roomId: string, fromPlayerId: string, toPlayerId: string, offeredCardIds: string[], requestedCardIds: string[]) {
-    const room = this.rooms.get(roomId.toUpperCase());
-    if (!room) return null;
-    room.lastActivity = Date.now();
-    return room.engine.makeTradeOffer(fromPlayerId, toPlayerId, offeredCardIds, requestedCardIds);
-  }
-
-  // Respond to offer
-  respondToOffer(roomId: string, playerId: string, offerId: string, accept: boolean): boolean {
-    const room = this.rooms.get(roomId.toUpperCase());
-    if (!room) return false;
-    room.lastActivity = Date.now();
-    return room.engine.respondToOffer(playerId, offerId, accept);
-  }
-
-  // Cancel offer
-  cancelOffer(roomId: string, playerId: string, offerId: string): boolean {
-    const room = this.rooms.get(roomId.toUpperCase());
-    if (!room) return false;
-    room.lastActivity = Date.now();
-    return room.engine.cancelOffer(playerId, offerId);
-  }
-
-  // Mark negotiation ready
-  markNegotiationReady(roomId: string, playerId: string): boolean {
-    const room = this.rooms.get(roomId.toUpperCase());
-    if (!room) return false;
-    room.lastActivity = Date.now();
-    return room.engine.markNegotiationReady(playerId);
-  }
-
-  // NEW: Resolve seat capture (Australian map)
-  resolveCaptureSeat(roomId: string, playerId: string, seatId: string): boolean {
-    const room = this.rooms.get(roomId.toUpperCase());
-    if (!room) return false;
-    room.lastActivity = Date.now();
-    return room.engine.resolveCaptureSeat(playerId, seatId);
   }
 
   // Update config
@@ -363,7 +292,6 @@ class RoomManager {
     for (let i = 0; i < 6; i++) {
       code += chars[Math.floor(Math.random() * chars.length)];
     }
-    // Ensure uniqueness
     if (this.rooms.has(code)) {
       return this.generateRoomCode();
     }

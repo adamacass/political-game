@@ -5,7 +5,6 @@ import cors from 'cors';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { roomManager } from './rooms/RoomManager';
-import { loadCardData } from './config/loader';
 import { ClientToServerEvents, ServerToClientEvents, ChatMessage, PARTY_COLORS } from './types';
 
 const app = express();
@@ -25,9 +24,6 @@ const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
   pingTimeout: 60000,
   pingInterval: 25000,
 });
-
-const configDir = process.env.CONFIG_DIR || path.join(__dirname, '../../config');
-loadCardData(configDir);
 
 // REST endpoints
 app.get('/api/health', (req, res) => {
@@ -52,7 +48,7 @@ if (process.env.NODE_ENV === 'production') {
 // Socket.IO
 io.on('connection', (socket) => {
   console.log(`Client connected: ${socket.id}`);
-  
+
   let currentRoomId: string | null = null;
   let currentPlayerId: string | null = null;
 
@@ -69,11 +65,11 @@ io.on('connection', (socket) => {
   };
 
   // Create room
-  socket.on('create_room', ({ playerName, partyName, colorId, symbolId, configOverrides, socialIdeology, economicIdeology }) => {
+  socket.on('create_room', ({ playerName, partyName, colorId, symbolId, socialIdeology, economicIdeology }) => {
     try {
-      const roomId = roomManager.createRoom(configOverrides);
+      const roomId = roomManager.createRoom();
       const result = roomManager.joinRoom(roomId, socket.id, playerName, partyName, colorId, symbolId, socialIdeology, economicIdeology);
-      
+
       if (result.success && result.playerId) {
         currentRoomId = roomId;
         currentPlayerId = result.playerId;
@@ -95,17 +91,17 @@ io.on('connection', (socket) => {
   socket.on('join_room', ({ roomId, playerName, partyName, colorId, symbolId, socialIdeology, economicIdeology }) => {
     try {
       const result = roomManager.joinRoom(roomId, socket.id, playerName, partyName, colorId, symbolId, socialIdeology, economicIdeology);
-      
+
       if (result.success && result.playerId) {
         currentRoomId = roomId.toUpperCase();
         currentPlayerId = result.playerId;
         socket.join(currentRoomId);
         socket.emit('room_joined', { roomId: currentRoomId, playerId: result.playerId });
-        
+
         // Notify all clients of updated available colors
         const availableColors = roomManager.getAvailableColors(currentRoomId);
         io.to(currentRoomId).emit('available_colors', { colors: availableColors });
-        
+
         broadcastState(currentRoomId);
       } else {
         socket.emit('error', { message: result.error || 'Failed to join room' });
@@ -140,7 +136,6 @@ io.on('connection', (socket) => {
         return;
       }
 
-      // Reconnect the player
       const normalizedRoomId = roomId.toUpperCase();
       currentRoomId = normalizedRoomId;
       currentPlayerId = playerId;
@@ -149,11 +144,9 @@ io.on('connection', (socket) => {
       socket.emit('session_restored', { success: true, roomId: normalizedRoomId });
       socket.emit('room_joined', { roomId: normalizedRoomId, playerId });
 
-      // Send available colors
       const availableColors = roomManager.getAvailableColors(normalizedRoomId);
       socket.emit('available_colors', { colors: availableColors });
 
-      // Broadcast state to reconnected player
       broadcastState(normalizedRoomId);
 
       console.log(`Session restored for player ${playerId} in room ${normalizedRoomId}`);
@@ -184,122 +177,62 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Draw card
-  socket.on('draw_card', ({ deckType }) => {
+  // Perform action
+  socket.on('perform_action', ({ actionType, targetSeatId, targetPlayerId, fundsSpent }) => {
     if (!currentRoomId || !currentPlayerId) {
       socket.emit('error', { message: 'Not in a game' });
       return;
     }
 
     try {
-      const success = roomManager.drawCard(currentRoomId, currentPlayerId, deckType);
+      const success = roomManager.performAction(currentRoomId, currentPlayerId, actionType, targetSeatId, targetPlayerId, fundsSpent);
       if (success) {
         broadcastState(currentRoomId);
       } else {
-        socket.emit('error', { message: 'Cannot draw card' });
+        socket.emit('error', { message: 'Cannot perform action' });
       }
     } catch (error) {
-      console.error('Error drawing card:', error);
+      console.error('Error performing action:', error);
       socket.emit('error', { message: 'Server error' });
     }
   });
 
-  // Play campaign card
-  socket.on('play_campaign', ({ cardId }) => {
+  // End turn
+  socket.on('end_turn', () => {
     if (!currentRoomId || !currentPlayerId) {
       socket.emit('error', { message: 'Not in a game' });
       return;
     }
 
     try {
-      const success = roomManager.playCampaignCard(currentRoomId, currentPlayerId, cardId);
+      const success = roomManager.endTurn(currentRoomId, currentPlayerId);
       if (success) {
         broadcastState(currentRoomId);
       } else {
-        socket.emit('error', { message: 'Cannot play card' });
+        socket.emit('error', { message: 'Cannot end turn' });
       }
     } catch (error) {
-      console.error('Error playing card:', error);
+      console.error('Error ending turn:', error);
       socket.emit('error', { message: 'Server error' });
     }
   });
 
-  // Select campaign target
-  socket.on('select_campaign_target', ({ targetPlayerId }) => {
+  // Propose bill
+  socket.on('propose_bill', ({ billId }) => {
     if (!currentRoomId || !currentPlayerId) {
       socket.emit('error', { message: 'Not in a game' });
       return;
     }
 
     try {
-      const success = roomManager.selectCampaignTarget(currentRoomId, currentPlayerId, targetPlayerId);
+      const success = roomManager.proposeBill(currentRoomId, currentPlayerId, billId);
       if (success) {
         broadcastState(currentRoomId);
       } else {
-        socket.emit('error', { message: 'Cannot select target' });
+        socket.emit('error', { message: 'Cannot propose bill' });
       }
     } catch (error) {
-      console.error('Error selecting target:', error);
-      socket.emit('error', { message: 'Server error' });
-    }
-  });
-
-  // Skip campaign
-  socket.on('skip_campaign', () => {
-    if (!currentRoomId || !currentPlayerId) {
-      socket.emit('error', { message: 'Not in a game' });
-      return;
-    }
-
-    try {
-      const success = roomManager.skipCampaign(currentRoomId, currentPlayerId);
-      if (success) {
-        broadcastState(currentRoomId);
-      } else {
-        socket.emit('error', { message: 'Cannot skip' });
-      }
-    } catch (error) {
-      console.error('Error:', error);
-      socket.emit('error', { message: 'Server error' });
-    }
-  });
-
-  // Skip and replace card
-  socket.on('skip_and_replace', ({ cardId }) => {
-    if (!currentRoomId || !currentPlayerId) {
-      socket.emit('error', { message: 'Not in a game' });
-      return;
-    }
-
-    try {
-      const success = roomManager.skipAndReplace(currentRoomId, currentPlayerId, cardId);
-      if (success) {
-        broadcastState(currentRoomId);
-      } else {
-        socket.emit('error', { message: 'Cannot replace card' });
-      }
-    } catch (error) {
-      console.error('Error:', error);
-      socket.emit('error', { message: 'Server error' });
-    }
-  });
-
-  // Propose policy
-  socket.on('propose_policy', ({ cardId }) => {
-    if (!currentRoomId || !currentPlayerId) {
-      socket.emit('error', { message: 'Not in a game' });
-      return;
-    }
-
-    try {
-      const success = roomManager.proposePolicy(currentRoomId, currentPlayerId, cardId);
-      if (success) {
-        broadcastState(currentRoomId);
-      } else {
-        socket.emit('error', { message: 'Cannot propose policy' });
-      }
-    } catch (error) {
-      console.error('Error:', error);
+      console.error('Error proposing bill:', error);
       socket.emit('error', { message: 'Server error' });
     }
   });
@@ -319,7 +252,7 @@ io.on('connection', (socket) => {
         socket.emit('error', { message: 'Cannot skip proposal' });
       }
     } catch (error) {
-      console.error('Error:', error);
+      console.error('Error skipping proposal:', error);
       socket.emit('error', { message: 'Server error' });
     }
   });
@@ -339,136 +272,47 @@ io.on('connection', (socket) => {
         socket.emit('error', { message: 'Cannot vote' });
       }
     } catch (error) {
-      console.error('Error:', error);
+      console.error('Error casting vote:', error);
       socket.emit('error', { message: 'Server error' });
     }
   });
 
-  // Acknowledge wildcard
-  socket.on('acknowledge_wildcard', () => {
+  // Acknowledge event
+  socket.on('acknowledge_event', () => {
     if (!currentRoomId || !currentPlayerId) {
       socket.emit('error', { message: 'Not in a game' });
       return;
     }
 
     try {
-      const success = roomManager.acknowledgeWildcard(currentRoomId, currentPlayerId);
+      const success = roomManager.acknowledgeEvent(currentRoomId, currentPlayerId);
       if (success) {
         broadcastState(currentRoomId);
       } else {
-        socket.emit('error', { message: 'Cannot acknowledge' });
+        socket.emit('error', { message: 'Cannot acknowledge event' });
       }
     } catch (error) {
-      console.error('Error:', error);
+      console.error('Error acknowledging event:', error);
       socket.emit('error', { message: 'Server error' });
     }
   });
 
-  // Adjust issue
-  socket.on('adjust_issue', ({ direction }) => {
+  // Acknowledge legislation result
+  socket.on('acknowledge_result', () => {
     if (!currentRoomId || !currentPlayerId) {
       socket.emit('error', { message: 'Not in a game' });
       return;
     }
 
     try {
-      const success = roomManager.adjustIssue(currentRoomId, currentPlayerId, direction);
+      const success = roomManager.acknowledgeLegislationResult(currentRoomId, currentPlayerId);
       if (success) {
         broadcastState(currentRoomId);
       } else {
-        socket.emit('error', { message: 'Cannot adjust issue' });
+        socket.emit('error', { message: 'Cannot acknowledge result' });
       }
     } catch (error) {
-      console.error('Error:', error);
-      socket.emit('error', { message: 'Server error' });
-    }
-  });
-
-  // NEGOTIATION HANDLERS
-
-  socket.on('make_trade_offer', ({ toPlayerId, offeredCardIds, requestedCardIds }) => {
-    if (!currentRoomId || !currentPlayerId) {
-      socket.emit('error', { message: 'Not in a game' });
-      return;
-    }
-
-    try {
-      const offer = roomManager.makeTradeOffer(
-        currentRoomId, 
-        currentPlayerId, 
-        toPlayerId, 
-        offeredCardIds, 
-        requestedCardIds
-      );
-      if (offer) {
-        // Notify the recipient
-        const recipientSocketId = roomManager.getSocketIdForPlayer(currentRoomId, toPlayerId);
-        if (recipientSocketId) {
-          io.to(recipientSocketId).emit('trade_offer_received', { offer });
-        }
-        broadcastState(currentRoomId);
-      } else {
-        socket.emit('error', { message: 'Cannot make offer' });
-      }
-    } catch (error) {
-      console.error('Error:', error);
-      socket.emit('error', { message: 'Server error' });
-    }
-  });
-
-  socket.on('respond_to_offer', ({ offerId, accept }) => {
-    if (!currentRoomId || !currentPlayerId) {
-      socket.emit('error', { message: 'Not in a game' });
-      return;
-    }
-
-    try {
-      const success = roomManager.respondToOffer(currentRoomId, currentPlayerId, offerId, accept);
-      if (success) {
-        broadcastState(currentRoomId);
-      } else {
-        socket.emit('error', { message: 'Cannot respond to offer' });
-      }
-    } catch (error) {
-      console.error('Error:', error);
-      socket.emit('error', { message: 'Server error' });
-    }
-  });
-
-  socket.on('cancel_offer', ({ offerId }) => {
-    if (!currentRoomId || !currentPlayerId) {
-      socket.emit('error', { message: 'Not in a game' });
-      return;
-    }
-
-    try {
-      const success = roomManager.cancelOffer(currentRoomId, currentPlayerId, offerId);
-      if (success) {
-        broadcastState(currentRoomId);
-      } else {
-        socket.emit('error', { message: 'Cannot cancel offer' });
-      }
-    } catch (error) {
-      console.error('Error:', error);
-      socket.emit('error', { message: 'Server error' });
-    }
-  });
-
-  socket.on('negotiation_ready', () => {
-    if (!currentRoomId || !currentPlayerId) {
-      socket.emit('error', { message: 'Not in a game' });
-      return;
-    }
-
-    try {
-      const success = roomManager.markNegotiationReady(currentRoomId, currentPlayerId);
-      if (success) {
-        broadcastState(currentRoomId);
-      } else {
-        socket.emit('error', { message: 'Cannot mark ready' });
-      }
-    } catch (error) {
-      console.error('Error:', error);
+      console.error('Error acknowledging result:', error);
       socket.emit('error', { message: 'Server error' });
     }
   });
@@ -488,7 +332,7 @@ io.on('connection', (socket) => {
         socket.emit('error', { message: 'Cannot update config' });
       }
     } catch (error) {
-      console.error('Error:', error);
+      console.error('Error updating config:', error);
       socket.emit('error', { message: 'Server error' });
     }
   });
@@ -508,7 +352,7 @@ io.on('connection', (socket) => {
         socket.emit('available_colors', { colors: roomManager.getAvailableColors(currentRoomId) });
       }
     } catch (error) {
-      console.error('Error:', error);
+      console.error('Error requesting state:', error);
     }
   });
 
@@ -523,23 +367,23 @@ io.on('connection', (socket) => {
       const eventLog = roomManager.getEventLog(currentRoomId);
       const config = roomManager.getConfig(currentRoomId);
       const state = roomManager.getState(currentRoomId);
-      
+
       if (eventLog && config && state) {
-        socket.emit('game_exported', { 
-          eventLog, 
-          config, 
+        socket.emit('game_exported', {
+          eventLog,
+          config,
           seed: state.seed,
           chatLog: state.chatMessages || [],
-          history: state.history || []
+          history: state.history || [],
         });
       }
     } catch (error) {
-      console.error('Error:', error);
+      console.error('Error exporting game:', error);
       socket.emit('error', { message: 'Server error' });
     }
   });
 
-  // Chat
+  // Send chat
   socket.on('send_chat', ({ content, recipientId }) => {
     if (!currentRoomId || !currentPlayerId) {
       socket.emit('error', { message: 'Not in a room' });
@@ -560,7 +404,7 @@ io.on('connection', (socket) => {
         recipientId: recipientId,
         content: content.substring(0, 500),
         timestamp: Date.now(),
-        isPrivate: recipientId !== null
+        isPrivate: recipientId !== null,
       };
 
       roomManager.addChatMessage(currentRoomId, message);
@@ -579,34 +423,6 @@ io.on('connection', (socket) => {
       socket.emit('error', { message: 'Failed to send message' });
     }
   });
-  // ... your existing handlers above ...
-
-  socket.on('cast_vote', ({ vote }) => {
-    // ... existing code ...
-  });
-
-  // =====================
-  // ADD THESE NEW ONES HERE:
-  // =====================
-
-// Agenda selection
-  socket.on('select_new_agenda', ({ issue }) => {
-    if (!currentRoomId || !currentPlayerId) {
-      socket.emit('error', { message: 'Not in a room' });
-      return;
-    }
-    try {
-      const success = roomManager.selectNewAgenda(currentRoomId, currentPlayerId, issue);
-      if (success) {
-        broadcastState(currentRoomId);
-      } else {
-        socket.emit('error', { message: 'Cannot select agenda' });
-      }
-    } catch (error) {
-      console.error('Error selecting agenda:', error);
-      socket.emit('error', { message: 'Server error' });
-    }
-  });
 
   // Force advance phase (host only)
   socket.on('force_advance_phase', () => {
@@ -614,6 +430,7 @@ io.on('connection', (socket) => {
       socket.emit('error', { message: 'Not in a room' });
       return;
     }
+
     try {
       const success = roomManager.forceAdvancePhase(currentRoomId, currentPlayerId);
       if (success) {
@@ -627,33 +444,10 @@ io.on('connection', (socket) => {
     }
   });
 
-  // NEW: Resolve seat capture (Australian map)
-  socket.on('resolve_capture_seat', ({ seatId }) => {
-    if (!currentRoomId || !currentPlayerId) {
-      socket.emit('error', { message: 'Not in a room' });
-      return;
-    }
-    try {
-      const success = roomManager.resolveCaptureSeat(currentRoomId, currentPlayerId, seatId);
-      if (success) {
-        broadcastState(currentRoomId);
-      } else {
-        socket.emit('error', { message: 'Cannot capture seat' });
-      }
-    } catch (error) {
-      console.error('Error capturing seat:', error);
-      socket.emit('error', { message: 'Server error' });
-    }
-  });
-
-  // =====================
-  // END OF NEW HANDLERS
-  // =====================
-
   // Disconnect
   socket.on('disconnect', () => {
     console.log(`Client disconnected: ${socket.id}`);
-    
+
     if (currentRoomId && currentPlayerId) {
       try {
         const leftPlayerId = roomManager.leaveRoom(currentRoomId, socket.id);
@@ -669,7 +463,7 @@ io.on('connection', (socket) => {
   });
 });
 
-// Cleanup
+// Cleanup stale rooms every hour
 setInterval(() => {
   try {
     const cleaned = roomManager.cleanupStaleRooms();

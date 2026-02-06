@@ -1,8 +1,13 @@
 /**
- * Australian Electoral Map Generator
+ * Australian Electoral Map & Chamber Layout Generator
  *
- * Generates a set of seats distributed across Australian states,
- * with coordinates for SVG rendering, ideology ratings, and ownership.
+ * Generates a set of seats distributed across Australian states with:
+ * - Ideology ratings (random or realistic mode)
+ * - U-shaped hemicycle chamber positions for the House of Representatives SVG
+ * - Ownership and margin tracking
+ *
+ * The chamber layout places 151 seats in a horseshoe (U opening at bottom),
+ * with 5 concentric rows and states clustered by angular region.
  */
 
 import { Seat, SeatId, StateCode, EconBucket, SocialBucket, SeatIdeology, StateControl } from '../types';
@@ -82,250 +87,44 @@ const STATE_PROPORTIONS: Record<StateCode, number> = {
   NSW: 0.32,   // ~47 seats
   VIC: 0.26,   // ~38 seats
   QLD: 0.20,   // ~30 seats
-  WA: 0.11,   // ~16 seats
-  SA: 0.07,   // ~10 seats
+  WA: 0.11,    // ~16 seats
+  SA: 0.07,    // ~10 seats
   TAS: 0.03,   // ~5 seats
   ACT: 0.01,   // ~2 seats
-  NT: 0.01,   // ~2 seats
+  NT: 0.01,    // ~2 seats
 };
 
 // ============================================================
-// STATE BOUNDING BOXES (for SVG viewBox 0-100)
-// Simplified Australia silhouette regions
+// STATE IDEOLOGY BIASES (subtle flavor per state)
 // ============================================================
 
-interface BoundingBox {
-  x: number;     // Left
-  y: number;     // Top
-  width: number;
-  height: number;
-}
-
-// State bounding boxes aligned with svg-maps/australia geographic paths
-// viewBox: 6.5 4.8 273 252.8 - coordinates are in 0-100 system
-// Tightened bounds to stay well within actual state shapes (conservative)
-const STATE_BOUNDS: Record<StateCode, BoundingBox> = {
-  WA:  { x: 12, y: 18, width: 24, height: 48 },  // Western third - tighter
-  NT:  { x: 44, y: 10, width: 16, height: 30 },  // Top center (north) - tighter
-  SA:  { x: 44, y: 50, width: 22, height: 26 },  // Center-south - tighter
-  QLD: { x: 67, y: 8,  width: 26, height: 38 },  // Northeast - much tighter on right edge
-  NSW: { x: 72, y: 52, width: 22, height: 22 },  // Southeast coast - tighter
-  VIC: { x: 72, y: 75, width: 16, height: 8 },   // Bottom corner - tighter
-  TAS: { x: 79, y: 89, width: 8,  height: 8 },   // Island - tighter
-  ACT: { x: 88, y: 72, width: 2,  height: 2 },   // Small region - very tight
-};
-
-// State ideology biases (subtle flavor)
 const STATE_ECON_BIAS: Record<StateCode, number> = {
-  NSW: 0,      // Balanced
-  VIC: 0.1,    // Slightly left
-  QLD: -0.1,   // Slightly right
-  WA: -0.15,   // Mining state, slightly right
-  SA: 0.05,    // Slightly left
-  TAS: 0.1,    // Left leaning
-  ACT: 0.2,    // Public service, left
-  NT: -0.05,   // Slightly right
+  NSW: 0,       // Balanced
+  VIC: 0.1,     // Slightly left
+  QLD: -0.1,    // Slightly right
+  WA: -0.15,    // Mining state, slightly right
+  SA: 0.05,     // Slightly left
+  TAS: 0.1,     // Left leaning
+  ACT: 0.2,     // Public service, left
+  NT: -0.05,    // Slightly right
 };
 
 const STATE_SOCIAL_BIAS: Record<StateCode, number> = {
   NSW: 0,
-  VIC: 0.15,   // Progressive
-  QLD: -0.1,   // Conservative
+  VIC: 0.15,    // Progressive
+  QLD: -0.1,    // Conservative
   WA: -0.05,
   SA: 0.05,
   TAS: 0.1,
-  ACT: 0.2,    // Progressive
+  ACT: 0.2,     // Progressive
   NT: -0.1,
 };
 
 // ============================================================
-// MAIN GENERATOR FUNCTION
+// IDEOLOGY SEAT SETS (for realistic mode)
 // ============================================================
 
-export interface MapGenConfig {
-  seatCount: number;
-  seed: string;
-  playerIds: string[];
-  ideologyMode: 'random' | 'realistic';  // Seat ideology distribution mode
-}
-
-export function generateSeatMap(config: MapGenConfig): Record<SeatId, Seat> {
-  const { seatCount, seed, playerIds, ideologyMode } = config;
-  const rng = new SeededRNG(seed);
-  const seats: Record<SeatId, Seat> = {};
-
-  // Calculate seats per state
-  const stateAllocation = allocateSeatsToStates(seatCount);
-
-  // Track used names per state
-  const usedNames: Record<StateCode, Set<string>> = {
-    NSW: new Set(), VIC: new Set(), QLD: new Set(), WA: new Set(),
-    SA: new Set(), TAS: new Set(), ACT: new Set(), NT: new Set(),
-  };
-
-  // Track placed positions for overlap avoidance
-  const placedPositions: { x: number; y: number }[] = [];
-
-  let seatIndex = 0;
-
-  for (const [state, count] of Object.entries(stateAllocation) as [StateCode, number][]) {
-    const bounds = STATE_BOUNDS[state];
-    const availableNames = [...DIVISION_NAMES[state]];
-    rng.shuffle(availableNames);
-
-    for (let i = 0; i < count; i++) {
-      const seatId = `seat_${seatIndex.toString().padStart(3, '0')}`;
-
-      // Get name (real division or generated fallback)
-      const name = getUniqueName(state, availableNames, usedNames[state], i, rng);
-
-      // Generate position with collision avoidance
-      const pos = generatePosition(bounds, placedPositions, rng);
-      placedPositions.push(pos);
-
-      // Generate ideology based on mode
-      const ideology = ideologyMode === 'realistic'
-        ? generateRealisticIdeology(state, name, pos, rng)
-        : generateIdeology(state, rng);
-
-      seats[seatId] = {
-        id: seatId,
-        name,
-        state,
-        x: pos.x,
-        y: pos.y,
-        ideology,
-        ownerPlayerId: null,  // Will be assigned in distributeSeats
-      };
-
-      seatIndex++;
-    }
-  }
-
-  // Distribute seats among players
-  distributeSeatsToPlayers(seats, playerIds, rng);
-
-  return seats;
-}
-
-// ============================================================
-// HELPER FUNCTIONS
-// ============================================================
-
-function allocateSeatsToStates(totalSeats: number): Record<StateCode, number> {
-  const states: StateCode[] = ['NSW', 'VIC', 'QLD', 'WA', 'SA', 'TAS', 'ACT', 'NT'];
-  const allocation: Record<StateCode, number> = {} as Record<StateCode, number>;
-
-  let remaining = totalSeats;
-
-  // Ensure each state gets at least 1 seat
-  for (const state of states) {
-    allocation[state] = 1;
-    remaining--;
-  }
-
-  // Distribute remaining seats proportionally
-  for (const state of states) {
-    const proportion = STATE_PROPORTIONS[state];
-    const additional = Math.floor((totalSeats - 8) * proportion);
-    allocation[state] += additional;
-    remaining -= additional;
-  }
-
-  // Distribute any remaining seats to largest states
-  const largestFirst: StateCode[] = ['NSW', 'VIC', 'QLD', 'WA', 'SA'];
-  let i = 0;
-  while (remaining > 0) {
-    allocation[largestFirst[i % largestFirst.length]]++;
-    remaining--;
-    i++;
-  }
-
-  return allocation;
-}
-
-function getUniqueName(
-  state: StateCode,
-  availableNames: string[],
-  usedNames: Set<string>,
-  index: number,
-  rng: SeededRNG
-): string {
-  // Try to use a real division name first
-  while (availableNames.length > 0) {
-    const name = availableNames.pop()!;
-    if (!usedNames.has(name)) {
-      usedNames.add(name);
-      return name;
-    }
-  }
-
-  // Fallback: generate name from state + suffix + number
-  const suffix = FALLBACK_SUFFIXES[index % FALLBACK_SUFFIXES.length];
-  const num = Math.floor(index / FALLBACK_SUFFIXES.length) + 1;
-  const fallbackName = num > 1 ? `${state} ${suffix} ${num}` : `${state} ${suffix}`;
-  usedNames.add(fallbackName);
-  return fallbackName;
-}
-
-function generatePosition(
-  bounds: BoundingBox,
-  existing: { x: number; y: number }[],
-  rng: SeededRNG
-): { x: number; y: number } {
-  const minDist = 2.5;  // Minimum distance between seats
-  const maxAttempts = 50;
-
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const x = bounds.x + rng.random() * bounds.width;
-    const y = bounds.y + rng.random() * bounds.height;
-
-    // Check distance from existing points
-    let valid = true;
-    for (const pos of existing) {
-      const dist = Math.sqrt((x - pos.x) ** 2 + (y - pos.y) ** 2);
-      if (dist < minDist) {
-        valid = false;
-        break;
-      }
-    }
-
-    if (valid) {
-      return { x, y };
-    }
-  }
-
-  // If we couldn't find a non-overlapping position, use jittered position
-  // with clamping to ensure we stay within bounds
-  const x = bounds.x + rng.random() * bounds.width;
-  const y = bounds.y + rng.random() * bounds.height;
-  const jitterX = (rng.random() - 0.5) * 1.5;
-  const jitterY = (rng.random() - 0.5) * 1.5;
-
-  // Clamp to bounds to prevent seats from appearing outside state boundaries
-  const finalX = Math.max(bounds.x, Math.min(bounds.x + bounds.width, x + jitterX));
-  const finalY = Math.max(bounds.y, Math.min(bounds.y + bounds.height, y + jitterY));
-
-  return { x: finalX, y: finalY };
-}
-
-function generateIdeology(state: StateCode, rng: SeededRNG): SeatIdeology {
-  const econBias = STATE_ECON_BIAS[state];
-  const socialBias = STATE_SOCIAL_BIAS[state];
-
-  // Generate with slight center bias and state bias
-  // Range: -1 to 1, with 0 being center
-  const econValue = (rng.random() - 0.5) * 2 + econBias;
-  const socialValue = (rng.random() - 0.5) * 2 + socialBias;
-
-  // Convert to buckets
-  const econ: EconBucket = econValue < -0.33 ? 'LEFT' : econValue > 0.33 ? 'RIGHT' : 'CENTER';
-  const social: SocialBucket = socialValue < -0.33 ? 'CONS' : socialValue > 0.33 ? 'PROG' : 'CENTER';
-
-  return { econ, social };
-}
-
-// Known inner-city progressive seats (simplified patterns based on real voting)
+/** Inner-city progressive seats (based on real voting patterns) */
 const INNER_CITY_SEATS = new Set([
   'Sydney', 'Melbourne', 'Brisbane', 'Grayndler', 'Wills', 'Melbourne Ports',
   'Griffith', 'Perth', 'Higgins', 'Kooyong', 'Ryan', 'Adelaide',
@@ -333,22 +132,22 @@ const INNER_CITY_SEATS = new Set([
   'Maribyrnong', 'Gellibrand', 'Fremantle', 'Curtin', 'Swan', 'Hindmarsh',
 ]);
 
-// Rural/regional conservative seats
+/** Rural/regional conservative seats */
 const RURAL_REGIONAL_SEATS = new Set([
   'Kennedy', 'Maranoa', 'Flynn', 'Dawson', 'Capricornia', 'Hinkler',
-  'O\'Connor', 'Durack', 'Forrest', 'Grey', 'Barker', 'Farrer', 'Riverina',
+  "O'Connor", 'Durack', 'Forrest', 'Grey', 'Barker', 'Farrer', 'Riverina',
   'Parkes', 'New England', 'Lyne', 'Cowper', 'Page', 'Gippsland', 'Murray',
   'Mallee', 'Nicholls', 'Indi', 'Wannon', 'Braddon', 'Lyons', 'Bass',
   'Lingiari', 'Wide Bay', 'Calare', 'Hunter',
 ]);
 
-// Mining/resource-heavy seats (economically right-leaning)
+/** Mining/resource-heavy seats (economically right-leaning) */
 const RESOURCE_SEATS = new Set([
-  'Durack', 'O\'Connor', 'Forrest', 'Grey', 'Capricornia', 'Flynn',
+  'Durack', "O'Connor", 'Forrest', 'Grey', 'Capricornia', 'Flynn',
   'Dawson', 'Herbert', 'Kennedy', 'Maranoa', 'Lingiari', 'Solomon',
 ]);
 
-// Working-class/industrial seats (economically left-leaning)
+/** Working-class/industrial seats (economically left-leaning) */
 const INDUSTRIAL_SEATS = new Set([
   'Blaxland', 'Watson', 'Fowler', 'McMahon', 'Chifley', 'Werriwa',
   'Shortland', 'Newcastle', 'Cunningham', 'Bruce', 'Holt', 'Isaacs',
@@ -358,62 +157,329 @@ const INDUSTRIAL_SEATS = new Set([
   'Spence', 'Makin', 'Franklin', 'Denison', 'Clark',
 ]);
 
+// ============================================================
+// CHAMBER LAYOUT CONSTANTS
+// U-shaped hemicycle for the House of Representatives
+// ============================================================
+
+/** ViewBox dimensions: 0 0 1000 700 */
+const CHAMBER_CX = 500;
+const CHAMBER_CY = 340;
+
+/** Radii for each concentric row (inner front bench to outer back bench) */
+const ROW_RADII = [170, 215, 260, 305, 350];
+
+/** Number of seats in each row (front to back). Total = 151. */
+const SEATS_PER_ROW = [22, 27, 32, 35, 35];
+
+/** Arc sweep: from -145 to +145 degrees (0 = straight up). 70-degree gap at bottom. */
+const ARC_START_DEG = -145;
+const ARC_END_DEG = 145;
+const ARC_SPAN_DEG = ARC_END_DEG - ARC_START_DEG; // 290
+
 /**
- * Generate realistic ideology based on actual Australian voting patterns
+ * State ordering around the horseshoe, left to right.
+ * ACT + NSW on the left arm, VIC at the left curve, TAS at the top,
+ * SA at the right curve, QLD + WA on the right arm, NT at the far end.
+ */
+const STATE_CHAMBER_ORDER: StateCode[] = ['ACT', 'NSW', 'VIC', 'TAS', 'SA', 'QLD', 'WA', 'NT'];
+
+// ============================================================
+// CHAMBER POSITION TYPE
+// ============================================================
+
+interface ChamberPosition {
+  row: number;
+  col: number;
+  angle: number;        // degrees
+  normalizedPos: number; // 0..1 fraction along the arc (0 = leftmost, 1 = rightmost)
+  x: number;
+  y: number;
+}
+
+// ============================================================
+// MAIN GENERATOR FUNCTION
+// ============================================================
+
+export interface MapGenConfig {
+  seatCount: number;
+  seed: string;
+  playerIds: string[];
+  ideologyMode: 'random' | 'realistic';
+}
+
+/**
+ * Generate the full Australian electoral seat map with chamber layout positions.
+ *
+ * Steps:
+ * 1. Allocate seats to states proportionally
+ * 2. Name each seat from real division names
+ * 3. Generate ideology (random or realistic mode)
+ * 4. Pre-compute all hemicycle chamber positions
+ * 5. Assign chamber positions to seats, clustering states together
+ * 6. Set margin, distribute among players round-robin
+ */
+export function generateSeatMap(config: MapGenConfig): Record<SeatId, Seat> {
+  const { seatCount, seed, playerIds, ideologyMode } = config;
+  const rng = new SeededRNG(seed);
+  const seats: Record<SeatId, Seat> = {};
+
+  // Step 1: Allocate seats to states
+  const stateAllocation = allocateSeatsToStates(seatCount);
+
+  // Step 2 & 3: Create seat data (without chamber positions yet)
+  const seatList: Omit<Seat, 'chamberRow' | 'chamberCol' | 'chamberAngle' | 'x' | 'y'>[] = [];
+  const usedNames: Record<StateCode, Set<string>> = {
+    NSW: new Set(), VIC: new Set(), QLD: new Set(), WA: new Set(),
+    SA: new Set(), TAS: new Set(), ACT: new Set(), NT: new Set(),
+  };
+
+  let seatIndex = 0;
+
+  // Build seats in chamber order so states cluster naturally
+  for (const state of STATE_CHAMBER_ORDER) {
+    const count = stateAllocation[state];
+    const availableNames = rng.shuffle(DIVISION_NAMES[state]);
+
+    for (let i = 0; i < count; i++) {
+      const seatId = `seat_${seatIndex.toString().padStart(3, '0')}`;
+      const name = getUniqueName(state, availableNames, usedNames[state], i, rng);
+
+      const ideology = ideologyMode === 'realistic'
+        ? generateRealisticIdeology(state, name, rng)
+        : generateRandomIdeology(state, rng);
+
+      const margin = 30 + Math.floor(rng.random() * 41); // 30..70
+
+      seatList.push({
+        id: seatId,
+        name,
+        state,
+        ideology,
+        ownerPlayerId: null,
+        margin,
+        lastCampaignedBy: null,
+        contested: false,
+      });
+
+      seatIndex++;
+    }
+  }
+
+  // Step 4: Pre-compute all chamber positions, sorted left-to-right
+  const chamberPositions = computeChamberPositions();
+
+  // Step 5: Assign chamber positions to seats in order
+  // Seats are already ordered by STATE_CHAMBER_ORDER, so states cluster in the hemicycle
+  for (let i = 0; i < seatList.length; i++) {
+    const pos = chamberPositions[i];
+    const seatData = seatList[i];
+
+    seats[seatData.id] = {
+      ...seatData,
+      chamberRow: pos.row,
+      chamberCol: pos.col,
+      chamberAngle: pos.angle,
+      x: pos.x,
+      y: pos.y,
+    } as Seat;
+  }
+
+  // Step 6: Distribute seats among players (round-robin over shuffled IDs)
+  distributeSeatsToPlayers(seats, playerIds, rng);
+
+  return seats;
+}
+
+// ============================================================
+// CHAMBER POSITION COMPUTATION
+// ============================================================
+
+/**
+ * Pre-compute all 151 chamber positions in the hemicycle, sorted from
+ * leftmost (angle -145) to rightmost (angle +145).
+ *
+ * Each row has a different seat count and radius, but the angular range
+ * is the same for all rows. We compute every position, then sort by a
+ * normalized arc fraction so that positions at similar angles (but
+ * different rows) are adjacent -- giving radial "columns" of seats.
+ */
+function computeChamberPositions(): ChamberPosition[] {
+  const positions: ChamberPosition[] = [];
+
+  for (let row = 0; row < SEATS_PER_ROW.length; row++) {
+    const n = SEATS_PER_ROW[row];
+    const radius = ROW_RADII[row];
+
+    for (let col = 0; col < n; col++) {
+      // Evenly space seats across the arc
+      const angleDeg = ARC_START_DEG + col * (ARC_SPAN_DEG / (n - 1));
+      const angleRad = angleDeg * Math.PI / 180;
+
+      // SVG coordinates (0 degrees = straight up, positive = clockwise)
+      const x = CHAMBER_CX + radius * Math.sin(angleRad);
+      const y = CHAMBER_CY - radius * Math.cos(angleRad);
+
+      // Normalized position along the arc (0 = left, 1 = right)
+      const normalizedPos = (angleDeg - ARC_START_DEG) / ARC_SPAN_DEG;
+
+      positions.push({
+        row,
+        col,
+        angle: Math.round(angleDeg * 100) / 100, // clean up floating point
+        normalizedPos,
+        x: Math.round(x * 100) / 100,
+        y: Math.round(y * 100) / 100,
+      });
+    }
+  }
+
+  // Sort all positions by normalized arc position so seats at similar angles
+  // (across different rows) are adjacent. This produces a left-to-right sweep,
+  // which means assigning state-ordered seats fills angular wedges.
+  positions.sort((a, b) => a.normalizedPos - b.normalizedPos || a.row - b.row);
+
+  return positions;
+}
+
+// ============================================================
+// SEAT ALLOCATION
+// ============================================================
+
+/**
+ * Allocate seats to states based on STATE_PROPORTIONS.
+ * Every state gets at least 1 seat; remaining seats go to the largest states.
+ */
+function allocateSeatsToStates(totalSeats: number): Record<StateCode, number> {
+  const states: StateCode[] = ['NSW', 'VIC', 'QLD', 'WA', 'SA', 'TAS', 'ACT', 'NT'];
+  const allocation: Record<StateCode, number> = {} as Record<StateCode, number>;
+
+  let remaining = totalSeats;
+
+  // Guarantee each state at least 1 seat
+  for (const state of states) {
+    allocation[state] = 1;
+    remaining--;
+  }
+
+  // Distribute proportionally
+  for (const state of states) {
+    const additional = Math.floor((totalSeats - states.length) * STATE_PROPORTIONS[state]);
+    allocation[state] += additional;
+    remaining -= additional;
+  }
+
+  // Hand out any leftover seats to the largest states
+  const largestFirst: StateCode[] = ['NSW', 'VIC', 'QLD', 'WA', 'SA'];
+  let idx = 0;
+  while (remaining > 0) {
+    allocation[largestFirst[idx % largestFirst.length]]++;
+    remaining--;
+    idx++;
+  }
+
+  return allocation;
+}
+
+// ============================================================
+// NAME GENERATION
+// ============================================================
+
+/**
+ * Get a unique division name for a seat. Uses real division names first,
+ * falling back to generated names (e.g. "NSW North") if exhausted.
+ */
+function getUniqueName(
+  state: StateCode,
+  availableNames: string[],
+  usedNames: Set<string>,
+  index: number,
+  _rng: SeededRNG
+): string {
+  // Pop from shuffled real names
+  while (availableNames.length > 0) {
+    const name = availableNames.pop()!;
+    if (!usedNames.has(name)) {
+      usedNames.add(name);
+      return name;
+    }
+  }
+
+  // Fallback: state + suffix + optional number
+  const suffix = FALLBACK_SUFFIXES[index % FALLBACK_SUFFIXES.length];
+  const num = Math.floor(index / FALLBACK_SUFFIXES.length) + 1;
+  const fallbackName = num > 1 ? `${state} ${suffix} ${num}` : `${state} ${suffix}`;
+  usedNames.add(fallbackName);
+  return fallbackName;
+}
+
+// ============================================================
+// IDEOLOGY GENERATION
+// ============================================================
+
+/**
+ * Generate random ideology for a seat, biased by state tendencies.
+ */
+function generateRandomIdeology(state: StateCode, rng: SeededRNG): SeatIdeology {
+  const econBias = STATE_ECON_BIAS[state];
+  const socialBias = STATE_SOCIAL_BIAS[state];
+
+  // Range roughly -1 to 1, centered on 0 plus state bias
+  const econValue = (rng.random() - 0.5) * 2 + econBias;
+  const socialValue = (rng.random() - 0.5) * 2 + socialBias;
+
+  const econ: EconBucket = econValue < -0.33 ? 'LEFT' : econValue > 0.33 ? 'RIGHT' : 'CENTER';
+  const social: SocialBucket = socialValue < -0.33 ? 'CONS' : socialValue > 0.33 ? 'PROG' : 'CENTER';
+
+  return { econ, social };
+}
+
+/**
+ * Generate realistic ideology based on actual Australian voting patterns.
+ * Uses the seat's division name to look up known inner-city, rural,
+ * resource, and industrial classifications.
  */
 function generateRealisticIdeology(
   state: StateCode,
   name: string,
-  pos: { x: number; y: number },
   rng: SeededRNG
 ): SeatIdeology {
-  let econScore = 0;    // -1 = LEFT, 0 = CENTER, 1 = RIGHT
-  let socialScore = 0;  // -1 = CONS, 0 = CENTER, 1 = PROG
+  let econScore = 0;    // negative = RIGHT, positive = LEFT
+  let socialScore = 0;  // negative = CONS, positive = PROG
 
   // Base state biases
   econScore += STATE_ECON_BIAS[state];
   socialScore += STATE_SOCIAL_BIAS[state];
 
-  // Inner city = more progressive socially
+  // Inner city: more progressive socially, slightly left economically
   if (INNER_CITY_SEATS.has(name)) {
     socialScore += 0.5;
-    econScore += 0.1;  // Slightly left economically too
+    econScore += 0.1;
   }
 
-  // Rural/regional = more conservative
+  // Rural/regional: more conservative
   if (RURAL_REGIONAL_SEATS.has(name)) {
     socialScore -= 0.4;
-    econScore -= 0.1;  // Often mixed economically (national interests)
-  }
-
-  // Resource/mining seats = right economically
-  if (RESOURCE_SEATS.has(name)) {
-    econScore -= 0.4;  // Pro-mining = often free market
-    socialScore -= 0.2;  // Often conservative
-  }
-
-  // Industrial/working class = left economically
-  if (INDUSTRIAL_SEATS.has(name)) {
-    econScore += 0.3;  // Pro-union, interventionist
-    socialScore += 0.1;  // Slightly progressive
-  }
-
-  // Add position-based adjustment (higher y = more south = slightly more progressive)
-  // Lower y = more north (QLD, NT) = slightly more conservative
-  const latitudeAdjust = (pos.y - 50) / 200;  // Small adjustment
-  socialScore += latitudeAdjust;
-
-  // Eastern seaboard cities vs inland
-  // Lower x = more west = slightly more conservative economically
-  if (pos.x < 40) {
     econScore -= 0.1;
   }
 
-  // Add small random variation
+  // Resource/mining seats: right economically, often conservative
+  if (RESOURCE_SEATS.has(name)) {
+    econScore -= 0.4;
+    socialScore -= 0.2;
+  }
+
+  // Industrial/working class: left economically, slightly progressive
+  if (INDUSTRIAL_SEATS.has(name)) {
+    econScore += 0.3;
+    socialScore += 0.1;
+  }
+
+  // Small random variation
   econScore += (rng.random() - 0.5) * 0.3;
   socialScore += (rng.random() - 0.5) * 0.3;
 
-  // Convert to buckets (clamp values)
+  // Clamp to [-1, 1]
   econScore = Math.max(-1, Math.min(1, econScore));
   socialScore = Math.max(-1, Math.min(1, socialScore));
 
@@ -423,6 +489,14 @@ function generateRealisticIdeology(
   return { econ, social };
 }
 
+// ============================================================
+// SEAT DISTRIBUTION
+// ============================================================
+
+/**
+ * Distribute seats evenly among players using round-robin
+ * over a shuffled seat list.
+ */
 function distributeSeatsToPlayers(
   seats: Record<SeatId, Seat>,
   playerIds: string[],
@@ -430,11 +504,8 @@ function distributeSeatsToPlayers(
 ): void {
   if (playerIds.length === 0) return;
 
-  // Shuffle seat IDs for random distribution
-  const seatIds = Object.keys(seats);
-  rng.shuffle(seatIds);
+  const seatIds = rng.shuffle(Object.keys(seats));
 
-  // Round-robin assignment
   seatIds.forEach((seatId, index) => {
     const playerIndex = index % playerIds.length;
     seats[seatId].ownerPlayerId = playerIds[playerIndex];
@@ -446,7 +517,7 @@ function distributeSeatsToPlayers(
 // ============================================================
 
 /**
- * Compute seat counts per player from the seat map
+ * Compute seat counts per player from the seat map.
  */
 export function computePlayerSeatCounts(seats: Record<SeatId, Seat>): Record<string, number> {
   const counts: Record<string, number> = {};
@@ -461,14 +532,15 @@ export function computePlayerSeatCounts(seats: Record<SeatId, Seat>): Record<str
 }
 
 /**
- * Get seats owned by a specific player
+ * Get all seats owned by a specific player.
  */
 export function getPlayerSeats(seats: Record<SeatId, Seat>, playerId: string): Seat[] {
   return Object.values(seats).filter(s => s.ownerPlayerId === playerId);
 }
 
 /**
- * Get seats matching ideology criteria owned by opponents
+ * Get opponent-owned seats matching a given ideology criterion.
+ * Used when resolving campaign/policy effects that target specific ideology buckets.
  */
 export function getEligibleSeatsForCapture(
   seats: Record<SeatId, Seat>,
@@ -482,7 +554,6 @@ export function getEligibleSeatsForCapture(
     // Must be owned by someone other than the actor
     if (!seat.ownerPlayerId || seat.ownerPlayerId === actorId) continue;
 
-    // Must match the ideology criteria
     if (ideologyAxis === 'econ' && seat.ideology.econ === ideologyBucket) {
       eligible.push(seatId);
     } else if (ideologyAxis === 'social' && seat.ideology.social === ideologyBucket) {
@@ -494,7 +565,8 @@ export function getEligibleSeatsForCapture(
 }
 
 /**
- * Transfer seat ownership
+ * Transfer seat ownership to a new player.
+ * Returns true if the seat existed and was transferred.
  */
 export function transferSeat(seats: Record<SeatId, Seat>, seatId: SeatId, newOwnerId: string): boolean {
   const seat = seats[seatId];
@@ -505,7 +577,8 @@ export function transferSeat(seats: Record<SeatId, Seat>, seatId: SeatId, newOwn
 }
 
 /**
- * Derive ideology from campaign card stance table
+ * Derive ideology axis and bucket from a campaign card's stance table.
+ * Used when determining which seats a card can target.
  */
 export function deriveIdeologyFromCard(card: {
   stanceTable?: {
@@ -529,14 +602,14 @@ export function deriveIdeologyFromCard(card: {
     }
   }
 
-  // Otherwise derive from stance table
+  // Derive from stance table
   if (!card.stanceTable) {
-    return { axis: 'econ', bucket: 'CENTER' };  // Default fallback
+    return { axis: 'econ', bucket: 'CENTER' };
   }
 
   const st = card.stanceTable;
 
-  // Check economic axis
+  // Economic axis
   if (st.market === 'favoured' && st.interventionist === 'opposed') {
     return { axis: 'econ', bucket: 'RIGHT' };
   }
@@ -544,7 +617,7 @@ export function deriveIdeologyFromCard(card: {
     return { axis: 'econ', bucket: 'LEFT' };
   }
 
-  // Check social axis
+  // Social axis
   if (st.progressive === 'favoured' && st.conservative === 'opposed') {
     return { axis: 'social', bucket: 'PROG' };
   }
@@ -552,7 +625,7 @@ export function deriveIdeologyFromCard(card: {
     return { axis: 'social', bucket: 'CONS' };
   }
 
-  // Mixed or neutral - default to center on economic axis
+  // Mixed/neutral defaults to center on economic axis
   return { axis: 'econ', bucket: 'CENTER' };
 }
 
@@ -563,13 +636,14 @@ export function deriveIdeologyFromCard(card: {
 const ALL_STATES: StateCode[] = ['NSW', 'VIC', 'QLD', 'WA', 'SA', 'TAS', 'ACT', 'NT'];
 
 /**
- * Compute state control for all states
- * A player controls a state if they have more than half the seats in that state
+ * Compute state control for all states.
+ * A player controls a state if they hold a strict majority (> 50%) of its seats
+ * and are not tied with another player.
  */
 export function computeStateControl(seats: Record<SeatId, Seat>): Record<StateCode, StateControl> {
   const stateControl: Record<StateCode, StateControl> = {} as Record<StateCode, StateControl>;
 
-  // Initialize all states
+  // Initialize
   for (const state of ALL_STATES) {
     stateControl[state] = {
       state,
@@ -579,7 +653,7 @@ export function computeStateControl(seats: Record<SeatId, Seat>): Record<StateCo
     };
   }
 
-  // Count seats per state and per player within each state
+  // Count seats per player within each state
   const stateSeatsByPlayer: Record<StateCode, Record<string, number>> = {} as Record<StateCode, Record<string, number>>;
   for (const state of ALL_STATES) {
     stateSeatsByPlayer[state] = {};
@@ -596,10 +670,10 @@ export function computeStateControl(seats: Record<SeatId, Seat>): Record<StateCo
     }
   }
 
-  // Determine controller for each state (must have strict majority)
+  // Determine controller: must have strict majority and not be tied
   for (const state of ALL_STATES) {
     const total = stateControl[state].totalSeats;
-    const majorityThreshold = Math.floor(total / 2) + 1;  // Strict majority
+    const majorityThreshold = Math.floor(total / 2) + 1;
 
     let maxSeats = 0;
     let controllerId: string | null = null;
@@ -615,7 +689,6 @@ export function computeStateControl(seats: Record<SeatId, Seat>): Record<StateCo
       }
     }
 
-    // Only set controller if they have a strict majority and it's not tied
     if (maxSeats >= majorityThreshold && !isTied) {
       stateControl[state].controllerId = controllerId;
       stateControl[state].seatCount = maxSeats;
@@ -626,15 +699,18 @@ export function computeStateControl(seats: Record<SeatId, Seat>): Record<StateCo
 }
 
 /**
- * Get the states controlled by a specific player
+ * Get the states controlled by a specific player.
  */
-export function getPlayerControlledStates(stateControl: Record<StateCode, StateControl>, playerId: string): StateCode[] {
+export function getPlayerControlledStates(
+  stateControl: Record<StateCode, StateControl>,
+  playerId: string
+): StateCode[] {
   return ALL_STATES.filter(state => stateControl[state].controllerId === playerId);
 }
 
 /**
- * Compare state control between old and new to find changes
- * Returns states that changed controller (gained or lost)
+ * Compare old and new state control to find changes.
+ * Returns lists of states gained and lost by each player.
  */
 export function compareStateControl(
   oldControl: Record<StateCode, StateControl>,
@@ -661,9 +737,12 @@ export function compareStateControl(
 }
 
 /**
- * Get seats count by player for a specific state
+ * Get seat counts by player for a specific state.
  */
-export function getStateSeatsByPlayer(seats: Record<SeatId, Seat>, state: StateCode): Record<string, number> {
+export function getStateSeatsByPlayer(
+  seats: Record<SeatId, Seat>,
+  state: StateCode
+): Record<string, number> {
   const counts: Record<string, number> = {};
 
   for (const seat of Object.values(seats)) {
