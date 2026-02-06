@@ -6,7 +6,7 @@
 import {
   GameState, GameConfig, Player, Issue, Phase, ActionType,
   GameEvent, SocialIdeology, EconomicIdeology, ChatMessage,
-  HistorySnapshot, BillResult, PartyColorId, PARTY_COLORS,
+  HistorySnapshot, BillResult, PartyColorId, PARTY_COLORS, IdeologyStance,
   Seat, SeatId, StateCode, StateControl, EconomicStateData, VoterGroupState,
   Bill, PoliticalEvent, EventEffect,
   PlayerAction, ActionResult, ActionCost,
@@ -325,6 +325,9 @@ export class GameEngine {
     // Compute initial state control
     this.state.stateControl = computeStateControl(this.state.seats);
 
+    // Compute initial chamber layout positions (group by party)
+    recomputeChamberPositions(this.state.seats, computePlayerSeatCounts(this.state.seats));
+
     // Pick the active issue for round 1
     this.state.activeIssue = this.rng.pick(ISSUES);
 
@@ -553,6 +556,18 @@ export class GameEngine {
       chance += 10;
     }
 
+    // Voter satisfaction modifier: government benefits from high satisfaction,
+    // opposition benefits from low satisfaction (anti-incumbent swing)
+    if (this.voterEngine && this.config.enableVoterGroups) {
+      const nationalSat = this.voterEngine.getNationalSatisfaction();
+      const isGovernment = this.getSeatLeader()?.id === player.id;
+      if (isGovernment) {
+        chance += (nationalSat - 50) / 5; // ±10 range
+      } else {
+        chance += (50 - nationalSat) / 5; // ±10 range
+      }
+    }
+
     // Clamp between 10 and 90
     chance = Math.max(10, Math.min(90, chance));
 
@@ -581,9 +596,10 @@ export class GameEngine {
       const loser = this.state.players.find(p => p.id === previousOwnerId);
       if (loser) loser.totalSeatsLost++;
 
-      // Sync seat counts and check state control
+      // Sync seat counts, check state control, and update chamber layout
       this.syncPlayerSeatCounts();
       this.checkStateControlChanges();
+      recomputeChamberPositions(this.state.seats, computePlayerSeatCounts(this.state.seats));
 
       this.logEvent({
         type: 'seat_captured',
@@ -1048,6 +1064,12 @@ export class GameEngine {
       }
 
       this.state.passedBills.push(bill);
+
+      // Create economic effects from the passed bill
+      if (this.economicEngine && this.config.enableEconomy) {
+        const newEffects = this.billToEconomicEffects(bill);
+        this.activePolicyEffects.push(...newEffects);
+      }
     } else {
       this.state.failedBills.push(bill);
     }
@@ -1157,6 +1179,7 @@ export class GameEngine {
             }
             this.syncPlayerSeatCounts();
             this.checkStateControlChanges();
+            recomputeChamberPositions(this.state.seats, computePlayerSeatCounts(this.state.seats));
             break;
         }
       }
@@ -1597,6 +1620,128 @@ export class GameEngine {
     }));
   }
 
+  /**
+   * Convert a passed bill into economic ActiveEffects.
+   * Maps bill issue and budget impact to economic variable changes.
+   */
+  private billToEconomicEffects(bill: Bill): ActiveEffect[] {
+    const effects: ActiveEffect[] = [];
+    const isLandmark = bill.isLandmark;
+    const duration = isLandmark ? 5 : 3;
+    const mag = isLandmark ? 1.5 : 1.0;
+
+    // Direct budget balance effect from spending/revenue
+    if (bill.budgetImpact !== 0) {
+      effects.push({
+        policyId: bill.id,
+        effect: {
+          target: 'budgetBalance',
+          immediate: bill.budgetImpact * 0.1 * mag,
+          perPeriod: bill.budgetImpact * 0.02 * mag,
+          duration,
+          delay: 0,
+          uncertainty: 0.2,
+        },
+        turnsRemaining: duration,
+        delayRemaining: 0,
+      });
+    }
+
+    // Issue-specific effects: spending bills boost relevant sectors,
+    // revenue bills can slightly dampen them
+    const issueTargets: Record<Issue, { target: string; multiplier: number }[]> = {
+      economy: [
+        { target: 'gdpGrowth', multiplier: 0.08 },
+        { target: 'businessConfidence', multiplier: 0.5 },
+      ],
+      health: [
+        { target: 'healthcare', multiplier: 0.8 },
+        { target: 'consumerConfidence', multiplier: 0.3 },
+      ],
+      housing: [
+        { target: 'housing', multiplier: 0.8 },
+        { target: 'consumerConfidence', multiplier: 0.2 },
+      ],
+      climate: [
+        { target: 'energy', multiplier: 0.6 },
+        { target: 'manufacturing', multiplier: 0.3 },
+      ],
+      security: [
+        { target: 'businessConfidence', multiplier: 0.4 },
+        { target: 'manufacturing', multiplier: 0.3 },
+      ],
+      education: [
+        { target: 'education', multiplier: 0.8 },
+        { target: 'technology', multiplier: 0.3 },
+      ],
+    };
+
+    const targets = issueTargets[bill.issue] || [];
+    for (const { target, multiplier } of targets) {
+      const magnitude = Math.abs(bill.budgetImpact) * multiplier;
+      if (magnitude === 0) continue;
+      // Spending bills (negative budget) improve sectors; revenue bills dampen
+      const direction = bill.budgetImpact < 0 ? 1 : -0.5;
+
+      effects.push({
+        policyId: bill.id,
+        effect: {
+          target,
+          immediate: magnitude * direction * 0.5 * mag,
+          perPeriod: magnitude * direction * 0.15 * mag,
+          duration,
+          delay: 1,
+          uncertainty: 0.15,
+        },
+        turnsRemaining: duration,
+        delayRemaining: 1,
+      });
+    }
+
+    return effects;
+  }
+
+  /**
+   * Predict how each player's ideology aligns with a bill's stance table.
+   * Returns a tendency ('favoured', 'neutral', 'opposed') and seat weight per player.
+   */
+  getVotePrediction(billId: string): Record<string, { tendency: IdeologyStance; seatWeight: number }> | null {
+    const bill = [
+      ...this.state.availableBills,
+      this.state.pendingLegislation?.bill,
+    ].find(b => b?.id === billId);
+    if (!bill) return null;
+
+    const predictions: Record<string, { tendency: IdeologyStance; seatWeight: number }> = {};
+
+    for (const player of this.state.players) {
+      const socialStance: IdeologyStance = player.socialIdeology === 'progressive'
+        ? bill.stanceTable.progressive
+        : bill.stanceTable.conservative;
+      const econStance: IdeologyStance = player.economicIdeology === 'market'
+        ? bill.stanceTable.market
+        : bill.stanceTable.interventionist;
+
+      // Combine social and economic stances into overall tendency
+      let tendency: IdeologyStance;
+      if (socialStance === 'favoured' && econStance === 'favoured') {
+        tendency = 'favoured';
+      } else if (socialStance === 'opposed' && econStance === 'opposed') {
+        tendency = 'opposed';
+      } else if (socialStance === 'favoured' || econStance === 'favoured') {
+        tendency = (econStance === 'opposed' || socialStance === 'opposed') ? 'neutral' : 'favoured';
+      } else if (socialStance === 'opposed' || econStance === 'opposed') {
+        tendency = 'opposed';
+      } else {
+        tendency = 'neutral';
+      }
+
+      predictions[player.id] = { tendency, seatWeight: player.seats };
+    }
+
+    return predictions;
+  }
+
   /** Tick the economy and update voter groups. Called at the start of each round. */
   tickEconomy(): void {
     if (this.economicEngine && this.config.enableEconomy) {
@@ -1613,8 +1758,32 @@ export class GameEngine {
     if (this.voterEngine && this.config.enableVoterGroups) {
       const economicValues = this.flattenEconomicState(this.state.economy);
       this.voterEngine.updateSatisfaction(economicValues);
-      this.state.voterGroups = this.voterEngine.getGroupSummaries();
+
+      // Get summaries and populate party leanings from vote share model
+      const summaries = this.voterEngine.getGroupSummaries();
+      const parties = this.buildPartyProfiles();
+      if (parties.length > 0) {
+        const voteShares = this.voterEngine.calculateVoteShares(parties);
+        for (const summary of summaries) {
+          let maxShare = 0;
+          let leaningId: string | null = null;
+          for (const [partyId, shares] of Object.entries(voteShares)) {
+            const share = shares[summary.id] ?? 0;
+            if (share > maxShare) {
+              maxShare = share;
+              leaningId = partyId;
+            }
+          }
+          summary.leaningPartyId = leaningId;
+        }
+      }
+      this.state.voterGroups = summaries;
     }
+
+    // Clean up expired policy effects
+    this.activePolicyEffects = this.activePolicyEffects.filter(
+      e => e.delayRemaining > 0 || e.turnsRemaining > 0,
+    );
 
     // Recompute chamber positions based on current ownership (party grouping)
     const seatCounts = computePlayerSeatCounts(this.state.seats);
