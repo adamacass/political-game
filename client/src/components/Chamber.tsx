@@ -15,6 +15,19 @@ const STATE_ABBREV: Record<string, string> = {
   SA: 'SA', TAS: 'TAS', ACT: 'ACT', NT: 'NT',
 };
 
+/**
+ * Vertical AusPar-style chamber layout.
+ *
+ * The Australian House of Representatives is a rectangular room:
+ * - Government benches on the RIGHT side
+ * - Opposition benches on the LEFT side
+ * - Crossbench at the top (arch)
+ * - Speaker's chair at the very top center
+ * - Central table with mace between the two sides
+ * - Seats grouped by party, flowing from bottom up on each side
+ *
+ * ViewBox: 0 0 800 1000
+ */
 export const Chamber: React.FC<ChamberProps> = ({
   gameState,
   playerId,
@@ -33,9 +46,7 @@ export const Chamber: React.FC<ChamberProps> = ({
     return map;
   }, [gameState.players]);
 
-  const myPlayer = playerMap[playerId];
-
-  // Compute seat counts per player for the legend
+  // Compute seat counts per player for legend
   const seatCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     seats.forEach(s => {
@@ -46,6 +57,29 @@ export const Chamber: React.FC<ChamberProps> = ({
     return counts;
   }, [seats]);
 
+  // Sort seats by party for rendering: group by owner, ordered by seat count
+  const sortedSeats = useMemo(() => {
+    const govPlayer = gameState.players.reduce((best, p) =>
+      p.seats > (best?.seats || 0) ? p : best, gameState.players[0]);
+
+    return [...seats].sort((a, b) => {
+      // Government seats first (right side), then opposition, then unowned
+      const aGov = a.ownerPlayerId === govPlayer?.id ? 0 : a.ownerPlayerId ? 1 : 2;
+      const bGov = b.ownerPlayerId === govPlayer?.id ? 0 : b.ownerPlayerId ? 1 : 2;
+      if (aGov !== bGov) return aGov - bGov;
+
+      // Within same category, group by owner
+      if (a.ownerPlayerId !== b.ownerPlayerId) {
+        const aCount = a.ownerPlayerId ? (seatCounts[a.ownerPlayerId] || 0) : 0;
+        const bCount = b.ownerPlayerId ? (seatCounts[b.ownerPlayerId] || 0) : 0;
+        return bCount - aCount;
+      }
+
+      // Same owner: sort by chamber position
+      return a.y - b.y;
+    });
+  }, [seats, gameState.players, seatCounts]);
+
   const getSeatColor = useCallback((seat: Seat): string => {
     if (!seat.ownerPlayerId) return '#3a3a3a';
     const owner = playerMap[seat.ownerPlayerId];
@@ -53,9 +87,9 @@ export const Chamber: React.FC<ChamberProps> = ({
   }, [playerMap]);
 
   const getSeatRadius = useCallback((seat: Seat): number => {
-    const base = seat.chamberRow === 0 ? 5.5 : seat.chamberRow === 1 ? 5 : 4.5;
-    if (selectedSeatId === seat.id) return base + 1.5;
-    if (targetableSeatIds.includes(seat.id)) return base + 0.8;
+    const base = 5;
+    if (selectedSeatId === seat.id) return base + 2;
+    if (targetableSeatIds.includes(seat.id)) return base + 1;
     return base;
   }, [selectedSeatId, targetableSeatIds]);
 
@@ -72,8 +106,8 @@ export const Chamber: React.FC<ChamberProps> = ({
     const svgEl = (e.target as SVGElement).closest('svg');
     if (svgEl) {
       const rect = svgEl.getBoundingClientRect();
-      const scaleX = rect.width / 1000;
-      const scaleY = rect.height / 700;
+      const scaleX = rect.width / 800;
+      const scaleY = rect.height / 1000;
       setTooltipPos({
         x: rect.left + seat.x * scaleX,
         y: rect.top + seat.y * scaleY - 10,
@@ -87,75 +121,102 @@ export const Chamber: React.FC<ChamberProps> = ({
     onSeatHover?.(null);
   }, [onSeatHover]);
 
+  // Majority line
+  const majorityCount = Math.ceil(gameState.totalSeats / 2);
+
   return (
-    <div className="relative w-full chamber-bg" style={{ aspectRatio: '10/7' }}>
+    <div className="relative w-full chamber-bg" style={{ aspectRatio: '4/5' }}>
       <svg
-        viewBox="0 0 1000 700"
+        viewBox="0 0 800 1000"
         className="w-full h-full"
         style={{ display: 'block' }}
       >
-        {/* Chamber floor gradient */}
         <defs>
-          <radialGradient id="chamberFloor" cx="50%" cy="65%" r="55%">
-            <stop offset="0%" stopColor="#1a3c28" stopOpacity="0.6" />
-            <stop offset="60%" stopColor="#0f2a1b" stopOpacity="0.3" />
+          <radialGradient id="chamberFloor" cx="50%" cy="30%" r="60%">
+            <stop offset="0%" stopColor="#1a3c28" stopOpacity="0.5" />
             <stop offset="100%" stopColor="#0c1a12" stopOpacity="0" />
           </radialGradient>
-          <radialGradient id="tableGlow" cx="50%" cy="50%" r="50%">
+          <linearGradient id="tableWood" x1="0%" y1="0%" x2="0%" y2="100%">
             <stop offset="0%" stopColor="#5c3d22" />
-            <stop offset="70%" stopColor="#3d2815" />
-            <stop offset="100%" stopColor="#2a1c0e" />
-          </radialGradient>
-          <linearGradient id="maceGold" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#8a6508" />
-            <stop offset="50%" stopColor="#d4a634" />
-            <stop offset="100%" stopColor="#8a6508" />
+            <stop offset="100%" stopColor="#3d2815" />
+          </linearGradient>
+          <linearGradient id="maceGold" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#d4a634" />
+            <stop offset="50%" stopColor="#8a6508" />
+            <stop offset="100%" stopColor="#d4a634" />
           </linearGradient>
         </defs>
 
         {/* Chamber floor */}
-        <ellipse cx="500" cy="420" rx="420" ry="320" fill="url(#chamberFloor)" />
+        <rect x="0" y="0" width="800" height="1000" fill="url(#chamberFloor)" />
 
-        {/* Row guide arcs (subtle) */}
-        {[170, 215, 260, 305, 350].map((r, i) => (
-          <path
-            key={`arc-${i}`}
-            d={describeArc(500, 340, r, -145, 145)}
-            fill="none"
-            stroke="rgba(42,69,53,0.3)"
-            strokeWidth="0.5"
-            strokeDasharray="4 8"
+        {/* Bench guide lines (subtle) */}
+        {/* Left side bench rows */}
+        {[0, 1, 2, 3, 4].map(col => (
+          <line
+            key={`left-guide-${col}`}
+            x1={264 - col * 36} y1="260" x2={264 - col * 36} y2="900"
+            stroke="rgba(42,69,53,0.2)" strokeWidth="0.5" strokeDasharray="4 8"
+          />
+        ))}
+        {/* Right side bench rows */}
+        {[0, 1, 2, 3, 4].map(col => (
+          <line
+            key={`right-guide-${col}`}
+            x1={520 + col * 36} y1="260" x2={520 + col * 36} y2="900"
+            stroke="rgba(42,69,53,0.2)" strokeWidth="0.5" strokeDasharray="4 8"
           />
         ))}
 
-        {/* Central table (dispatch boxes) */}
-        <rect x="470" y="490" width="60" height="120" rx="4" fill="url(#tableGlow)" stroke="#5c3d22" strokeWidth="1.5" />
-        {/* Mace on the table */}
-        <rect x="490" y="510" width="20" height="4" rx="2" fill="url(#maceGold)" />
-        <circle cx="512" cy="512" r="3" fill="#d4a634" />
+        {/* Arch guide at top */}
+        {[0, 1, 2, 3, 4].map(row => {
+          const r = 140 + row * 36;
+          return (
+            <path
+              key={`arch-guide-${row}`}
+              d={`M ${400 - r} 260 A ${r} ${r} 0 0 1 ${400 + r} 260`}
+              fill="none"
+              stroke="rgba(42,69,53,0.15)"
+              strokeWidth="0.5"
+              strokeDasharray="4 8"
+            />
+          );
+        })}
 
-        {/* Speaker's chair */}
-        <g transform="translate(500, 640)">
-          <rect x="-25" y="-15" width="50" height="30" rx="3" fill="#3d2815" stroke="#5c3d22" strokeWidth="1" />
-          <rect x="-20" y="-10" width="40" height="20" rx="2" fill="#2a1c0e" />
-          <text x="0" y="4" textAnchor="middle" fill="#d4a634" fontSize="8" fontFamily="'IBM Plex Mono', monospace" letterSpacing="0.1em">
+        {/* Central table (dispatch boxes) */}
+        <rect x="370" y="350" width="60" height="400" rx="4" fill="url(#tableWood)" stroke="#5c3d22" strokeWidth="1" />
+
+        {/* Mace on the table */}
+        <rect x="393" y="380" width="14" height="80" rx="3" fill="url(#maceGold)" />
+        <circle cx="400" cy="378" r="5" fill="#d4a634" />
+
+        {/* Dividing line (center aisle) */}
+        <line x1="400" y1="270" x2="400" y2="920" stroke="rgba(184,134,11,0.1)" strokeWidth="1" strokeDasharray="6 6" />
+
+        {/* Speaker's chair at top */}
+        <g transform="translate(400, 100)">
+          <rect x="-35" y="-20" width="70" height="40" rx="6" fill="#3d2815" stroke="#5c3d22" strokeWidth="1.5" />
+          <rect x="-28" y="-14" width="56" height="28" rx="3" fill="#2a1c0e" />
+          <text x="0" y="4" textAnchor="middle" fill="#d4a634" fontSize="9" fontFamily="'IBM Plex Mono', monospace" letterSpacing="0.15em">
             SPEAKER
           </text>
         </g>
 
-        {/* Dividing line */}
-        <line x1="500" y1="480" x2="500" y2="610" stroke="rgba(184,134,11,0.15)" strokeWidth="1" strokeDasharray="4 4" />
-
-        {/* "Government" / "Opposition" labels */}
-        <text x="650" y="660" textAnchor="middle" fill="rgba(160,112,64,0.3)" fontSize="10" fontFamily="'IBM Plex Mono', monospace" letterSpacing="0.15em" transform="rotate(-5, 650, 660)">
+        {/* Side labels */}
+        <text x="320" y="950" textAnchor="middle" fill="rgba(160,112,64,0.25)" fontSize="11" fontFamily="'IBM Plex Mono', monospace" letterSpacing="0.2em">
+          OPPOSITION
+        </text>
+        <text x="480" y="950" textAnchor="middle" fill="rgba(160,112,64,0.25)" fontSize="11" fontFamily="'IBM Plex Mono', monospace" letterSpacing="0.2em">
           GOVERNMENT
         </text>
-        <text x="350" y="660" textAnchor="middle" fill="rgba(160,112,64,0.3)" fontSize="10" fontFamily="'IBM Plex Mono', monospace" letterSpacing="0.15em" transform="rotate(5, 350, 660)">
-          OPPOSITION
+
+        {/* Crossbench label */}
+        <text x="400" y="175" textAnchor="middle" fill="rgba(160,112,64,0.20)" fontSize="9" fontFamily="'IBM Plex Mono', monospace" letterSpacing="0.15em">
+          CROSSBENCH
         </text>
 
         {/* All seats */}
-        {seats.map(seat => (
+        {sortedSeats.map(seat => (
           <circle
             key={seat.id}
             cx={seat.x}
@@ -163,6 +224,7 @@ export const Chamber: React.FC<ChamberProps> = ({
             r={getSeatRadius(seat)}
             fill={getSeatColor(seat)}
             stroke={seat.ownerPlayerId === playerId ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.4)'}
+            strokeWidth={seat.ownerPlayerId === playerId ? 1.5 : 0.5}
             className={getSeatClass(seat)}
             onClick={() => onSeatClick(seat.id)}
             onMouseEnter={(e) => handleSeatMouseEnter(seat, e)}
@@ -174,16 +236,21 @@ export const Chamber: React.FC<ChamberProps> = ({
           />
         ))}
 
-        {/* Round & phase indicator */}
+        {/* Round indicator */}
         <text x="20" y="24" fill="rgba(184,134,11,0.6)" fontSize="10" fontFamily="'IBM Plex Mono', monospace">
           ROUND {gameState.round}/{gameState.maxRounds}
         </text>
+
+        {/* Majority line indicator */}
+        <text x="780" y="24" textAnchor="end" fill="rgba(184,134,11,0.4)" fontSize="9" fontFamily="'IBM Plex Mono', monospace">
+          MAJORITY: {majorityCount}
+        </text>
       </svg>
 
-      {/* Seat tooltip (rendered outside SVG for better text rendering) */}
+      {/* Seat tooltip */}
       {hoveredSeat && (
         <div
-          className="tooltip-content fixed"
+          className="tooltip-content fixed z-50"
           style={{
             left: `${tooltipPos.x}px`,
             top: `${tooltipPos.y}px`,
@@ -194,7 +261,7 @@ export const Chamber: React.FC<ChamberProps> = ({
             {hoveredSeat.name}
           </div>
           <div className="font-mono text-xs mt-1" style={{ color: '#a09880' }}>
-            {STATE_ABBREV[hoveredSeat.state]} &middot; Row {hoveredSeat.chamberRow + 1}
+            {STATE_ABBREV[hoveredSeat.state]} &middot; {hoveredSeat.chamberSide}
           </div>
           <div className="flex gap-3 mt-1">
             <span className="font-mono text-xs">
@@ -218,10 +285,12 @@ export const Chamber: React.FC<ChamberProps> = ({
         </div>
       )}
 
-      {/* Seat count legend (bottom-left overlay) */}
+      {/* Seat count legend */}
       <div className="absolute bottom-2 left-2 flex flex-col gap-1">
-        {gameState.players.map(p => (
-          <div key={p.id} className="flex items-center gap-2 font-mono text-xs" style={{ opacity: 0.8 }}>
+        {gameState.players
+          .sort((a, b) => b.seats - a.seats)
+          .map(p => (
+          <div key={p.id} className="flex items-center gap-2 font-mono text-xs" style={{ opacity: 0.85 }}>
             <div
               className="w-3 h-3 rounded-sm"
               style={{
@@ -230,7 +299,7 @@ export const Chamber: React.FC<ChamberProps> = ({
               }}
             />
             <span style={{ color: p.id === playerId ? '#f0e8d4' : '#a09880' }}>
-              {seatCounts[p.id] || 0}
+              {seatCounts[p.id] || 0} {p.name}
             </span>
           </div>
         ))}
@@ -238,20 +307,5 @@ export const Chamber: React.FC<ChamberProps> = ({
     </div>
   );
 };
-
-// Helper: describe an SVG arc path
-function describeArc(cx: number, cy: number, radius: number, startAngle: number, endAngle: number): string {
-  const startRad = (startAngle * Math.PI) / 180;
-  const endRad = (endAngle * Math.PI) / 180;
-
-  const x1 = cx + radius * Math.sin(startRad);
-  const y1 = cy - radius * Math.cos(startRad);
-  const x2 = cx + radius * Math.sin(endRad);
-  const y2 = cy - radius * Math.cos(endRad);
-
-  const largeArc = endAngle - startAngle > 180 ? 1 : 0;
-
-  return `M ${x1} ${y1} A ${radius} ${radius} 0 ${largeArc} 1 ${x2} ${y2}`;
-}
 
 export default Chamber;

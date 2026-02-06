@@ -45,12 +45,14 @@ export interface Seat {
   y: number;
   chamberRow: number;
   chamberCol: number;
-  chamberAngle: number;
+  chamberSide: 'left' | 'right' | 'crossbench';
   ideology: SeatIdeology;
   ownerPlayerId: string | null;
   margin: number;
   lastCampaignedBy: string | null;
   contested: boolean;
+  mapX: number;
+  mapY: number;
 }
 
 export interface StateControl {
@@ -199,6 +201,39 @@ export interface LegislationVote {
   seatWeight: number;
 }
 
+// ============================================================
+// ECONOMIC STATE (from white paper economic domain)
+// ============================================================
+
+export interface EconomicStateData {
+  gdpGrowth: number;
+  unemployment: number;
+  inflation: number;
+  publicDebt: number;
+  budgetBalance: number;
+  consumerConfidence: number;
+  businessConfidence: number;
+  interestRate: number;
+  sectors: Record<string, number>;
+}
+
+// ============================================================
+// VOTER GROUPS (from white paper voter domain)
+// ============================================================
+
+export interface VoterGroupState {
+  id: string;
+  name: string;
+  population: number;
+  satisfaction: number;
+  leaningPartyId: string | null;
+  topConcerns: { variable: string; satisfaction: number }[];
+}
+
+// ============================================================
+// GAME STATE
+// ============================================================
+
 export interface GameState {
   roomId: string;
   seed: string;
@@ -215,6 +250,8 @@ export interface GameState {
   activeIssue: Issue;
   nationalBudget: number;
   budgetSurplus: boolean;
+  economy: EconomicStateData;
+  voterGroups: VoterGroupState[];
   availableBills: Bill[];
   pendingLegislation: PendingLegislation | null;
   passedBills: Bill[];
@@ -250,7 +287,8 @@ export type GameEvent =
   | { type: 'state_control_changed'; timestamp: number; state: StateCode; oldController: string | null; newController: string | null }
   | { type: 'chat_message'; timestamp: number; senderId: string; recipientId: string | null; content: string }
   | { type: 'game_ended'; timestamp: number; winner: string; scores: Record<string, number> }
-  | { type: 'phase_changed'; timestamp: number; fromPhase: Phase; toPhase: Phase };
+  | { type: 'phase_changed'; timestamp: number; fromPhase: Phase; toPhase: Phase }
+  | { type: 'economic_update'; timestamp: number; economy: EconomicStateData };
 
 export interface GameConfig {
   totalSeats: number;
@@ -271,6 +309,9 @@ export interface GameConfig {
   majorityThreshold: number;
   enableEvents: boolean;
   enableChat: boolean;
+  enableEconomy: boolean;
+  enableVoterGroups: boolean;
   seatIdeologyMode: 'random' | 'realistic';
   stateControlValue: number;
+  economicVolatility: number;
 }
