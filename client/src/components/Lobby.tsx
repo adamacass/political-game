@@ -1,85 +1,50 @@
 import React, { useState, useEffect } from 'react';
 import {
   GameState,
-  GameConfig,
-  Player,
   PARTY_COLORS,
   PartyColorId,
   SocialIdeology,
   EconomicIdeology,
 } from '../types';
-import {
-  Users,
-  Play,
-  Settings,
-  Copy,
-  Check,
-  Palette,
-  Star,
-  GitMerge,
-  Target,
-  RefreshCw,
-  Brain,
-  Map,
-  Shapes,
-} from 'lucide-react';
-import { PlayerSymbol, SymbolPicker } from './PlayerSymbol';
-import { DEFAULT_SYMBOL_ID } from '../constants/politicalSymbols';
-
-// Design tokens - ballot paper aesthetic
-const colors = {
-  paper1: '#F4F1E8',
-  paper2: '#EEEBE2',
-  paper3: '#E8E5DC',
-  ink: '#111111',
-  inkSecondary: '#3A3A3A',
-  rule: '#1A1A1A',
-  accent: '#2563EB',  // Keep a subtle accent for interactive elements
-};
 
 interface LobbyProps {
   gameState: GameState | null;
-  gameConfig: GameConfig | null;
   playerId: string;
+  roomId: string | null;
   availableColors: PartyColorId[];
+  error: string | null;
+  onCreateRoom: (
+    playerName: string, partyName: string, colorId: string, symbolId: string,
+    socialIdeology: string, economicIdeology: string,
+  ) => void;
+  onJoinRoom: (
+    roomId: string, playerName: string, partyName: string, colorId: string,
+    symbolId: string, socialIdeology: string, economicIdeology: string,
+  ) => void;
   onStartGame: () => void;
-  onUpdateConfig: (config: Partial<GameConfig>) => void;
-  onCreateRoom: (playerName: string, partyName: string, colorId?: PartyColorId, symbolId?: string, social?: SocialIdeology, economic?: EconomicIdeology) => void;
-  onJoinRoom: (roomId: string, playerName: string, partyName: string, colorId?: PartyColorId, symbolId?: string, social?: SocialIdeology, economic?: EconomicIdeology) => void;
 }
 
 export function Lobby({
   gameState,
-  gameConfig,
   playerId,
+  roomId,
   availableColors,
-  onStartGame,
-  onUpdateConfig,
+  error,
   onCreateRoom,
   onJoinRoom,
+  onStartGame,
 }: LobbyProps) {
   const [mode, setMode] = useState<'choose' | 'create' | 'join'>('choose');
   const [playerName, setPlayerName] = useState('');
   const [partyName, setPartyName] = useState('');
   const [roomCode, setRoomCode] = useState('');
   const [selectedColor, setSelectedColor] = useState<PartyColorId | null>(null);
-  const [selectedSymbol, setSelectedSymbol] = useState<string>(DEFAULT_SYMBOL_ID);
   const [socialIdeology, setSocialIdeology] = useState<SocialIdeology>('progressive');
   const [economicIdeology, setEconomicIdeology] = useState<EconomicIdeology>('market');
   const [copied, setCopied] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
-  const [showResume, setShowResume] = useState(false);
-  const [savedGames, setSavedGames] = useState<Array<{
-    roomId: string;
-    playerId: string;
-    timestamp: number;
-    playerName?: string;
-  }>>([]);
 
-  const isHost = gameState?.players[0]?.id === playerId;
-  const currentPlayer = gameState?.players.find(p => p.id === playerId);
+  const isHost = gameState?.players?.[0]?.id === playerId;
 
-  // Update available colors when they change
   useEffect(() => {
     if (availableColors.length > 0 && !selectedColor) {
       setSelectedColor(availableColors[0]);
@@ -91,10 +56,10 @@ export function Lobby({
       onCreateRoom(
         playerName.trim(),
         partyName.trim(),
-        selectedColor || undefined,
-        selectedSymbol,
-        gameConfig?.ideologyMode === 'choose' ? socialIdeology : undefined,
-        gameConfig?.ideologyMode === 'choose' ? economicIdeology : undefined
+        selectedColor || '',
+        '',
+        socialIdeology,
+        economicIdeology,
       );
     }
   };
@@ -105,10 +70,10 @@ export function Lobby({
         roomCode.trim().toUpperCase(),
         playerName.trim(),
         partyName.trim(),
-        selectedColor || undefined,
-        selectedSymbol,
-        gameConfig?.ideologyMode === 'choose' ? socialIdeology : undefined,
-        gameConfig?.ideologyMode === 'choose' ? economicIdeology : undefined
+        selectedColor || '',
+        '',
+        socialIdeology,
+        economicIdeology,
       );
     }
   };
@@ -121,202 +86,115 @@ export function Lobby({
     }
   };
 
-  const loadSavedGames = () => {
-    try {
-      const games: Array<{ roomId: string; playerId: string; timestamp: number; playerName?: string }> = [];
-
-      // Iterate through localStorage to find saved games
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith('game_')) {
-          const data = localStorage.getItem(key);
-          if (data) {
-            try {
-              const parsed = JSON.parse(data);
-              const roomId = key.replace('game_', '');
-              games.push({
-                roomId,
-                playerId: parsed.playerId,
-                timestamp: parsed.timestamp,
-                playerName: parsed.gameState?.players?.find((p: any) => p.id === parsed.playerId)?.playerName
-              });
-            } catch (err) {
-              console.error('Failed to parse saved game:', err);
-            }
-          }
-        }
-      }
-
-      // Sort by timestamp, newest first
-      games.sort((a, b) => b.timestamp - a.timestamp);
-      setSavedGames(games);
-      setShowResume(true);
-    } catch (err) {
-      console.error('Failed to load saved games:', err);
-    }
-  };
-
-  const handleResumeGame = (roomId: string) => {
-    // Navigate to restore URL
-    window.location.href = `/?restore=${roomId}`;
-  };
-
-  // Input styling - ballot paper style
-  const inputStyle = {
-    backgroundColor: colors.paper1,
-    border: `1px solid ${colors.rule}`,
-    color: colors.ink,
-  };
-
   // Mode selection screen
   if (mode === 'choose') {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: colors.paper2 }}>
-        <div className="ballot-paper rounded-lg p-8 w-full max-w-md" style={{ backgroundColor: colors.paper1, border: `2px solid ${colors.rule}` }}>
-          <h1 className="text-3xl font-bold text-center mb-2" style={{ color: colors.ink }}>Political Game</h1>
-          <p className="text-center mb-8" style={{ color: colors.inkSecondary }}>Compete for seats in parliament</p>
+      <div className="lobby-bg min-h-screen flex items-center justify-center p-4">
+        <div className="lobby-card w-full max-w-md animate-fade-in">
+          {/* Title */}
+          <div className="text-center mb-8">
+            <h1 className="font-display text-4xl tracking-wide" style={{ color: 'var(--brass-gold)' }}>
+              THE HOUSE
+            </h1>
+            <div className="mt-1 font-mono text-xs tracking-widest" style={{ color: 'var(--text-muted)' }}>
+              AUSTRALIAN HOUSE OF REPRESENTATIVES
+            </div>
+            <div className="mt-4 mx-auto w-48" style={{ borderTop: '1px solid var(--brass-dark)' }} />
+          </div>
 
-          <div className="space-y-4">
+          <div className="space-y-3">
             <button
               onClick={() => setMode('create')}
-              className="w-full py-4 px-6 rounded font-semibold text-lg transition-all hover:opacity-90"
-              style={{ backgroundColor: colors.ink, color: colors.paper1, border: `2px solid ${colors.rule}` }}
+              className="btn-brass w-full py-4 text-lg font-display tracking-wide"
             >
               Create New Game
             </button>
             <button
               onClick={() => setMode('join')}
-              className="w-full py-4 px-6 rounded font-semibold text-lg transition-all hover:opacity-90"
-              style={{ backgroundColor: colors.paper2, color: colors.ink, border: `2px solid ${colors.rule}` }}
+              className="btn-green w-full py-4 text-lg font-display tracking-wide"
             >
               Join Existing Game
             </button>
-            <button
-              onClick={loadSavedGames}
-              className="w-full py-4 px-6 rounded font-semibold text-lg transition-all hover:opacity-90"
-              style={{ backgroundColor: colors.paper3, color: colors.ink, border: `2px solid ${colors.rule}` }}
-            >
-              Resume Saved Game
-            </button>
+          </div>
+
+          <div className="mt-6 text-center font-mono text-xs" style={{ color: 'var(--text-muted)' }}>
+            151 seats &middot; 12 rounds &middot; 2-5 players
           </div>
         </div>
       </div>
     );
   }
 
-  // Resume saved games modal
-  if (showResume) {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: colors.paper2 }}>
-        <div className="ballot-paper rounded-lg p-8 w-full max-w-md" style={{ backgroundColor: colors.paper1, border: `2px solid ${colors.rule}` }}>
-          <button
-            onClick={() => setShowResume(false)}
-            className="mb-4 hover:opacity-70"
-            style={{ color: colors.inkSecondary }}
-          >
-            &larr; Back
-          </button>
-
-          <h2 className="text-2xl font-bold mb-2" style={{ color: colors.ink }}>Resume Saved Game</h2>
-          <p className="mb-6" style={{ color: colors.inkSecondary }}>
-            Select a game to resume
-          </p>
-
-          {savedGames.length === 0 ? (
-            <div className="text-center py-8" style={{ color: colors.inkSecondary }}>
-              No saved games found
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {savedGames.map((game) => (
-                <button
-                  key={game.roomId}
-                  onClick={() => handleResumeGame(game.roomId)}
-                  className="w-full p-4 rounded text-left transition-all hover:opacity-90"
-                  style={{ backgroundColor: colors.paper2, border: `2px solid ${colors.rule}` }}
-                >
-                  <div className="font-semibold" style={{ color: colors.ink }}>
-                    Room: {game.roomId}
-                  </div>
-                  {game.playerName && (
-                    <div className="text-sm" style={{ color: colors.inkSecondary }}>
-                      Player: {game.playerName}
-                    </div>
-                  )}
-                  <div className="text-xs mt-1" style={{ color: colors.inkSecondary }}>
-                    Saved: {new Date(game.timestamp).toLocaleString()}
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  // Create/Join form - show if no game state or no room joined yet
+  // Create/Join form
   if (!gameState || !gameState.roomId) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: colors.paper2 }}>
-        <div className="ballot-paper rounded-lg p-8 w-full max-w-md" style={{ backgroundColor: colors.paper1, border: `2px solid ${colors.rule}` }}>
+      <div className="lobby-bg min-h-screen flex items-center justify-center p-4">
+        <div className="lobby-card w-full max-w-md animate-fade-in">
           <button
             onClick={() => setMode('choose')}
-            className="mb-4 hover:opacity-70"
-            style={{ color: colors.inkSecondary }}
+            className="mb-6 font-mono text-sm hover:opacity-70 transition-opacity"
+            style={{ color: 'var(--brass-gold)' }}
           >
-            &larr; Back
+            &#8592; Back
           </button>
 
-          <h2 className="text-2xl font-bold mb-6" style={{ color: colors.ink }}>
+          <h2 className="font-display text-2xl mb-6" style={{ color: 'var(--parchment)' }}>
             {mode === 'create' ? 'Create Game' : 'Join Game'}
           </h2>
+
+          {error && (
+            <div className="mb-4 px-3 py-2 font-mono text-sm" style={{ color: '#ff6b6b', border: '1px solid #7f0000' }}>
+              {error}
+            </div>
+          )}
 
           <div className="space-y-4">
             {mode === 'join' && (
               <div>
-                <label className="block text-sm font-medium mb-1" style={{ color: colors.inkSecondary }}>Room Code</label>
+                <label className="block font-mono text-xs mb-1 tracking-wider" style={{ color: 'var(--text-muted)' }}>
+                  ROOM CODE
+                </label>
                 <input
                   type="text"
                   value={roomCode}
                   onChange={e => setRoomCode(e.target.value.toUpperCase())}
-                  placeholder="Enter 6-letter code"
-                  className="w-full px-4 py-3 rounded uppercase font-mono text-xl tracking-wider focus:outline-none focus:ring-2"
-                  style={{ ...inputStyle, '--tw-ring-color': colors.ink } as any}
+                  placeholder="Enter code"
+                  className="lobby-input w-full uppercase tracking-widest text-xl"
                   maxLength={6}
                 />
               </div>
             )}
 
             <div>
-              <label className="block text-sm font-medium mb-1" style={{ color: colors.inkSecondary }}>Your Name</label>
+              <label className="block font-mono text-xs mb-1 tracking-wider" style={{ color: 'var(--text-muted)' }}>
+                YOUR NAME
+              </label>
               <input
                 type="text"
                 value={playerName}
                 onChange={e => setPlayerName(e.target.value)}
-                placeholder="John"
-                className="w-full px-4 py-3 rounded focus:outline-none focus:ring-2"
-                style={inputStyle}
+                placeholder="e.g. John"
+                className="lobby-input w-full"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-1" style={{ color: colors.inkSecondary }}>Party Name</label>
+              <label className="block font-mono text-xs mb-1 tracking-wider" style={{ color: 'var(--text-muted)' }}>
+                PARTY NAME
+              </label>
               <input
                 type="text"
                 value={partyName}
                 onChange={e => setPartyName(e.target.value)}
-                placeholder="Progressive Alliance"
-                className="w-full px-4 py-3 rounded focus:outline-none focus:ring-2"
-                style={inputStyle}
+                placeholder="e.g. Progressive Alliance"
+                className="lobby-input w-full"
               />
             </div>
 
-            {/* Color picker */}
+            {/* Party color picker */}
             <div>
-              <label className="block text-sm font-medium mb-2 flex items-center gap-2" style={{ color: colors.inkSecondary }}>
-                <Palette className="w-4 h-4" />
-                Party Color
+              <label className="block font-mono text-xs mb-2 tracking-wider" style={{ color: 'var(--text-muted)' }}>
+                PARTY COLOUR
               </label>
               <div className="flex gap-2 flex-wrap">
                 {PARTY_COLORS.map(color => {
@@ -326,19 +204,12 @@ export function Lobby({
                       key={color.id}
                       onClick={() => isAvailable && setSelectedColor(color.id)}
                       disabled={!isAvailable}
-                      className={`w-10 h-10 rounded-full transition-all ${
-                        selectedColor === color.id
-                          ? 'ring-4 ring-offset-2 scale-110'
-                          : isAvailable
-                          ? 'hover:scale-105'
-                          : 'opacity-30 cursor-not-allowed'
-                      }`}
+                      className={`color-swatch ${selectedColor === color.id ? 'selected' : ''}`}
                       style={{
                         backgroundColor: color.hex,
-                        border: `2px solid ${colors.rule}`,
-                        '--tw-ring-color': colors.ink,
-                        '--tw-ring-offset-color': colors.paper1,
-                      } as any}
+                        opacity: isAvailable ? 1 : 0.25,
+                        cursor: isAvailable ? 'pointer' : 'not-allowed',
+                      }}
                       title={color.name}
                     />
                   );
@@ -346,34 +217,40 @@ export function Lobby({
               </div>
             </div>
 
-            {/* Symbol picker */}
-            <div>
-              <label className="block text-sm font-medium mb-2 flex items-center gap-2" style={{ color: colors.inkSecondary }}>
-                <Shapes className="w-4 h-4" />
-                Party Symbol
-              </label>
-              <div className="flex items-center gap-4 mb-2">
-                <PlayerSymbol
-                  symbolId={selectedSymbol}
-                  color={selectedColor ? PARTY_COLORS.find(c => c.id === selectedColor)?.hex || colors.ink : colors.ink}
-                  size="xl"
-                />
-                <div className="text-sm" style={{ color: colors.inkSecondary }}>
-                  Preview
-                </div>
+            {/* Ideology pickers */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block font-mono text-xs mb-1 tracking-wider" style={{ color: 'var(--text-muted)' }}>
+                  SOCIAL
+                </label>
+                <select
+                  value={socialIdeology}
+                  onChange={e => setSocialIdeology(e.target.value as SocialIdeology)}
+                  className="lobby-input w-full text-sm"
+                >
+                  <option value="progressive">Progressive</option>
+                  <option value="conservative">Conservative</option>
+                </select>
               </div>
-              <SymbolPicker
-                selectedId={selectedSymbol}
-                onSelect={setSelectedSymbol}
-                previewColor={selectedColor ? PARTY_COLORS.find(c => c.id === selectedColor)?.hex || colors.ink : colors.ink}
-              />
+              <div>
+                <label className="block font-mono text-xs mb-1 tracking-wider" style={{ color: 'var(--text-muted)' }}>
+                  ECONOMIC
+                </label>
+                <select
+                  value={economicIdeology}
+                  onChange={e => setEconomicIdeology(e.target.value as EconomicIdeology)}
+                  className="lobby-input w-full text-sm"
+                >
+                  <option value="market">Free Market</option>
+                  <option value="interventionist">Interventionist</option>
+                </select>
+              </div>
             </div>
 
             <button
               onClick={mode === 'create' ? handleCreate : handleJoin}
               disabled={!playerName.trim() || !partyName.trim() || (mode === 'join' && !roomCode.trim())}
-              className="w-full py-4 rounded font-semibold text-lg transition-colors disabled:opacity-40"
-              style={{ backgroundColor: colors.ink, color: colors.paper1, border: `2px solid ${colors.rule}` }}
+              className="btn-brass w-full py-4 text-lg font-display tracking-wide mt-2 disabled:opacity-40"
             >
               {mode === 'create' ? 'Create Game' : 'Join Game'}
             </button>
@@ -383,322 +260,142 @@ export function Lobby({
     );
   }
 
-  // Lobby view (in room, waiting for game to start)
+  // Waiting room — in a room, waiting for game to start
   return (
-    <div className="min-h-screen p-4" style={{ backgroundColor: colors.paper2 }}>
-      <div className="max-w-4xl mx-auto">
+    <div className="lobby-bg min-h-screen p-4">
+      <div className="max-w-3xl mx-auto animate-fade-in">
         {/* Room header */}
-        <div className="ballot-paper rounded-lg p-6 mb-6" style={{ backgroundColor: colors.paper1, border: `2px solid ${colors.rule}` }}>
-          <div className="flex items-center justify-between">
+        <div className="panel-wood p-6 mb-6">
+          <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
-              <div className="text-sm" style={{ color: colors.inkSecondary }}>Room Code</div>
-              <div className="flex items-center gap-2">
-                <span className="text-3xl font-mono font-bold tracking-wider" style={{ color: colors.ink }}>{gameState.roomId}</span>
+              <div className="font-mono text-xs tracking-wider" style={{ color: 'var(--text-muted)' }}>
+                ROOM CODE
+              </div>
+              <div className="flex items-center gap-3 mt-1">
+                <span className="font-mono text-3xl font-bold tracking-widest" style={{ color: 'var(--brass-gold)' }}>
+                  {gameState.roomId}
+                </span>
                 <button
                   onClick={copyRoomCode}
-                  className="p-2 rounded transition-colors hover:opacity-70"
+                  className="font-mono text-xs px-2 py-1 transition-opacity hover:opacity-80"
+                  style={{ color: 'var(--text-muted)', border: '1px solid var(--brass-dark)' }}
                   title="Copy room code"
                 >
-                  {copied ? <Check className="w-5 h-5" style={{ color: '#16a34a' }} /> : <Copy className="w-5 h-5" style={{ color: colors.inkSecondary }} />}
+                  {copied ? '&#10003; Copied' : 'Copy'}
                 </button>
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
-              {isHost && (
-                <button
-                  onClick={() => setShowSettings(!showSettings)}
-                  className="p-3 rounded transition-colors"
-                  style={{
-                    backgroundColor: showSettings ? colors.paper3 : colors.paper2,
-                    border: `1px solid ${colors.rule}`,
-                    color: colors.ink
-                  }}
-                >
-                  <Settings className="w-5 h-5" />
-                </button>
-              )}
-
-              {isHost && (
-                <button
-                  onClick={onStartGame}
-                  disabled={gameState.players.length < 2}
-                  className="flex items-center gap-2 px-6 py-3 rounded font-semibold transition-colors disabled:opacity-40"
-                  style={{ backgroundColor: colors.ink, color: colors.paper1, border: `2px solid ${colors.rule}` }}
-                >
-                  <Play className="w-5 h-5" />
-                  Start Game
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Players list */}
-          <div className="ballot-paper lg:col-span-2 rounded-lg p-6" style={{ backgroundColor: colors.paper1, border: `2px solid ${colors.rule}` }}>
-            <h3 className="font-semibold text-lg mb-4 flex items-center gap-2" style={{ color: colors.ink }}>
-              <Users className="w-5 h-5" />
-              Players ({gameState.players.length}/5)
-            </h3>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {gameState.players.map((player, idx) => (
-                <div
-                  key={player.id}
-                  className="p-4 rounded"
-                  style={{
-                    backgroundColor: player.id === playerId ? colors.paper3 : colors.paper2,
-                    border: `2px solid ${colors.rule}`
-                  }}
-                >
-                  <div className="flex items-center gap-3">
-                    {/* Party color stripe on left */}
-                    <div
-                      className="w-1 h-12 rounded-full"
-                      style={{ backgroundColor: player.color }}
-                    />
-                    <PlayerSymbol
-                      symbolId={player.symbolId || DEFAULT_SYMBOL_ID}
-                      color={player.color}
-                      size="lg"
-                    />
-                    <div className="flex-1">
-                      <div className="font-semibold" style={{ color: colors.ink }}>{player.name}</div>
-                      <div className="text-sm" style={{ color: colors.inkSecondary }}>{player.playerName}</div>
-                    </div>
-                    {idx === 0 && (
-                      <span className="px-2 py-1 rounded text-xs font-medium flex items-center gap-1"
-                        style={{ backgroundColor: colors.paper1, color: colors.ink, border: `1px solid ${colors.rule}` }}>
-                        <Star className="w-3 h-3" /> Host
-                      </span>
-                    )}
-                  </div>
-
-                  {gameConfig?.ideologyMode !== 'derived' && (
-                    <div className="mt-3 text-xs" style={{ color: colors.inkSecondary }}>
-                      <span>Ideology: </span>
-                      <span className="font-medium capitalize" style={{ color: colors.ink }}>
-                        {player.socialIdeology} / {player.economicIdeology}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              ))}
-
-              {/* Empty slots */}
-              {Array.from({ length: 5 - gameState.players.length }).map((_, idx) => (
-                <div
-                  key={`empty-${idx}`}
-                  className="p-4 rounded flex items-center justify-center"
-                  style={{
-                    backgroundColor: colors.paper2,
-                    border: `2px dashed ${colors.inkSecondary}`,
-                    color: colors.inkSecondary
-                  }}
-                >
-                  Waiting for player...
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Settings panel */}
-          <div className="ballot-paper rounded-lg p-6" style={{ backgroundColor: colors.paper1, border: `2px solid ${colors.rule}` }}>
-            <h3 className="font-semibold text-lg mb-4 flex items-center gap-2" style={{ color: colors.ink }}>
-              <Settings className="w-5 h-5" />
-              Game Settings
-            </h3>
-
-            {showSettings && isHost && gameConfig ? (
-              <SettingsPanel config={gameConfig} onUpdate={onUpdateConfig} />
-            ) : (
-              <SettingsDisplay config={gameConfig} />
+            {isHost && (
+              <button
+                onClick={onStartGame}
+                disabled={gameState.players.length < 2}
+                className="btn-brass px-8 py-3 text-lg font-display tracking-wide disabled:opacity-40"
+              >
+                &#9654; Start Game
+              </button>
             )}
           </div>
         </div>
-      </div>
-    </div>
-  );
-}
 
-function SettingsPanel({ config, onUpdate }: { config: GameConfig; onUpdate: (c: Partial<GameConfig>) => void }) {
-  const inputStyle = {
-    backgroundColor: colors.paper2,
-    border: `1px solid ${colors.rule}`,
-    color: colors.ink,
-  };
+        {error && (
+          <div className="mb-4 px-4 py-3 font-mono text-sm" style={{ color: '#ff6b6b', border: '1px solid #7f0000', backgroundColor: 'rgba(127,0,0,0.1)' }}>
+            {error}
+          </div>
+        )}
 
-  return (
-    <div className="space-y-4 text-sm">
-      <div>
-        <label className="font-medium flex items-center gap-2" style={{ color: colors.ink }}>
-          <Target className="w-4 h-4" />
-          Total Seats
-        </label>
-        <input
-          type="number"
-          value={config.totalSeats}
-          onChange={e => onUpdate({ totalSeats: parseInt(e.target.value) || 50 })}
-          className="w-full mt-1 px-3 py-2 rounded focus:outline-none"
-          style={inputStyle}
-          min={20}
-          max={200}
-        />
-      </div>
+        {/* Players grid */}
+        <div className="panel p-6">
+          <h3 className="font-display text-lg mb-4 flex items-center gap-2" style={{ color: 'var(--parchment)' }}>
+            Members of Parliament ({gameState.players.length}/5)
+          </h3>
 
-      <div>
-        <label className="font-medium flex items-center gap-2" style={{ color: colors.ink }}>
-          <Brain className="w-4 h-4" />
-          Ideology Mode
-        </label>
-        <select
-          value={config.ideologyMode}
-          onChange={e => onUpdate({ ideologyMode: e.target.value as any })}
-          className="w-full mt-1 px-3 py-2 rounded focus:outline-none"
-          style={inputStyle}
-        >
-          <option value="derived">Derived (from actions)</option>
-          <option value="choose">Player Choice</option>
-          <option value="random">Random Assignment</option>
-        </select>
-      </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {gameState.players.map((player, idx) => (
+              <div
+                key={player.id}
+                className="p-4 rounded"
+                style={{
+                  backgroundColor: player.id === playerId ? 'rgba(184,134,11,0.08)' : 'rgba(0,0,0,0.15)',
+                  border: player.id === playerId
+                    ? '1px solid var(--brass-dark)'
+                    : '1px solid rgba(255,255,255,0.05)',
+                }}
+              >
+                <div className="flex items-center gap-3">
+                  <div
+                    className="w-4 h-10 rounded-sm"
+                    style={{ backgroundColor: player.color }}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-display text-sm truncate" style={{ color: 'var(--parchment)' }}>
+                      {player.name}
+                    </div>
+                    <div className="font-mono text-xs truncate" style={{ color: 'var(--text-muted)' }}>
+                      {player.playerName}
+                    </div>
+                  </div>
+                  {idx === 0 && (
+                    <span className="font-mono text-xs px-2 py-0.5" style={{ color: 'var(--brass-gold)', border: '1px solid var(--brass-dark)' }}>
+                      HOST
+                    </span>
+                  )}
+                </div>
+                <div className="mt-2 font-mono text-xs" style={{ color: 'var(--text-muted)' }}>
+                  <span className="capitalize">{player.socialIdeology}</span>
+                  {' / '}
+                  <span className="capitalize">{player.economicIdeology}</span>
+                </div>
+              </div>
+            ))}
 
-      <div>
-        <label className="font-medium flex items-center gap-2" style={{ color: colors.ink }}>
-          <Map className="w-4 h-4" />
-          Seat Ideology Distribution
-        </label>
-        <select
-          value={config.seatIdeologyMode || 'random'}
-          onChange={e => onUpdate({ seatIdeologyMode: e.target.value as 'random' | 'realistic' })}
-          className="w-full mt-1 px-3 py-2 rounded focus:outline-none"
-          style={inputStyle}
-        >
-          <option value="random">Random (grouped by state)</option>
-          <option value="realistic">Realistic (voting patterns)</option>
-        </select>
-        <p className="text-xs mt-1" style={{ color: colors.inkSecondary }}>
-          {config.seatIdeologyMode === 'realistic'
-            ? 'Inner city = progressive, rural = conservative'
-            : 'Randomly distributed with state-based grouping'}
-        </p>
-      </div>
+            {/* Empty slots */}
+            {Array.from({ length: 5 - gameState.players.length }).map((_, idx) => (
+              <div
+                key={`empty-${idx}`}
+                className="p-4 rounded flex items-center justify-center font-mono text-xs"
+                style={{
+                  border: '1px dashed rgba(184,134,11,0.2)',
+                  color: 'var(--text-muted)',
+                  minHeight: '80px',
+                }}
+              >
+                Waiting for player...
+              </div>
+            ))}
+          </div>
+        </div>
 
-      <div className="flex items-center justify-between py-2" style={{ borderBottom: `1px solid ${colors.paper3}` }}>
-        <label className="font-medium flex items-center gap-2" style={{ color: colors.ink }}>
-          <GitMerge className="w-4 h-4" />
-          Negotiation Phase
-        </label>
-        <input
-          type="checkbox"
-          checked={config.enableNegotiation}
-          onChange={e => onUpdate({ enableNegotiation: e.target.checked })}
-          className="w-5 h-5 rounded"
-          style={{ accentColor: colors.ink }}
-        />
-      </div>
+        {/* Game settings summary */}
+        <div className="panel p-6 mt-6">
+          <h3 className="font-display text-lg mb-3" style={{ color: 'var(--parchment)' }}>
+            Standing Orders
+          </h3>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 font-mono text-xs">
+            <div>
+              <div style={{ color: 'var(--text-muted)' }}>Seats</div>
+              <div style={{ color: 'var(--parchment)' }}>{gameState.totalSeats}</div>
+            </div>
+            <div>
+              <div style={{ color: 'var(--text-muted)' }}>Rounds</div>
+              <div style={{ color: 'var(--parchment)' }}>{gameState.maxRounds}</div>
+            </div>
+            <div>
+              <div style={{ color: 'var(--text-muted)' }}>Majority</div>
+              <div style={{ color: 'var(--parchment)' }}>{Math.ceil(gameState.totalSeats / 2)} seats</div>
+            </div>
+            <div>
+              <div style={{ color: 'var(--text-muted)' }}>Events</div>
+              <div style={{ color: 'var(--parchment)' }}>Enabled</div>
+            </div>
+          </div>
+        </div>
 
-      <div className="flex items-center justify-between py-2" style={{ borderBottom: `1px solid ${colors.paper3}` }}>
-        <label className="font-medium flex items-center gap-2" style={{ color: colors.ink }}>
-          <Target className="w-4 h-4" />
-          Seat Targeting
-        </label>
-        <input
-          type="checkbox"
-          checked={config.enableSeatTargeting}
-          onChange={e => onUpdate({
-            enableSeatTargeting: e.target.checked,
-            seatTransferRule: e.target.checked ? 'player_choice' : 'from_leader'
-          })}
-          className="w-5 h-5 rounded"
-          style={{ accentColor: colors.ink }}
-        />
-      </div>
-
-      <div className="flex items-center justify-between py-2" style={{ borderBottom: `1px solid ${colors.paper3}` }}>
-        <label className="font-medium flex items-center gap-2" style={{ color: colors.ink }}>
-          <RefreshCw className="w-4 h-4" />
-          Auto-Refill Hand
-        </label>
-        <input
-          type="checkbox"
-          checked={config.autoRefillHand}
-          onChange={e => onUpdate({ autoRefillHand: e.target.checked })}
-          className="w-5 h-5 rounded"
-          style={{ accentColor: colors.ink }}
-        />
-      </div>
-
-      <div className="flex items-center justify-between py-2" style={{ borderBottom: `1px solid ${colors.paper3}` }}>
-        <label className="font-medium" style={{ color: colors.ink }}>Skip & Replace</label>
-        <input
-          type="checkbox"
-          checked={config.allowSkipReplace}
-          onChange={e => onUpdate({ allowSkipReplace: e.target.checked })}
-          className="w-5 h-5 rounded"
-          style={{ accentColor: colors.ink }}
-        />
-      </div>
-
-      <div>
-        <label className="font-medium" style={{ color: colors.ink }}>Max Rounds (0 = unlimited)</label>
-        <input
-          type="number"
-          value={config.maxRounds || 0}
-          onChange={e => onUpdate({ maxRounds: parseInt(e.target.value) || null })}
-          className="w-full mt-1 px-3 py-2 rounded focus:outline-none"
-          style={inputStyle}
-          min={0}
-          max={50}
-        />
-      </div>
-    </div>
-  );
-}
-
-function SettingsDisplay({ config }: { config: GameConfig | null }) {
-  if (!config) return null;
-
-  const rowStyle = { borderBottom: `1px solid ${colors.paper3}` };
-
-  return (
-    <div className="space-y-3 text-sm">
-      <div className="flex justify-between py-2" style={rowStyle}>
-        <span style={{ color: colors.inkSecondary }}>Total Seats:</span>
-        <span className="font-medium" style={{ color: colors.ink }}>{config.totalSeats}</span>
-      </div>
-      <div className="flex justify-between py-2" style={rowStyle}>
-        <span style={{ color: colors.inkSecondary }}>Ideology:</span>
-        <span className="font-medium capitalize" style={{ color: colors.ink }}>{config.ideologyMode}</span>
-      </div>
-      <div className="flex justify-between py-2" style={rowStyle}>
-        <span style={{ color: colors.inkSecondary }}>Seat Distribution:</span>
-        <span className="font-medium capitalize" style={{ color: colors.ink }}>{config.seatIdeologyMode || 'random'}</span>
-      </div>
-      <div className="flex justify-between py-2" style={rowStyle}>
-        <span style={{ color: colors.inkSecondary }}>Negotiation:</span>
-        <span className="font-medium" style={{ color: config.enableNegotiation ? colors.ink : colors.inkSecondary }}>
-          {config.enableNegotiation ? 'Enabled' : 'Disabled'}
-        </span>
-      </div>
-      <div className="flex justify-between py-2" style={rowStyle}>
-        <span style={{ color: colors.inkSecondary }}>Seat Targeting:</span>
-        <span className="font-medium" style={{ color: config.enableSeatTargeting ? colors.ink : colors.inkSecondary }}>
-          {config.enableSeatTargeting ? 'Enabled' : 'Disabled'}
-        </span>
-      </div>
-      <div className="flex justify-between py-2" style={rowStyle}>
-        <span style={{ color: colors.inkSecondary }}>Auto-Refill:</span>
-        <span className="font-medium" style={{ color: config.autoRefillHand ? colors.ink : colors.inkSecondary }}>
-          {config.autoRefillHand ? 'On' : 'Off'}
-        </span>
-      </div>
-      <div className="flex justify-between py-2">
-        <span style={{ color: colors.inkSecondary }}>Skip & Replace:</span>
-        <span className="font-medium" style={{ color: config.allowSkipReplace ? colors.ink : colors.inkSecondary }}>
-          {config.allowSkipReplace ? 'Allowed' : 'Disabled'}
-        </span>
+        {!isHost && (
+          <div className="mt-6 text-center font-mono text-sm" style={{ color: 'var(--text-muted)' }}>
+            Waiting for the host to start the game...
+          </div>
+        )}
       </div>
     </div>
   );
