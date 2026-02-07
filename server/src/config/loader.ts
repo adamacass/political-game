@@ -20,8 +20,11 @@ export const DEFAULT_CONFIG: GameConfig = {
   majorityThreshold: 76,
   enableEvents: true,
   enableChat: true,
+  enableEconomy: true,
+  enableVoterGroups: true,
   seatIdeologyMode: 'realistic',
   stateControlValue: 2,
+  economicVolatility: 1.0,
 };
 
 export function mergeConfig(overrides: Partial<GameConfig>): GameConfig {

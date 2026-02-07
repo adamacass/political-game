@@ -48,14 +48,17 @@ export interface Seat {
   state: StateCode;
   x: number;
   y: number;
-  chamberRow: number;
-  chamberCol: number;
-  chamberAngle: number;
+  chamberRow: number;   // Row index in chamber layout
+  chamberCol: number;   // Column index in chamber layout
+  chamberSide: 'left' | 'right' | 'crossbench'; // Which side of the chamber
   ideology: SeatIdeology;
   ownerPlayerId: string | null;
   margin: number; // 0-100, how safe/marginal the seat is (lower = more marginal)
   lastCampaignedBy: string | null;
   contested: boolean;
+  // Geographic coordinates for Australia map view
+  mapX: number;
+  mapY: number;
 }
 
 export interface StateControl {
@@ -250,6 +253,38 @@ export interface LegislationVote {
 }
 
 // ============================================================
+// ECONOMIC STATE (from white paper economic domain)
+// ============================================================
+
+export interface EconomicStateData {
+  // Primary indicators
+  gdpGrowth: number;        // [-10, 15] % annual, eq 2.5
+  unemployment: number;     // [0, 30] % labor force, eq 5.0
+  inflation: number;        // [-5, 30] % annual, eq 2.0
+  publicDebt: number;       // [0, 300] % of GDP, eq 60
+  budgetBalance: number;    // [-15, 10] % of GDP, eq 0
+  // Secondary indicators
+  consumerConfidence: number; // [0, 100], eq 50
+  businessConfidence: number; // [0, 100], eq 50
+  interestRate: number;       // [0, 20] %, eq 3.0
+  // Sector health indices [0, 100], eq 50
+  sectors: Record<string, number>;
+}
+
+// ============================================================
+// VOTER GROUPS (from white paper voter domain)
+// ============================================================
+
+export interface VoterGroupState {
+  id: string;
+  name: string;
+  population: number;       // share of electorate [0, 1]
+  satisfaction: number;     // [0, 100]
+  leaningPartyId: string | null;
+  topConcerns: { variable: string; satisfaction: number }[];
+}
+
+// ============================================================
 // GAME STATE
 // ============================================================
 
@@ -274,6 +309,10 @@ export interface GameState {
   // Budget tracking
   nationalBudget: number;
   budgetSurplus: boolean;
+
+  // Economy (white paper model)
+  economy: EconomicStateData;
+  voterGroups: VoterGroupState[];
 
   // Legislation
   availableBills: Bill[];
@@ -325,7 +364,8 @@ export type GameEvent =
   | { type: 'state_control_changed'; timestamp: number; state: StateCode; oldController: string | null; newController: string | null }
   | { type: 'chat_message'; timestamp: number; senderId: string; recipientId: string | null; content: string }
   | { type: 'game_ended'; timestamp: number; winner: string; scores: Record<string, number> }
-  | { type: 'phase_changed'; timestamp: number; fromPhase: Phase; toPhase: Phase };
+  | { type: 'phase_changed'; timestamp: number; fromPhase: Phase; toPhase: Phase }
+  | { type: 'economic_update'; timestamp: number; economy: EconomicStateData };
 
 // ============================================================
 // GAME CONFIGURATION
@@ -350,8 +390,11 @@ export interface GameConfig {
   majorityThreshold: number; // seats for instant win
   enableEvents: boolean;
   enableChat: boolean;
+  enableEconomy: boolean;      // enable economic simulation
+  enableVoterGroups: boolean;  // enable voter group dynamics
   seatIdeologyMode: 'random' | 'realistic';
   stateControlValue: number;
+  economicVolatility: number;  // 0-2 scale (1 = default)
 }
 
 // ============================================================

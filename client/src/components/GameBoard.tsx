@@ -12,8 +12,11 @@ import {
   PlayerAction,
   GameEvent,
   Issue,
+  EconomicStateData,
+  VoterGroupState,
 } from '../types';
 import { Chamber } from './Chamber';
+import { AustraliaMapView } from './AustraliaMapView';
 
 // ============================================================
 // THE HOUSE - Main Game Board Component
@@ -196,6 +199,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   const [selectedSeatId, setSelectedSeatId] = useState<SeatId | null>(null);
   const [selectedTargetPlayer, setSelectedTargetPlayer] = useState<string | null>(null);
   const [campaignSpend, setCampaignSpend] = useState<number>(0);
+  const [viewMode, setViewMode] = useState<'chamber' | 'map' | 'economy'>('chamber');
 
   // ---- Derived data ----
   const currentPlayer = useMemo(
@@ -597,7 +601,7 @@ export const GameBoard: React.FC<GameBoardProps> = ({
           </div>
         </div>
 
-        {/* ---- CENTER: Chamber ---- */}
+        {/* ---- CENTER: Chamber / Map / Economy ---- */}
         <div
           style={{
             flex: 1,
@@ -607,22 +611,77 @@ export const GameBoard: React.FC<GameBoardProps> = ({
             position: 'relative',
           }}
         >
-          <div style={{ flex: 1, overflow: 'hidden' }}>
-            <Chamber
-              gameState={gameState}
-              playerId={playerId}
-              selectedSeatId={selectedSeatId}
-              targetableSeatIds={targetableSeatIds}
-              onSeatClick={handleSeatClick}
-            />
+          {/* View toggle bar */}
+          <div style={{
+            display: 'flex', gap: 0, flexShrink: 0,
+            borderBottom: '1px solid var(--border-subtle)',
+          }}>
+            {([
+              { key: 'chamber', label: 'Chamber' },
+              { key: 'map', label: 'Map' },
+              { key: 'economy', label: 'Economy' },
+            ] as const).map(tab => (
+              <button
+                key={tab.key}
+                onClick={() => setViewMode(tab.key)}
+                style={{
+                  flex: 1,
+                  padding: '6px 0',
+                  background: viewMode === tab.key ? 'rgba(184,134,11,0.1)' : 'transparent',
+                  border: 'none',
+                  borderBottom: viewMode === tab.key ? '2px solid var(--brass-gold)' : '2px solid transparent',
+                  color: viewMode === tab.key ? 'var(--brass-light)' : 'var(--text-muted)',
+                  fontSize: '0.7rem',
+                  fontFamily: "'IBM Plex Mono', monospace",
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.12em',
+                  cursor: 'pointer',
+                }}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          <div style={{ flex: 1, overflow: 'auto' }}>
+            {/* Chamber view */}
+            {viewMode === 'chamber' && (
+              <Chamber
+                gameState={gameState}
+                playerId={playerId}
+                selectedSeatId={selectedSeatId}
+                targetableSeatIds={targetableSeatIds}
+                onSeatClick={handleSeatClick}
+              />
+            )}
+
+            {/* Map view */}
+            {viewMode === 'map' && (
+              <AustraliaMapView
+                gameState={gameState}
+                playerId={playerId}
+                selectedSeatId={selectedSeatId}
+                targetableSeatIds={targetableSeatIds}
+                onSeatClick={handleSeatClick}
+              />
+            )}
+
+            {/* Economy dashboard view */}
+            {viewMode === 'economy' && (
+              <EconomyDashboard
+                economy={gameState.economy}
+                voterGroups={gameState.voterGroups}
+                players={gameState.players}
+              />
+            )}
           </div>
 
           {/* Instruction overlay on chamber when selecting targets */}
-          {selectedAction === 'campaign' && (
+          {selectedAction === 'campaign' && viewMode !== 'economy' && (
             <div
               style={{
                 position: 'absolute',
-                top: 12,
+                top: 44,
                 left: '50%',
                 transform: 'translateX(-50%)',
                 background: 'var(--wood-dark)',
@@ -1619,6 +1678,141 @@ const GameOverOverlay: React.FC<{
           Dismiss
         </button>
       </div>
+    </div>
+  );
+};
+
+// ---- Economy Dashboard (center panel view) ----
+
+const SECTOR_LABELS: Record<string, string> = {
+  manufacturing: 'Manufacturing', services: 'Services', finance: 'Finance',
+  technology: 'Technology', healthcare: 'Healthcare', education: 'Education',
+  housing: 'Housing', energy: 'Energy', agriculture: 'Agriculture',
+};
+
+const EconomyDashboard: React.FC<{
+  economy: EconomicStateData;
+  voterGroups: VoterGroupState[];
+  players: Player[];
+}> = ({ economy, voterGroups, players }) => {
+  const indicator = (label: string, value: number, unit: string, good: 'high' | 'low' | 'zero', precision = 1) => {
+    let color = 'var(--text-primary)';
+    if (good === 'high' && value > 3) color = 'var(--aye-green)';
+    else if (good === 'high' && value < 0) color = 'var(--no-red)';
+    else if (good === 'low' && value < 4) color = 'var(--aye-green)';
+    else if (good === 'low' && value > 8) color = 'var(--no-red)';
+    else if (good === 'zero' && Math.abs(value) < 2) color = 'var(--aye-green)';
+    else if (good === 'zero' && value < -5) color = 'var(--no-red)';
+
+    return (
+      <div style={{ padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+        <div className="font-mono" style={{ fontSize: '0.6rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+          {label}
+        </div>
+        <div className="font-display" style={{ fontSize: '1.1rem', fontWeight: 600, color }}>
+          {value.toFixed(precision)}{unit}
+        </div>
+      </div>
+    );
+  };
+
+  const sectorBar = (name: string, health: number) => {
+    const pct = Math.max(0, Math.min(100, health));
+    const color = pct > 60 ? 'var(--aye-green)' : pct > 35 ? 'var(--brass-gold)' : 'var(--no-red)';
+    return (
+      <div key={name} style={{ marginBottom: 4 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 1 }}>
+          <span className="font-mono" style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>
+            {SECTOR_LABELS[name] || name}
+          </span>
+          <span className="font-mono" style={{ fontSize: '0.6rem', color }}>{pct.toFixed(0)}</span>
+        </div>
+        <div style={{ height: 4, background: 'var(--bg-secondary)', borderRadius: 2 }}>
+          <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 2, transition: 'width 0.5s' }} />
+        </div>
+      </div>
+    );
+  };
+
+  const playerName = (id: string | null) => {
+    if (!id) return 'None';
+    return players.find(p => p.id === id)?.name || 'Unknown';
+  };
+
+  return (
+    <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* Macro indicators */}
+      <div className="panel" style={{ margin: 0 }}>
+        <div className="panel-header">Economic Indicators</div>
+        <div style={{ padding: '8px 16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
+          {indicator('GDP Growth', economy.gdpGrowth, '%', 'high')}
+          {indicator('Unemployment', economy.unemployment, '%', 'low')}
+          {indicator('Inflation', economy.inflation, '%', 'low')}
+          {indicator('Interest Rate', economy.interestRate, '%', 'low')}
+          {indicator('Budget Balance', economy.budgetBalance, '% GDP', 'zero')}
+          {indicator('Public Debt', economy.publicDebt, '% GDP', 'low', 0)}
+        </div>
+        <div style={{ padding: '4px 16px 8px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
+          {indicator('Consumer Conf.', economy.consumerConfidence, '', 'high', 0)}
+          {indicator('Business Conf.', economy.businessConfidence, '', 'high', 0)}
+        </div>
+      </div>
+
+      {/* Sectors */}
+      <div className="panel" style={{ margin: 0 }}>
+        <div className="panel-header">Sector Health</div>
+        <div style={{ padding: '8px 16px' }}>
+          {Object.entries(economy.sectors).map(([name, health]) => sectorBar(name, health))}
+        </div>
+      </div>
+
+      {/* Voter groups */}
+      {voterGroups.length > 0 && (
+        <div className="panel" style={{ margin: 0 }}>
+          <div className="panel-header">Voter Groups</div>
+          <div style={{ padding: '8px 16px' }}>
+            {voterGroups.map(group => {
+              const satisfactionColor = group.satisfaction > 60 ? 'var(--aye-green)' : group.satisfaction > 35 ? 'var(--brass-gold)' : 'var(--no-red)';
+              return (
+                <div key={group.id} style={{ padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span className="font-serif" style={{ fontSize: '0.8rem', color: 'var(--text-primary)' }}>
+                      {group.name}
+                    </span>
+                    <span className="font-mono" style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
+                      {(group.population * 100).toFixed(0)}%
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 3 }}>
+                    <div style={{ flex: 1, height: 4, background: 'var(--bg-secondary)', borderRadius: 2 }}>
+                      <div style={{
+                        width: `${group.satisfaction}%`,
+                        height: '100%',
+                        background: satisfactionColor,
+                        borderRadius: 2,
+                        transition: 'width 0.5s',
+                      }} />
+                    </div>
+                    <span className="font-mono" style={{ fontSize: '0.6rem', color: satisfactionColor, width: 24, textAlign: 'right' }}>
+                      {group.satisfaction.toFixed(0)}
+                    </span>
+                  </div>
+                  {group.leaningPartyId && (
+                    <div className="font-mono" style={{ fontSize: '0.55rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                      Leaning: {playerName(group.leaningPartyId)}
+                    </div>
+                  )}
+                  {group.topConcerns.length > 0 && (
+                    <div className="font-mono" style={{ fontSize: '0.55rem', color: 'var(--text-muted)', marginTop: 1 }}>
+                      Concerns: {group.topConcerns.slice(0, 2).map(c => c.variable).join(', ')}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
