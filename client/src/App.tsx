@@ -5,7 +5,7 @@ import {
   GameConfig,
   ChatMessage,
   PartyColorId,
-  ActionType,
+  PlayerAction,
 } from './types';
 import { Lobby } from './components/Lobby';
 import { GameBoard } from './components/GameBoard';
@@ -43,12 +43,10 @@ function App() {
     });
 
     newSocket.on('room_created', ({ roomId: rid }) => {
-      console.log('Room created:', rid);
       setRoomId(rid);
     });
 
     newSocket.on('room_joined', ({ roomId: rid, playerId: pid }) => {
-      console.log('Joined room:', rid, 'as', pid);
       setPlayerId(pid);
       setRoomId(rid);
     });
@@ -87,17 +85,6 @@ function App() {
       }
     });
 
-    newSocket.on('game_exported', ({ eventLog, config, seed, chatLog, history }) => {
-      const exportData = { exportedAt: new Date().toISOString(), seed, config, eventLog, chatLog, history };
-      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `the-house-${Date.now()}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-    });
-
     setSocket(newSocket);
     return () => { newSocket.close(); };
   }, []);
@@ -133,37 +120,30 @@ function App() {
 
   // Room actions
   const createRoom = useCallback((
-    playerName: string, partyName: string, colorId: string, symbolId: string,
+    playerName: string, partyName: string, colorId: string,
     socialIdeology: string, economicIdeology: string
   ) => {
-    socket?.emit('create_room', { playerName, partyName, colorId, symbolId, socialIdeology, economicIdeology });
+    socket?.emit('create_room', { playerName, partyName, colorId, socialIdeology, economicIdeology });
   }, [socket]);
 
   const joinRoom = useCallback((
     rid: string, playerName: string, partyName: string, colorId: string,
-    symbolId: string, socialIdeology: string, economicIdeology: string
+    socialIdeology: string, economicIdeology: string
   ) => {
-    socket?.emit('join_room', { roomId: rid, playerName, partyName, colorId, symbolId, socialIdeology, economicIdeology });
+    socket?.emit('join_room', { roomId: rid, playerName, partyName, colorId, socialIdeology, economicIdeology });
   }, [socket]);
 
   const startGame = useCallback(() => { socket?.emit('start_game'); }, [socket]);
 
-  // Game actions
-  const performAction = useCallback((
-    actionType: ActionType, targetSeatId?: string, targetPlayerId?: string, fundsSpent?: number
-  ) => {
-    socket?.emit('perform_action', { actionType, targetSeatId, targetPlayerId, fundsSpent });
+  // Game actions - simultaneous play
+  const submitActions = useCallback((actions: PlayerAction[]) => {
+    socket?.emit('submit_actions', { actions });
   }, [socket]);
 
-  const endTurn = useCallback(() => { socket?.emit('end_turn'); }, [socket]);
-  const proposeBill = useCallback((billId: string) => { socket?.emit('propose_bill', { billId }); }, [socket]);
-  const skipProposal = useCallback(() => { socket?.emit('skip_proposal'); }, [socket]);
-  const castVote = useCallback((vote: 'aye' | 'no') => { socket?.emit('cast_vote', { vote }); }, [socket]);
-  const acknowledgeEvent = useCallback(() => { socket?.emit('acknowledge_event'); }, [socket]);
-  const acknowledgeResult = useCallback(() => { socket?.emit('acknowledge_result'); }, [socket]);
   const sendChat = useCallback((content: string, recipientId: string | null) => {
     socket?.emit('send_chat', { content, recipientId });
   }, [socket]);
+
   const forceAdvance = useCallback(() => { socket?.emit('force_advance_phase'); }, [socket]);
 
   const isInGame = gameState && gameState.phase !== 'waiting';
@@ -193,13 +173,7 @@ function App() {
           gameState={gameState}
           config={gameConfig!}
           playerId={playerId}
-          onAction={performAction}
-          onEndTurn={endTurn}
-          onProposeBill={proposeBill}
-          onSkipProposal={skipProposal}
-          onCastVote={castVote}
-          onAcknowledgeEvent={acknowledgeEvent}
-          onAcknowledgeResult={acknowledgeResult}
+          onSubmitActions={submitActions}
           onSendChat={sendChat}
           onForceAdvance={forceAdvance}
         />

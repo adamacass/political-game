@@ -65,10 +65,10 @@ io.on('connection', (socket) => {
   };
 
   // Create room
-  socket.on('create_room', ({ playerName, partyName, colorId, symbolId, socialIdeology, economicIdeology }) => {
+  socket.on('create_room', ({ playerName, partyName, colorId, socialIdeology, economicIdeology, configOverrides }) => {
     try {
-      const roomId = roomManager.createRoom();
-      const result = roomManager.joinRoom(roomId, socket.id, playerName, partyName, colorId, symbolId, socialIdeology, economicIdeology);
+      const roomId = roomManager.createRoom(configOverrides);
+      const result = roomManager.joinRoom(roomId, socket.id, playerName, partyName, colorId, socialIdeology, economicIdeology);
 
       if (result.success && result.playerId) {
         currentRoomId = roomId;
@@ -88,9 +88,9 @@ io.on('connection', (socket) => {
   });
 
   // Join room
-  socket.on('join_room', ({ roomId, playerName, partyName, colorId, symbolId, socialIdeology, economicIdeology }) => {
+  socket.on('join_room', ({ roomId, playerName, partyName, colorId, socialIdeology, economicIdeology }) => {
     try {
-      const result = roomManager.joinRoom(roomId, socket.id, playerName, partyName, colorId, symbolId, socialIdeology, economicIdeology);
+      const result = roomManager.joinRoom(roomId, socket.id, playerName, partyName, colorId, socialIdeology, economicIdeology);
 
       if (result.success && result.playerId) {
         currentRoomId = roomId.toUpperCase();
@@ -98,7 +98,6 @@ io.on('connection', (socket) => {
         socket.join(currentRoomId);
         socket.emit('room_joined', { roomId: currentRoomId, playerId: result.playerId });
 
-        // Notify all clients of updated available colors
         const availableColors = roomManager.getAvailableColors(currentRoomId);
         io.to(currentRoomId).emit('available_colors', { colors: availableColors });
 
@@ -118,21 +117,18 @@ io.on('connection', (socket) => {
       const room = roomManager.getRoom(roomId);
       if (!room) {
         socket.emit('session_restored', { success: false, roomId });
-        socket.emit('error', { message: 'Room not found' });
         return;
       }
 
       const state = roomManager.getState(roomId);
       if (!state) {
         socket.emit('session_restored', { success: false, roomId });
-        socket.emit('error', { message: 'Room state not found' });
         return;
       }
 
       const player = state.players.find(p => p.id === playerId);
       if (!player) {
         socket.emit('session_restored', { success: false, roomId });
-        socket.emit('error', { message: 'Player not found in this room' });
         return;
       }
 
@@ -143,17 +139,12 @@ io.on('connection', (socket) => {
 
       socket.emit('session_restored', { success: true, roomId: normalizedRoomId });
       socket.emit('room_joined', { roomId: normalizedRoomId, playerId });
-
-      const availableColors = roomManager.getAvailableColors(normalizedRoomId);
-      socket.emit('available_colors', { colors: availableColors });
+      socket.emit('available_colors', { colors: roomManager.getAvailableColors(normalizedRoomId) });
 
       broadcastState(normalizedRoomId);
-
-      console.log(`Session restored for player ${playerId} in room ${normalizedRoomId}`);
     } catch (error) {
       console.error('Error restoring session:', error);
       socket.emit('session_restored', { success: false, roomId });
-      socket.emit('error', { message: 'Server error restoring session' });
     }
   });
 
@@ -169,7 +160,7 @@ io.on('connection', (socket) => {
       if (success) {
         broadcastState(currentRoomId);
       } else {
-        socket.emit('error', { message: 'Cannot start game (need at least 2 players)' });
+        socket.emit('error', { message: 'Cannot start game (need at least 2 players, or 1 player with AI)' });
       }
     } catch (error) {
       console.error('Error starting game:', error);
@@ -177,142 +168,22 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Perform action
-  socket.on('perform_action', ({ actionType, targetSeatId, targetPlayerId, fundsSpent }) => {
+  // Submit actions (simultaneous play)
+  socket.on('submit_actions', ({ actions }) => {
     if (!currentRoomId || !currentPlayerId) {
       socket.emit('error', { message: 'Not in a game' });
       return;
     }
 
     try {
-      const success = roomManager.performAction(currentRoomId, currentPlayerId, actionType, targetSeatId, targetPlayerId, fundsSpent);
+      const success = roomManager.submitActions(currentRoomId, currentPlayerId, actions);
       if (success) {
         broadcastState(currentRoomId);
       } else {
-        socket.emit('error', { message: 'Cannot perform action' });
+        socket.emit('error', { message: 'Cannot submit actions' });
       }
     } catch (error) {
-      console.error('Error performing action:', error);
-      socket.emit('error', { message: 'Server error' });
-    }
-  });
-
-  // End turn
-  socket.on('end_turn', () => {
-    if (!currentRoomId || !currentPlayerId) {
-      socket.emit('error', { message: 'Not in a game' });
-      return;
-    }
-
-    try {
-      const success = roomManager.endTurn(currentRoomId, currentPlayerId);
-      if (success) {
-        broadcastState(currentRoomId);
-      } else {
-        socket.emit('error', { message: 'Cannot end turn' });
-      }
-    } catch (error) {
-      console.error('Error ending turn:', error);
-      socket.emit('error', { message: 'Server error' });
-    }
-  });
-
-  // Propose bill
-  socket.on('propose_bill', ({ billId }) => {
-    if (!currentRoomId || !currentPlayerId) {
-      socket.emit('error', { message: 'Not in a game' });
-      return;
-    }
-
-    try {
-      const success = roomManager.proposeBill(currentRoomId, currentPlayerId, billId);
-      if (success) {
-        broadcastState(currentRoomId);
-      } else {
-        socket.emit('error', { message: 'Cannot propose bill' });
-      }
-    } catch (error) {
-      console.error('Error proposing bill:', error);
-      socket.emit('error', { message: 'Server error' });
-    }
-  });
-
-  // Skip proposal
-  socket.on('skip_proposal', () => {
-    if (!currentRoomId || !currentPlayerId) {
-      socket.emit('error', { message: 'Not in a game' });
-      return;
-    }
-
-    try {
-      const success = roomManager.skipProposal(currentRoomId, currentPlayerId);
-      if (success) {
-        broadcastState(currentRoomId);
-      } else {
-        socket.emit('error', { message: 'Cannot skip proposal' });
-      }
-    } catch (error) {
-      console.error('Error skipping proposal:', error);
-      socket.emit('error', { message: 'Server error' });
-    }
-  });
-
-  // Cast vote
-  socket.on('cast_vote', ({ vote }) => {
-    if (!currentRoomId || !currentPlayerId) {
-      socket.emit('error', { message: 'Not in a game' });
-      return;
-    }
-
-    try {
-      const success = roomManager.castVote(currentRoomId, currentPlayerId, vote);
-      if (success) {
-        broadcastState(currentRoomId);
-      } else {
-        socket.emit('error', { message: 'Cannot vote' });
-      }
-    } catch (error) {
-      console.error('Error casting vote:', error);
-      socket.emit('error', { message: 'Server error' });
-    }
-  });
-
-  // Acknowledge event
-  socket.on('acknowledge_event', () => {
-    if (!currentRoomId || !currentPlayerId) {
-      socket.emit('error', { message: 'Not in a game' });
-      return;
-    }
-
-    try {
-      const success = roomManager.acknowledgeEvent(currentRoomId, currentPlayerId);
-      if (success) {
-        broadcastState(currentRoomId);
-      } else {
-        socket.emit('error', { message: 'Cannot acknowledge event' });
-      }
-    } catch (error) {
-      console.error('Error acknowledging event:', error);
-      socket.emit('error', { message: 'Server error' });
-    }
-  });
-
-  // Acknowledge legislation result
-  socket.on('acknowledge_result', () => {
-    if (!currentRoomId || !currentPlayerId) {
-      socket.emit('error', { message: 'Not in a game' });
-      return;
-    }
-
-    try {
-      const success = roomManager.acknowledgeLegislationResult(currentRoomId, currentPlayerId);
-      if (success) {
-        broadcastState(currentRoomId);
-      } else {
-        socket.emit('error', { message: 'Cannot acknowledge result' });
-      }
-    } catch (error) {
-      console.error('Error acknowledging result:', error);
+      console.error('Error submitting actions:', error);
       socket.emit('error', { message: 'Server error' });
     }
   });
@@ -353,33 +224,6 @@ io.on('connection', (socket) => {
       }
     } catch (error) {
       console.error('Error requesting state:', error);
-    }
-  });
-
-  // Export game
-  socket.on('export_game', () => {
-    if (!currentRoomId) {
-      socket.emit('error', { message: 'Not in a room' });
-      return;
-    }
-
-    try {
-      const eventLog = roomManager.getEventLog(currentRoomId);
-      const config = roomManager.getConfig(currentRoomId);
-      const state = roomManager.getState(currentRoomId);
-
-      if (eventLog && config && state) {
-        socket.emit('game_exported', {
-          eventLog,
-          config,
-          seed: state.seed,
-          chatLog: state.chatMessages || [],
-          history: state.history || [],
-        });
-      }
-    } catch (error) {
-      console.error('Error exporting game:', error);
-      socket.emit('error', { message: 'Server error' });
     }
   });
 

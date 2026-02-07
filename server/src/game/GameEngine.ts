@@ -1,23 +1,24 @@
 // ============================================================
 // THE HOUSE - Australian Political Strategy Game
-// GameEngine: Action-based gameplay system (replaces card-based)
+// GameEngine: Simultaneous-play strategy with elections & economy
 // ============================================================
 
 import {
-  GameState, GameConfig, Player, Issue, Phase, ActionType,
+  GameState, GameConfig, Player, Phase, ActionType,
   GameEvent, SocialIdeology, EconomicIdeology, ChatMessage,
-  HistorySnapshot, BillResult, PartyColorId, PARTY_COLORS, IdeologyStance,
+  PartyColorId, PARTY_COLORS, IdeologyStance,
   Seat, SeatId, StateCode, StateControl, EconomicStateData, VoterGroupState,
-  Bill, PoliticalEvent, EventEffect,
+  Policy, PolicyEffect, ActivePolicy, PolicyVoteResult, PolicyCategory,
+  PoliticalEvent, EventEffect,
   PlayerAction, ActionResult, ActionCost,
-  PendingLegislation, LegislationVote,
+  PlayerScore, ElectionResult, AIStrategy, AIDifficulty,
 } from '../types';
 import { SeededRNG } from './rng';
 import {
   generateSeatMap, computePlayerSeatCounts, recomputeChamberPositions,
   transferSeat, getPlayerSeats, computeStateControl, compareStateControl,
 } from './mapGen';
-import { getAllBills } from './bills';
+import { getAllPolicies } from './policies';
 import { getAllEvents } from './events';
 import { EconomicEngine, ActiveEffect } from './economicEngine';
 import { VoterEngine, PartyProfile } from './voterEngine';
@@ -26,31 +27,44 @@ import { VoterEngine, PartyProfile } from './voterEngine';
 // CONSTANTS
 // ============================================================
 
-const ISSUES: Issue[] = ['economy', 'health', 'housing', 'climate', 'security', 'education'];
+const AI_NAMES: { name: string; party: string; strategy: AIStrategy }[] = [
+  { name: 'Margaret', party: 'Unity Party', strategy: 'pragmatist' },
+  { name: 'Kevin', party: 'Peoples Alliance', strategy: 'populist' },
+  { name: 'Julia', party: 'Reform Movement', strategy: 'policy_wonk' },
+  { name: 'Tony', party: 'Freedom Coalition', strategy: 'campaigner' },
+  { name: 'Malcolm', party: 'National Front', strategy: 'pragmatist' },
+];
+
+const AI_IDEOLOGIES: { social: SocialIdeology; economic: EconomicIdeology }[] = [
+  { social: 'conservative', economic: 'market' },
+  { social: 'progressive', economic: 'interventionist' },
+  { social: 'progressive', economic: 'market' },
+  { social: 'conservative', economic: 'interventionist' },
+  { social: 'progressive', economic: 'interventionist' },
+];
+
+const ALL_STATES: StateCode[] = ['NSW', 'VIC', 'QLD', 'WA', 'SA', 'TAS', 'ACT', 'NT'];
 
 const DEFAULT_CONFIG: GameConfig = {
   totalSeats: 151,
-  maxRounds: 12,
-  actionPointsPerRound: 3,
+  totalRounds: 12,
+  electionCycle: 4,
+  actionsPerRound: 3,
   startingFunds: 30,
   startingApproval: 50,
   incomePerSeat: 2,
-  campaignBaseCost: 8,
-  campaignBaseChance: 35,
+  campaignCost: 8,
   attackAdCost: 10,
   mediaBlitzCost: 12,
-  porkBarrelCost: 15,
   fundraiseAmount: 12,
-  mandateValue: 5,
-  pmValue: 4,
-  billPoolSize: 3,
+  coalitionTalkCost: 5,
+  aiPlayerCount: 1,
+  aiDifficulty: 'normal',
   majorityThreshold: 76,
   enableEvents: true,
   enableChat: true,
   enableEconomy: true,
   enableVoterGroups: true,
-  seatIdeologyMode: 'realistic',
-  stateControlValue: 2,
   economicVolatility: 1.0,
 };
 
@@ -62,9 +76,8 @@ export class GameEngine {
   private state: GameState;
   private config: GameConfig;
   private rng: SeededRNG;
-  private allBills: Bill[];
+  private allPolicies: Policy[];
   private allEvents: PoliticalEvent[];
-  private currentRoundBillResult: BillResult | null = null;
   private economicEngine: EconomicEngine | null = null;
   private voterEngine: VoterEngine | null = null;
   private activePolicyEffects: ActiveEffect[] = [];
@@ -72,7 +85,7 @@ export class GameEngine {
   constructor(roomId: string, config: Partial<GameConfig> = {}, seed?: string) {
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.rng = new SeededRNG(seed);
-    this.allBills = getAllBills();
+    this.allPolicies = getAllPolicies();
     this.allEvents = getAllEvents();
     this.state = this.createInitialState(roomId);
   }
@@ -87,42 +100,21 @@ export class GameEngine {
       seed: this.rng.getSeed(),
       phase: 'waiting',
       round: 0,
-      maxRounds: this.config.maxRounds,
+      totalRounds: this.config.totalRounds,
 
       players: [],
-      turnOrder: [],
-      currentPlayerIndex: 0,
-      speakerIndex: 0,
 
       totalSeats: this.config.totalSeats,
       seats: {},
       stateControl: {} as Record<StateCode, StateControl>,
-      activeIssue: 'economy',
 
-      nationalBudget: 0,
-      budgetSurplus: false,
+      policyMenu: [],
+      activePolicies: [],
+      policyHistory: [],
 
-      availableBills: [],
-      pendingLegislation: null,
-      passedBills: [],
-      failedBills: [],
+      roundActions: {},
+      lastRoundResults: [],
 
-      currentEvent: null,
-      pastEvents: [],
-
-      playersActed: [],
-      roundActions: [],
-
-      eventLog: [],
-      chatMessages: [],
-      history: [],
-
-      winner: null,
-      finalScores: null,
-
-      takenColors: [],
-
-      // Economy + voter data (initialized properly on game start)
       economy: {
         gdpGrowth: 2.5, unemployment: 5.0, inflation: 2.0,
         publicDebt: 60, budgetBalance: 0,
@@ -132,7 +124,24 @@ export class GameEngine {
           healthcare: 50, education: 50, housing: 50, energy: 50, agriculture: 50,
         },
       },
+      economyHistory: [],
       voterGroups: [],
+
+      governmentLeaderId: null,
+      nextElectionRound: this.config.electionCycle,
+      electionCycle: this.config.electionCycle,
+      electionHistory: [],
+
+      currentEvent: null,
+      pastEvents: [],
+
+      eventLog: [],
+      chatMessages: [],
+
+      winner: null,
+      finalScores: null,
+
+      takenColors: [],
     };
   }
 
@@ -140,22 +149,15 @@ export class GameEngine {
   // Public accessors
   // ----------------------------------------------------------
 
-  getState(): GameState {
-    return { ...this.state };
-  }
-
-  getConfig(): GameConfig {
-    return { ...this.config };
-  }
+  getState(): GameState { return { ...this.state }; }
+  getConfig(): GameConfig { return { ...this.config }; }
 
   getAvailableColors(): PartyColorId[] {
     const allColorIds = PARTY_COLORS.map(c => c.id) as PartyColorId[];
     return allColorIds.filter(id => !this.state.takenColors.includes(id));
   }
 
-  getEventLog(): GameEvent[] {
-    return [...this.state.eventLog];
-  }
+  getEventLog(): GameEvent[] { return [...this.state.eventLog]; }
 
   // ----------------------------------------------------------
   // Lobby management
@@ -166,15 +168,14 @@ export class GameEngine {
     playerName: string,
     partyName: string,
     colorId?: PartyColorId,
-    symbolId?: string,
+    _symbolId?: string,
     socialIdeology?: SocialIdeology,
     economicIdeology?: EconomicIdeology,
   ): Player | null {
     if (this.state.phase !== 'waiting') return null;
-    if (this.state.players.length >= 5) return null;
+    if (this.state.players.length >= 6) return null;
     if (this.state.players.find(p => p.id === id)) return null;
 
-    // Resolve colour
     const availableColors = this.getAvailableColors();
     const finalColorId: PartyColorId =
       colorId && !this.state.takenColors.includes(colorId) ? colorId : availableColors[0];
@@ -184,10 +185,6 @@ export class GameEngine {
     const colorEntry = PARTY_COLORS.find(c => c.id === finalColorId);
     const colorHex = colorEntry?.hex || '#666666';
 
-    const finalSymbolId = symbolId || 'landmark';
-    const finalSocial: SocialIdeology = socialIdeology || 'progressive';
-    const finalEconomic: EconomicIdeology = economicIdeology || 'market';
-
     const isHost = this.state.players.length === 0;
 
     const player: Player = {
@@ -196,26 +193,28 @@ export class GameEngine {
       playerName: playerName || `Player ${this.state.players.length + 1}`,
       colorId: finalColorId,
       color: colorHex,
-      symbolId: finalSymbolId,
-      socialIdeology: finalSocial,
-      economicIdeology: finalEconomic,
+      socialIdeology: socialIdeology || 'progressive',
+      economicIdeology: economicIdeology || 'market',
       seats: 0,
       funds: 0,
       approval: this.config.startingApproval,
-      pcap: 0,
-      actionPoints: 0,
-      maxActionPoints: this.config.actionPointsPerRound,
+      isAI: false,
       connected: true,
       isHost,
-      actionsThisRound: [],
-      hasProposed: false,
-      hasVoted: false,
+      submittedActions: false,
+      policyScore: 0,
+      governmentRounds: 0,
+      campaignInfluence: {} as Record<StateCode, number>,
       totalSeatsWon: 0,
       totalSeatsLost: 0,
-      billsProposed: 0,
-      billsPassed: 0,
-      campaignsRun: 0,
+      policiesProposed: 0,
+      policiesPassed: 0,
     };
+
+    // Initialize campaign influence for all states
+    for (const st of ALL_STATES) {
+      player.campaignInfluence[st] = 0;
+    }
 
     this.state.players.push(player);
 
@@ -224,7 +223,6 @@ export class GameEngine {
       timestamp: Date.now(),
       playerId: id,
       playerName: player.playerName,
-      partyName: player.name,
       colorId: finalColorId,
     });
 
@@ -240,8 +238,6 @@ export class GameEngine {
         c => c !== this.state.players[idx].colorId,
       );
       this.state.players.splice(idx, 1);
-
-      // Reassign host if the removed player was host
       if (this.state.players.length > 0 && !this.state.players.some(p => p.isHost)) {
         this.state.players[0].isHost = true;
       }
@@ -271,12 +267,30 @@ export class GameEngine {
     });
   }
 
+  updateConfig(updates: Partial<GameConfig>): void {
+    if (this.state.phase !== 'waiting') return;
+    this.config = { ...this.config, ...updates };
+    this.state.totalRounds = this.config.totalRounds;
+    this.state.electionCycle = this.config.electionCycle;
+    this.state.nextElectionRound = this.config.electionCycle;
+  }
+
   // ----------------------------------------------------------
   // Game start
   // ----------------------------------------------------------
 
   startGame(): boolean {
-    if (this.state.phase !== 'waiting' || this.state.players.length < 2) return false;
+    if (this.state.phase !== 'waiting') return false;
+
+    // Need at least 1 human player
+    const humanCount = this.state.players.filter(p => !p.isAI).length;
+    if (humanCount < 1) return false;
+
+    // Add AI players
+    this.addAIPlayers();
+
+    // Total players check
+    if (this.state.players.length < 2) return false;
 
     const playerIds = this.state.players.map(p => p.id);
 
@@ -285,7 +299,7 @@ export class GameEngine {
       seatCount: this.config.totalSeats,
       seed: this.rng.getSeed(),
       playerIds,
-      ideologyMode: this.config.seatIdeologyMode,
+      ideologyMode: 'realistic',
     });
 
     // Initialize economic engine
@@ -295,6 +309,7 @@ export class GameEngine {
         seed: this.rng.getSeed(),
       });
       this.state.economy = this.economicEngine.getState();
+      this.state.economyHistory = [{ ...this.state.economy, sectors: { ...this.state.economy.sectors } }];
     }
 
     // Initialize voter engine
@@ -305,212 +320,274 @@ export class GameEngine {
       this.state.voterGroups = this.voterEngine.getGroupSummaries();
     }
 
-    // Distribute starting funds and approval
+    // Policy menu = all available policies
+    this.state.policyMenu = this.allPolicies;
+
+    // Distribute starting funds
     for (const player of this.state.players) {
       player.funds = this.config.startingFunds;
       player.approval = this.config.startingApproval;
     }
 
-    // Sync seat counts from the authoritative seat map
+    // Sync seat counts
     this.syncPlayerSeatCounts();
 
-    // Shuffle turn order
-    this.state.turnOrder = this.rng.shuffle([...playerIds]);
-    this.state.speakerIndex = 0;
-
-    // Generate initial bill pool from the full bill catalogue
-    const shuffledBills = this.rng.shuffle([...this.allBills]);
-    this.state.availableBills = shuffledBills.slice(0, this.config.billPoolSize);
-
-    // Compute initial state control
+    // Compute initial state control & chamber layout
     this.state.stateControl = computeStateControl(this.state.seats);
-
-    // Compute initial chamber layout positions (group by party)
     recomputeChamberPositions(this.state.seats, computePlayerSeatCounts(this.state.seats));
 
-    // Pick the active issue for round 1
-    this.state.activeIssue = this.rng.pick(ISSUES);
+    // Determine initial government
+    this.updateGovernmentLeader();
 
     // Begin round 1
     this.state.round = 1;
+    this.state.nextElectionRound = this.config.electionCycle;
 
-    this.logEvent({
-      type: 'game_started',
-      timestamp: Date.now(),
-      seed: this.rng.getSeed(),
-      config: JSON.stringify(this.config),
-    });
+    this.logEvent({ type: 'game_started', timestamp: Date.now(), seed: this.rng.getSeed() });
+    this.logEvent({ type: 'round_started', timestamp: Date.now(), round: 1 });
 
-    this.logEvent({
-      type: 'round_started',
-      timestamp: Date.now(),
-      round: 1,
-      activeIssue: this.state.activeIssue,
-    });
+    // Distribute first round income
+    this.distributeIncome();
 
-    // Enter budget phase (which will auto-advance to action)
-    this.setPhase('budget');
-    this.distributeBudget();
+    // Enter planning phase
+    this.setPhase('planning');
+
+    // AI players submit immediately
+    this.processAIActions();
 
     return true;
   }
 
-  // ----------------------------------------------------------
-  // Budget phase
-  // ----------------------------------------------------------
+  private addAIPlayers(): void {
+    const aiCount = this.config.aiPlayerCount;
+    const humanCount = this.state.players.length;
 
-  private distributeBudget(): void {
-    const amounts: Record<string, number> = {};
+    for (let i = 0; i < aiCount && (humanCount + i) < 6; i++) {
+      const aiDef = AI_NAMES[i % AI_NAMES.length];
+      const aiIdeology = AI_IDEOLOGIES[i % AI_IDEOLOGIES.length];
+      const availableColors = this.getAvailableColors();
+      if (availableColors.length === 0) break;
 
-    for (const player of this.state.players) {
-      const income = Math.max(5, this.config.incomePerSeat * player.seats);
-      player.funds += income;
-      amounts[player.id] = income;
+      const colorId = availableColors[0];
+      this.state.takenColors.push(colorId);
+      const colorEntry = PARTY_COLORS.find(c => c.id === colorId);
+
+      const player: Player = {
+        id: `ai_${i}_${Date.now()}`,
+        name: aiDef.party,
+        playerName: aiDef.name,
+        colorId,
+        color: colorEntry?.hex || '#666666',
+        socialIdeology: aiIdeology.social,
+        economicIdeology: aiIdeology.economic,
+        seats: 0,
+        funds: 0,
+        approval: this.config.startingApproval,
+        isAI: true,
+        aiStrategy: aiDef.strategy,
+        connected: true,
+        isHost: false,
+        submittedActions: false,
+        policyScore: 0,
+        governmentRounds: 0,
+        campaignInfluence: {} as Record<StateCode, number>,
+        totalSeatsWon: 0,
+        totalSeatsLost: 0,
+        policiesProposed: 0,
+        policiesPassed: 0,
+      };
+
+      for (const st of ALL_STATES) {
+        player.campaignInfluence[st] = 0;
+      }
+
+      this.state.players.push(player);
 
       this.logEvent({
-        type: 'funds_changed',
+        type: 'player_joined',
         timestamp: Date.now(),
         playerId: player.id,
-        delta: income,
-        newFunds: player.funds,
-        reason: `Budget: ${this.config.incomePerSeat}/seat x ${player.seats} seats (min 5)`,
+        playerName: player.playerName,
+        colorId,
       });
     }
-
-    this.logEvent({
-      type: 'budget_distributed',
-      timestamp: Date.now(),
-      amounts,
-    });
-
-    // Reset action-phase tracking for every player
-    for (const player of this.state.players) {
-      player.actionPoints = this.config.actionPointsPerRound;
-      player.maxActionPoints = this.config.actionPointsPerRound;
-      player.actionsThisRound = [];
-      player.hasProposed = false;
-      player.hasVoted = false;
-    }
-    this.state.playersActed = [];
-    this.state.roundActions = [];
-    this.state.currentPlayerIndex = 0;
-    this.currentRoundBillResult = null;
-
-    // Advance to action phase
-    this.setPhase('action');
   }
 
   // ----------------------------------------------------------
-  // Action phase
+  // Simultaneous action submission
   // ----------------------------------------------------------
 
-  performAction(
-    playerId: string,
-    actionType: ActionType,
-    targetSeatId?: string,
-    targetPlayerId?: string,
-    fundsSpent?: number,
-  ): boolean {
-    if (this.state.phase !== 'action') return false;
-
-    // Must be this player's turn
-    const currentTurnPlayerId = this.state.turnOrder[this.state.currentPlayerIndex];
-    if (currentTurnPlayerId !== playerId) return false;
+  submitActions(playerId: string, actions: PlayerAction[]): boolean {
+    if (this.state.phase !== 'planning') return false;
 
     const player = this.state.players.find(p => p.id === playerId);
     if (!player) return false;
-    if (player.actionPoints < 1) return false;
+    if (player.submittedActions) return false;
 
-    // Validate funds
-    const cost = this.getActionCost(actionType);
-    if (player.funds < cost.funds) return false;
+    // Validate action count
+    if (actions.length > this.config.actionsPerRound) return false;
 
-    // Execute the action
-    let result: ActionResult;
-
-    switch (actionType) {
-      case 'campaign':
-        result = this.executeCampaignAction(player, targetSeatId);
-        break;
-      case 'policy_speech':
-        result = this.executePolicySpeech(player);
-        break;
-      case 'attack_ad':
-        result = this.executeAttackAd(player, targetPlayerId);
-        break;
-      case 'fundraise':
-        result = this.executeFundraise(player);
-        break;
-      case 'media_blitz':
-        result = this.executeMediaBlitz(player);
-        break;
-      case 'pork_barrel':
-        result = this.executePorkBarrel(player, targetSeatId);
-        break;
-      default:
-        return false;
+    // Validate each action
+    for (const action of actions) {
+      if (!this.validateAction(player, action)) return false;
     }
 
-    // A result with success === false from validation means the action was rejected
-    if (!result.success && result.message !== '') {
-      // Still counts if it was a failed campaign roll -- but not if input was invalid.
-      // Campaign rolls that fail in-game still return success:false but we should
-      // still deduct AP / funds for those. We differentiate by checking seatCaptured
-      // being explicitly set (even to false) versus undefined.
-      const isRolledCampaignFailure = actionType === 'campaign' && result.seatCaptured === false;
-      if (!isRolledCampaignFailure) {
-        return false;
-      }
+    // Check total costs don't exceed funds
+    let totalCost = 0;
+    for (const action of actions) {
+      totalCost += this.getActionCost(action.type).funds;
     }
+    if (totalCost > player.funds) return false;
 
-    // Deduct AP and funds
-    player.actionPoints -= 1;
-    player.funds -= cost.funds;
-
-    // Record the action
-    const action: PlayerAction = {
-      type: actionType,
-      playerId,
-      targetSeatId,
-      targetPlayerId,
-      fundsSpent: cost.funds,
-      result,
-      timestamp: Date.now(),
-    };
-
-    player.actionsThisRound.push(action);
-    this.state.roundActions.push(action);
+    // Store actions
+    this.state.roundActions[playerId] = actions;
+    player.submittedActions = true;
 
     this.logEvent({
-      type: 'action_performed',
+      type: 'actions_submitted',
       timestamp: Date.now(),
-      action,
+      playerId,
+      actionCount: actions.length,
     });
 
-    // Auto-advance turn when AP exhausted
-    if (player.actionPoints <= 0) {
-      this.advancePlayerTurn(playerId);
+    // Check if all players have submitted
+    const allSubmitted = this.state.players.every(p => p.submittedActions || !p.connected);
+    if (allSubmitted) {
+      this.resolveRound();
     }
 
     return true;
   }
 
-  private getActionCost(actionType: ActionType): ActionCost {
+  private validateAction(player: Player, action: PlayerAction): boolean {
+    switch (action.type) {
+      case 'campaign':
+        return !!action.targetState && ALL_STATES.includes(action.targetState);
+      case 'propose_policy':
+        if (!action.policyId) return false;
+        // Can't propose already-active policies
+        if (this.state.activePolicies.some(ap => ap.policy.id === action.policyId)) return false;
+        return this.allPolicies.some(p => p.id === action.policyId);
+      case 'attack_ad':
+        if (!action.targetPlayerId) return false;
+        return action.targetPlayerId !== player.id &&
+               this.state.players.some(p => p.id === action.targetPlayerId);
+      case 'fundraise':
+      case 'media_blitz':
+      case 'coalition_talk':
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  getActionCost(actionType: ActionType): ActionCost {
     switch (actionType) {
       case 'campaign':
-        return { ap: 1, funds: this.config.campaignBaseCost, description: 'Campaign for a seat' };
-      case 'policy_speech':
-        return { ap: 1, funds: 0, description: 'Give a policy speech' };
+        return { funds: this.config.campaignCost, description: 'Campaign in a state' };
+      case 'propose_policy':
+        return { funds: 0, description: 'Propose a policy' };
       case 'attack_ad':
-        return { ap: 1, funds: this.config.attackAdCost, description: 'Run attack ads against an opponent' };
+        return { funds: this.config.attackAdCost, description: 'Run attack ads' };
       case 'fundraise':
-        return { ap: 1, funds: 0, description: 'Fundraise' };
+        return { funds: 0, description: 'Fundraise' };
       case 'media_blitz':
-        return { ap: 1, funds: this.config.mediaBlitzCost, description: 'Launch a media blitz' };
-      case 'pork_barrel':
-        return { ap: 1, funds: this.config.porkBarrelCost, description: 'Pork barrel spending in a state' };
+        return { funds: this.config.mediaBlitzCost, description: 'Media blitz' };
+      case 'coalition_talk':
+        return { funds: this.config.coalitionTalkCost, description: 'Coalition building' };
       default:
-        return { ap: 1, funds: 0, description: '' };
+        return { funds: 0, description: '' };
+    }
+  }
+
+  // ----------------------------------------------------------
+  // Round resolution
+  // ----------------------------------------------------------
+
+  private resolveRound(): void {
+    this.setPhase('resolution');
+    const results: ActionResult[] = [];
+
+    // Gather all submitted actions
+    const allActions: { player: Player; action: PlayerAction }[] = [];
+    for (const player of this.state.players) {
+      const actions = this.state.roundActions[player.id] || [];
+      for (const action of actions) {
+        allActions.push({ player, action });
+      }
+    }
+
+    // Resolution order: fundraise → campaign → policy → attack_ad → media_blitz → coalition
+    const order: ActionType[] = ['fundraise', 'campaign', 'propose_policy', 'attack_ad', 'media_blitz', 'coalition_talk'];
+
+    for (const actionType of order) {
+      const actionsOfType = allActions.filter(a => a.action.type === actionType);
+      for (const { player, action } of actionsOfType) {
+        const cost = this.getActionCost(action.type);
+        player.funds -= cost.funds;
+
+        const result = this.executeAction(player, action);
+        results.push(result);
+
+        this.logEvent({ type: 'action_resolved', timestamp: Date.now(), result });
+      }
+    }
+
+    this.state.lastRoundResults = results;
+
+    // Tick economy
+    this.tickEconomy();
+
+    // Random event (50% chance each round)
+    if (this.config.enableEvents && this.allEvents.length > 0 && this.rng.random() < 0.5) {
+      const event = this.rng.pick(this.allEvents);
+      this.state.currentEvent = event;
+      this.applyEventEffects(event);
+      this.state.pastEvents.push(event);
+      this.logEvent({ type: 'event_occurred', timestamp: Date.now(), eventId: event.id, eventName: event.name });
+    }
+
+    // Update government leader
+    this.updateGovernmentLeader();
+
+    // Track government rounds for scoring
+    if (this.state.governmentLeaderId) {
+      const gov = this.state.players.find(p => p.id === this.state.governmentLeaderId);
+      if (gov) gov.governmentRounds++;
+    }
+
+    // Check for election
+    const isElectionRound = this.state.round % this.config.electionCycle === 0;
+    if (isElectionRound) {
+      this.resolveElection();
+    }
+
+    // Check game end
+    if (this.state.round >= this.config.totalRounds) {
+      this.endGame();
+      return;
+    }
+
+    // Advance to next round
+    this.advanceToNextRound();
+  }
+
+  private executeAction(player: Player, action: PlayerAction): ActionResult {
+    switch (action.type) {
+      case 'campaign':
+        return this.executeCampaign(player, action.targetState!);
+      case 'propose_policy':
+        return this.executeProposePolicy(player, action.policyId!);
+      case 'attack_ad':
+        return this.executeAttackAd(player, action.targetPlayerId!);
+      case 'fundraise':
+        return this.executeFundraise(player);
+      case 'media_blitz':
+        return this.executeMediaBlitz(player);
+      case 'coalition_talk':
+        return this.executeCoalitionTalk(player, action.targetPlayerId);
+      default:
+        return { playerId: player.id, action, success: false, description: 'Unknown action' };
     }
   }
 
@@ -518,628 +595,522 @@ export class GameEngine {
   // Action executors
   // ----------------------------------------------------------
 
-  /**
-   * CAMPAIGN - attempt to win an opponent's seat.
-   *
-   * Success chance = baseChance + (approval/3) + ideologyBonus + marginBonus
-   * clamped to [10, 90].
-   */
-  private executeCampaignAction(player: Player, targetSeatId?: string): ActionResult {
-    if (!targetSeatId) {
-      return { success: false, message: 'No target seat specified' };
-    }
+  private executeCampaign(player: Player, targetState: StateCode): ActionResult {
+    const action: PlayerAction = { type: 'campaign', targetState };
 
-    const seat = this.state.seats[targetSeatId];
-    if (!seat) {
-      return { success: false, message: 'Invalid seat' };
-    }
-    if (seat.ownerPlayerId === player.id) {
-      return { success: false, message: 'You already own this seat' };
-    }
-    if (!seat.ownerPlayerId) {
-      return { success: false, message: 'Seat has no owner to contest' };
-    }
+    // Add campaign influence to the state
+    const influenceGain = 10 + Math.floor(player.approval / 10);
+    player.campaignInfluence[targetState] = (player.campaignInfluence[targetState] || 0) + influenceGain;
 
-    player.campaignsRun++;
-
-    // Calculate success probability
-    let chance = this.config.campaignBaseChance;
-    chance += player.approval / 3;
-
-    // Ideology match bonus (+15)
-    if (this.checkIdeologyMatch(player, seat)) {
-      chance += 15;
-    }
-
-    // Marginal seat bonus (+10 if margin < 30)
-    if (seat.margin < 30) {
-      chance += 10;
-    }
-
-    // Voter satisfaction modifier: government benefits from high satisfaction,
-    // opposition benefits from low satisfaction (anti-incumbent swing)
+    // Voter satisfaction modifier
+    let satisfactionBonus = 0;
     if (this.voterEngine && this.config.enableVoterGroups) {
       const nationalSat = this.voterEngine.getNationalSatisfaction();
-      const isGovernment = this.getSeatLeader()?.id === player.id;
-      if (isGovernment) {
-        chance += (nationalSat - 50) / 5; // ±10 range
-      } else {
-        chance += (50 - nationalSat) / 5; // ±10 range
-      }
+      const isGovernment = this.state.governmentLeaderId === player.id;
+      satisfactionBonus = isGovernment ? (nationalSat - 50) / 10 : (50 - nationalSat) / 10;
     }
 
-    // Clamp between 10 and 90
-    chance = Math.max(10, Math.min(90, chance));
+    // Try to flip a marginal seat in the target state
+    const stateSeats = Object.values(this.state.seats).filter(
+      s => s.state === targetState && s.ownerPlayerId && s.ownerPlayerId !== player.id,
+    );
+
+    if (stateSeats.length === 0) {
+      return {
+        playerId: player.id, action, success: true,
+        description: `Built campaign presence in ${targetState}.`,
+      };
+    }
+
+    // Sort by margin (most marginal first)
+    stateSeats.sort((a, b) => a.margin - b.margin);
+    const targetSeat = stateSeats[0];
+
+    // Success chance
+    let chance = 30 + (player.approval / 4) + satisfactionBonus;
+    if (this.checkIdeologyMatch(player, targetSeat)) chance += 12;
+    if (targetSeat.margin < 25) chance += 15;
+    chance = Math.max(10, Math.min(85, chance));
 
     const roll = this.rng.random() * 100;
-    const success = roll < chance;
+    if (roll < chance) {
+      const prevOwner = targetSeat.ownerPlayerId;
+      transferSeat(this.state.seats, targetSeat.id, player.id);
+      targetSeat.margin = 15 + this.rng.randomInt(0, 20);
+      targetSeat.contested = true;
+      targetSeat.lastCampaignedBy = player.id;
 
-    if (success) {
-      const previousOwnerId = seat.ownerPlayerId;
-
-      // Transfer ownership
-      transferSeat(this.state.seats, targetSeatId, player.id);
-
-      // Reset seat margin on capture
-      seat.margin = 20 + this.rng.randomInt(0, 20);
-      seat.contested = true;
-      seat.lastCampaignedBy = player.id;
-
-      // Approval boost for winner
-      player.approval = Math.min(100, player.approval + 3);
-
-      // Award 1 political capital
-      player.pcap += 1;
-
-      // Stats
+      player.approval = Math.min(100, player.approval + 2);
       player.totalSeatsWon++;
-      const loser = this.state.players.find(p => p.id === previousOwnerId);
+
+      const loser = this.state.players.find(p => p.id === prevOwner);
       if (loser) loser.totalSeatsLost++;
 
-      // Sync seat counts, check state control, and update chamber layout
       this.syncPlayerSeatCounts();
       this.checkStateControlChanges();
       recomputeChamberPositions(this.state.seats, computePlayerSeatCounts(this.state.seats));
 
       this.logEvent({
-        type: 'seat_captured',
-        timestamp: Date.now(),
-        seatId: targetSeatId,
-        seatName: seat.name,
-        fromPlayerId: previousOwnerId,
-        toPlayerId: player.id,
-      });
-
-      this.logEvent({
-        type: 'approval_changed',
-        timestamp: Date.now(),
-        playerId: player.id,
-        delta: 3,
-        newApproval: player.approval,
-        reason: `Won seat: ${seat.name}`,
-      });
-
-      this.logEvent({
-        type: 'pcap_awarded',
-        timestamp: Date.now(),
-        playerId: player.id,
-        amount: 1,
-        reason: `Won campaign: ${seat.name}`,
+        type: 'seat_captured', timestamp: Date.now(),
+        seatId: targetSeat.id, seatName: targetSeat.name,
+        fromPlayerId: prevOwner, toPlayerId: player.id,
       });
 
       return {
-        success: true,
-        message: `Won the seat of ${seat.name}!`,
-        seatCaptured: true,
-        approvalChange: 3,
-        pCapChange: 1,
+        playerId: player.id, action, success: true,
+        description: `Won ${targetSeat.name} in ${targetState}!`,
+        seatsCaptured: 1, approvalChange: 2,
       };
     }
 
-    // Campaign failed
-    player.approval = Math.max(-100, player.approval - 2);
-    seat.lastCampaignedBy = player.id;
-
-    this.logEvent({
-      type: 'approval_changed',
-      timestamp: Date.now(),
-      playerId: player.id,
-      delta: -2,
-      newApproval: player.approval,
-      reason: `Failed campaign: ${seat.name}`,
-    });
-
+    player.approval = Math.max(-100, player.approval - 1);
     return {
-      success: false,
-      message: `Campaign for ${seat.name} failed.`,
-      seatCaptured: false,
-      approvalChange: -2,
+      playerId: player.id, action, success: true,
+      description: `Campaigned in ${targetState}. Built influence but no seats flipped.`,
+      approvalChange: -1,
     };
   }
 
-  /**
-   * POLICY SPEECH - play to the base, boost approval.
-   * Approval +5..10, award 1 pcap.
-   */
-  private executePolicySpeech(player: Player): ActionResult {
-    const boost = 5 + this.rng.randomInt(0, 5);
-    player.approval = Math.min(100, player.approval + boost);
-    player.pcap += 1;
-
-    this.logEvent({
-      type: 'approval_changed',
-      timestamp: Date.now(),
-      playerId: player.id,
-      delta: boost,
-      newApproval: player.approval,
-      reason: 'Policy speech',
-    });
-
-    this.logEvent({
-      type: 'pcap_awarded',
-      timestamp: Date.now(),
-      playerId: player.id,
-      amount: 1,
-      reason: 'Policy speech',
-    });
-
-    return {
-      success: true,
-      message: `Rallied the base! Approval +${boost}.`,
-      approvalChange: boost,
-      pCapChange: 1,
-    };
-  }
-
-  /**
-   * ATTACK AD - reduce an opponent's approval.
-   * Target loses 8..15 approval. 25 % chance of 4-point backlash on the attacker.
-   */
-  private executeAttackAd(player: Player, targetPlayerId?: string): ActionResult {
-    if (!targetPlayerId) {
-      return { success: false, message: 'No target player specified' };
-    }
-    if (targetPlayerId === player.id) {
-      return { success: false, message: 'Cannot target yourself' };
+  private executeProposePolicy(player: Player, policyId: string): ActionResult {
+    const action: PlayerAction = { type: 'propose_policy', policyId };
+    const policy = this.allPolicies.find(p => p.id === policyId);
+    if (!policy) {
+      return { playerId: player.id, action, success: false, description: 'Policy not found' };
     }
 
-    const target = this.state.players.find(p => p.id === targetPlayerId);
-    if (!target) {
-      return { success: false, message: 'Invalid target player' };
+    // Check if already active
+    if (this.state.activePolicies.some(ap => ap.policy.id === policyId)) {
+      return { playerId: player.id, action, success: false, description: 'Policy already active' };
     }
 
-    const damage = 8 + this.rng.randomInt(0, 7);
-    target.approval = Math.max(-100, target.approval - damage);
+    player.policiesProposed++;
 
-    this.logEvent({
-      type: 'approval_changed',
-      timestamp: Date.now(),
-      playerId: target.id,
-      delta: -damage,
-      newApproval: target.approval,
-      reason: `Attack ad from ${player.name}`,
-    });
+    // Automatic chamber vote
+    const voteResult = this.automaticPolicyVote(policy, player.id);
 
-    // 25 % backlash chance
-    let backlashMessage = '';
-    if (this.rng.random() < 0.25) {
-      player.approval = Math.max(-100, player.approval - 4);
-      backlashMessage = ' Backlash! You lost 4 approval.';
+    this.state.policyHistory.push(voteResult);
+    this.logEvent({ type: 'policy_voted', timestamp: Date.now(), result: voteResult });
 
-      this.logEvent({
-        type: 'approval_changed',
-        timestamp: Date.now(),
-        playerId: player.id,
-        delta: -4,
-        newApproval: player.approval,
-        reason: 'Attack ad backlash',
-      });
-    }
+    if (voteResult.passed) {
+      player.policiesPassed++;
 
-    return {
-      success: true,
-      message: `Attack ads hit ${target.name} for -${damage} approval.${backlashMessage}`,
-      approvalChange: -damage,
-    };
-  }
+      // Add to active policies
+      const activePolicy: ActivePolicy = {
+        policy,
+        proposerId: player.id,
+        roundPassed: this.state.round,
+        roundsRemaining: policy.isLandmark ? 8 : 5,
+      };
+      this.state.activePolicies.push(activePolicy);
 
-  /**
-   * FUNDRAISE - gain funds, small approval hit.
-   * Gain fundraiseAmount + floor(seats/10). Approval -2.
-   */
-  private executeFundraise(player: Player): ActionResult {
-    const amount = this.config.fundraiseAmount + Math.floor(player.seats / 10);
-    player.funds += amount;
-    player.approval = Math.max(-100, player.approval - 2);
-
-    this.logEvent({
-      type: 'funds_changed',
-      timestamp: Date.now(),
-      playerId: player.id,
-      delta: amount,
-      newFunds: player.funds,
-      reason: 'Fundraising',
-    });
-
-    this.logEvent({
-      type: 'approval_changed',
-      timestamp: Date.now(),
-      playerId: player.id,
-      delta: -2,
-      newApproval: player.approval,
-      reason: 'Fundraising (seen as corporate)',
-    });
-
-    return {
-      success: true,
-      message: `Raised $${amount}M in funds. Approval -2.`,
-      fundsChange: amount,
-      approvalChange: -2,
-    };
-  }
-
-  /**
-   * MEDIA BLITZ - big approval boost.
-   * Approval +10..18, award 1 pcap.
-   */
-  private executeMediaBlitz(player: Player): ActionResult {
-    const boost = 10 + this.rng.randomInt(0, 8);
-    player.approval = Math.min(100, player.approval + boost);
-    player.pcap += 1;
-
-    this.logEvent({
-      type: 'approval_changed',
-      timestamp: Date.now(),
-      playerId: player.id,
-      delta: boost,
-      newApproval: player.approval,
-      reason: 'Media blitz',
-    });
-
-    this.logEvent({
-      type: 'pcap_awarded',
-      timestamp: Date.now(),
-      playerId: player.id,
-      amount: 1,
-      reason: 'Media blitz',
-    });
-
-    return {
-      success: true,
-      message: `Media blitz! Approval +${boost}.`,
-      approvalChange: boost,
-      pCapChange: 1,
-    };
-  }
-
-  /**
-   * PORK BARREL - target a state via any seat in that state.
-   * All player seats in the state get +20 margin. Approval +3. Award 1 pcap.
-   */
-  private executePorkBarrel(player: Player, targetSeatId?: string): ActionResult {
-    if (!targetSeatId) {
-      return { success: false, message: 'No target seat specified to identify state' };
-    }
-
-    const targetSeat = this.state.seats[targetSeatId];
-    if (!targetSeat) {
-      return { success: false, message: 'Invalid target seat' };
-    }
-
-    const targetState: StateCode = targetSeat.state;
-
-    // Boost margin of every seat the player holds in this state
-    const playerSeatsInState = Object.values(this.state.seats).filter(
-      s => s.state === targetState && s.ownerPlayerId === player.id,
-    );
-
-    for (const seat of playerSeatsInState) {
-      seat.margin = Math.min(100, seat.margin + 20);
-    }
-
-    // Approval and pcap
-    player.approval = Math.min(100, player.approval + 3);
-    player.pcap += 1;
-
-    this.logEvent({
-      type: 'approval_changed',
-      timestamp: Date.now(),
-      playerId: player.id,
-      delta: 3,
-      newApproval: player.approval,
-      reason: `Pork barrel: ${targetState}`,
-    });
-
-    this.logEvent({
-      type: 'pcap_awarded',
-      timestamp: Date.now(),
-      playerId: player.id,
-      amount: 1,
-      reason: `Pork barrel: ${targetState}`,
-    });
-
-    return {
-      success: true,
-      message: `Pork barrel in ${targetState}! ${playerSeatsInState.length} seats fortified. Approval +3.`,
-      approvalChange: 3,
-      pCapChange: 1,
-    };
-  }
-
-  // ----------------------------------------------------------
-  // Turn management
-  // ----------------------------------------------------------
-
-  endTurn(playerId: string): boolean {
-    if (this.state.phase !== 'action') return false;
-
-    const currentTurnPlayerId = this.state.turnOrder[this.state.currentPlayerIndex];
-    if (currentTurnPlayerId !== playerId) return false;
-
-    this.advancePlayerTurn(playerId);
-    return true;
-  }
-
-  private advancePlayerTurn(playerId: string): void {
-    if (!this.state.playersActed.includes(playerId)) {
-      this.state.playersActed.push(playerId);
-    }
-
-    // If every player has acted, move to legislation
-    if (this.state.playersActed.length >= this.state.players.length) {
-      this.advanceToLegislationPhase();
-      return;
-    }
-
-    // Find the next player who hasn't acted yet
-    for (let i = 0; i < this.state.turnOrder.length; i++) {
-      const nextIndex = (this.state.currentPlayerIndex + 1 + i) % this.state.turnOrder.length;
-      const nextPlayerId = this.state.turnOrder[nextIndex];
-      if (!this.state.playersActed.includes(nextPlayerId)) {
-        this.state.currentPlayerIndex = nextIndex;
-        return;
-      }
-    }
-
-    // Fallback: everyone is done
-    this.advanceToLegislationPhase();
-  }
-
-  // ----------------------------------------------------------
-  // Legislation phase
-  // ----------------------------------------------------------
-
-  private advanceToLegislationPhase(): void {
-    this.state.pendingLegislation = null;
-    this.setPhase('legislation_propose');
-  }
-
-  proposeBill(playerId: string, billId: string): boolean {
-    if (this.state.phase !== 'legislation_propose') return false;
-
-    // Only the speaker may propose
-    const speakerId = this.state.turnOrder[this.state.speakerIndex];
-    if (playerId !== speakerId) return false;
-
-    // Bill must be in the available pool
-    const billIndex = this.state.availableBills.findIndex(b => b.id === billId);
-    if (billIndex === -1) return false;
-
-    const bill = this.state.availableBills[billIndex];
-    const player = this.state.players.find(p => p.id === playerId);
-    if (player) {
-      player.hasProposed = true;
-      player.billsProposed++;
-    }
-
-    this.state.pendingLegislation = {
-      bill,
-      proposerId: playerId,
-      votes: [],
-      amendments: [],
-    };
-
-    this.logEvent({
-      type: 'bill_proposed',
-      timestamp: Date.now(),
-      playerId,
-      billId,
-    });
-
-    this.setPhase('legislation_vote');
-    return true;
-  }
-
-  skipProposal(playerId: string): boolean {
-    if (this.state.phase !== 'legislation_propose') return false;
-
-    const speakerId = this.state.turnOrder[this.state.speakerIndex];
-    if (playerId !== speakerId) return false;
-
-    this.advanceToEventPhase();
-    return true;
-  }
-
-  castVote(playerId: string, vote: 'aye' | 'no'): boolean {
-    if (this.state.phase !== 'legislation_vote') return false;
-    if (!this.state.pendingLegislation) return false;
-
-    // Prevent double voting
-    if (this.state.pendingLegislation.votes.find(v => v.playerId === playerId)) return false;
-
-    const player = this.state.players.find(p => p.id === playerId);
-    if (!player) return false;
-
-    player.hasVoted = true;
-
-    const legislationVote: LegislationVote = {
-      playerId,
-      vote,
-      seatWeight: player.seats,
-    };
-
-    this.state.pendingLegislation.votes.push(legislationVote);
-
-    this.logEvent({
-      type: 'vote_cast',
-      timestamp: Date.now(),
-      playerId,
-      vote,
-      seatWeight: player.seats,
-    });
-
-    // Resolve once everyone has voted
-    if (this.state.pendingLegislation.votes.length >= this.state.players.length) {
-      this.resolveVote();
-    }
-
-    return true;
-  }
-
-  private resolveVote(): void {
-    if (!this.state.pendingLegislation) return;
-
-    const legislation = this.state.pendingLegislation;
-    const bill = legislation.bill;
-
-    const yesWeight = legislation.votes
-      .filter(v => v.vote === 'aye')
-      .reduce((sum, v) => sum + v.seatWeight, 0);
-
-    const noWeight = legislation.votes
-      .filter(v => v.vote === 'no')
-      .reduce((sum, v) => sum + v.seatWeight, 0);
-
-    const passed = yesWeight > noWeight;
-
-    // Build the BillResult for the history snapshot
-    this.currentRoundBillResult = {
-      billId: bill.id,
-      billName: bill.name,
-      proposerId: legislation.proposerId,
-      passed,
-      yesWeight,
-      noWeight,
-      voterBreakdown: legislation.votes.map(v => ({
-        playerId: v.playerId,
-        vote: v.vote,
-        seatWeight: v.seatWeight,
-      })),
-    };
-
-    if (passed) {
-      // Award pcap to proposer
-      const proposer = this.state.players.find(p => p.id === legislation.proposerId);
-      if (proposer) {
-        proposer.pcap += bill.pCapReward;
-        proposer.billsPassed++;
-
-        this.logEvent({
-          type: 'pcap_awarded',
-          timestamp: Date.now(),
-          playerId: proposer.id,
-          amount: bill.pCapReward,
-          reason: `Bill passed: ${bill.name}`,
-        });
-
-        // Apply approval impact to proposer
-        if (bill.approvalImpact) {
-          proposer.approval = Math.max(-100, Math.min(100, proposer.approval + bill.approvalImpact));
-
-          this.logEvent({
-            type: 'approval_changed',
-            timestamp: Date.now(),
-            playerId: proposer.id,
-            delta: bill.approvalImpact,
-            newApproval: proposer.approval,
-            reason: `Bill passed: ${bill.name}`,
+      // Create economic effects
+      if (this.economicEngine && this.config.enableEconomy) {
+        for (const effect of policy.economicEffects) {
+          this.activePolicyEffects.push({
+            policyId: policy.id,
+            effect,
+            turnsRemaining: effect.duration,
+            delayRemaining: effect.delay,
           });
         }
       }
 
-      // National budget impact
-      if (bill.budgetImpact) {
-        this.state.nationalBudget += bill.budgetImpact;
-        this.state.budgetSurplus = this.state.nationalBudget >= 0;
-      }
+      // Score policy alignment
+      const alignment = this.computePolicyAlignmentScore(policy, player);
+      player.policyScore += alignment * (policy.isLandmark ? 3 : 1);
 
-      this.state.passedBills.push(bill);
+      // Approval boost from passing legislation
+      const approvalBoost = policy.isLandmark ? 4 : 2;
+      player.approval = Math.min(100, player.approval + approvalBoost);
 
-      // Create economic effects from the passed bill
-      if (this.economicEngine && this.config.enableEconomy) {
-        const newEffects = this.billToEconomicEffects(bill);
-        this.activePolicyEffects.push(...newEffects);
-      }
-    } else {
-      this.state.failedBills.push(bill);
+      return {
+        playerId: player.id, action, success: true, policyPassed: true,
+        description: `${policy.shortName} passed ${voteResult.supportSeats}-${voteResult.opposeSeats}!`,
+        approvalChange: approvalBoost,
+      };
     }
+
+    // Failed to pass
+    player.approval = Math.max(-100, player.approval - 2);
+    return {
+      playerId: player.id, action, success: true, policyPassed: false,
+      description: `${policy.shortName} defeated ${voteResult.supportSeats}-${voteResult.opposeSeats}.`,
+      approvalChange: -2,
+    };
+  }
+
+  private executeAttackAd(player: Player, targetPlayerId: string): ActionResult {
+    const action: PlayerAction = { type: 'attack_ad', targetPlayerId };
+    const target = this.state.players.find(p => p.id === targetPlayerId);
+    if (!target) {
+      return { playerId: player.id, action, success: false, description: 'Target not found' };
+    }
+
+    const damage = 6 + this.rng.randomInt(0, 8);
+    target.approval = Math.max(-100, target.approval - damage);
 
     this.logEvent({
-      type: 'bill_resolved',
-      timestamp: Date.now(),
-      billId: bill.id,
-      passed,
-      yesWeight,
-      noWeight,
+      type: 'approval_changed', timestamp: Date.now(),
+      playerId: target.id, delta: -damage, newApproval: target.approval,
+      reason: `Attack ad from ${player.name}`,
     });
 
-    // Replace the used bill in availableBills with a fresh one
-    const billSlotIndex = this.state.availableBills.findIndex(b => b.id === bill.id);
-    if (billSlotIndex !== -1) {
-      const usedIds = new Set([
-        ...this.state.availableBills.map(b => b.id),
-        ...this.state.passedBills.map(b => b.id),
-        ...this.state.failedBills.map(b => b.id),
-      ]);
-      const unusedBills = this.allBills.filter(b => !usedIds.has(b.id));
+    // 20% backlash
+    let backlash = 0;
+    if (this.rng.random() < 0.2) {
+      backlash = 3;
+      player.approval = Math.max(-100, player.approval - backlash);
+    }
 
-      if (unusedBills.length > 0) {
-        this.state.availableBills[billSlotIndex] = this.rng.pick(unusedBills);
-      } else if (this.state.failedBills.length > 0) {
-        // Recycle a previously failed bill
-        this.state.availableBills[billSlotIndex] = this.rng.pick(this.state.failedBills);
-      } else {
-        // Last resort: any bill from the catalogue
-        this.state.availableBills[billSlotIndex] = this.rng.pick(this.allBills);
+    return {
+      playerId: player.id, action, success: true,
+      description: `Attack ads hit ${target.name} for -${damage} approval.${backlash ? ' Backlash: -3.' : ''}`,
+      approvalChange: -damage,
+    };
+  }
+
+  private executeFundraise(player: Player): ActionResult {
+    const action: PlayerAction = { type: 'fundraise' };
+    const amount = this.config.fundraiseAmount + Math.floor(player.seats / 10);
+    player.funds += amount;
+
+    // Small approval cost
+    player.approval = Math.max(-100, player.approval - 1);
+
+    this.logEvent({
+      type: 'funds_changed', timestamp: Date.now(),
+      playerId: player.id, delta: amount, newFunds: player.funds,
+      reason: 'Fundraising',
+    });
+
+    return {
+      playerId: player.id, action, success: true,
+      description: `Raised $${amount} in campaign funds.`,
+      fundsChange: amount, approvalChange: -1,
+    };
+  }
+
+  private executeMediaBlitz(player: Player): ActionResult {
+    const action: PlayerAction = { type: 'media_blitz' };
+    const boost = 6 + this.rng.randomInt(0, 6);
+    player.approval = Math.min(100, player.approval + boost);
+
+    this.logEvent({
+      type: 'approval_changed', timestamp: Date.now(),
+      playerId: player.id, delta: boost, newApproval: player.approval,
+      reason: 'Media blitz',
+    });
+
+    return {
+      playerId: player.id, action, success: true,
+      description: `Media blitz boosted approval by +${boost}.`,
+      approvalChange: boost,
+    };
+  }
+
+  private executeCoalitionTalk(player: Player, targetPlayerId?: string): ActionResult {
+    const action: PlayerAction = { type: 'coalition_talk', targetPlayerId };
+
+    // Coalition talks provide small approval boost and build goodwill
+    const boost = 3 + this.rng.randomInt(0, 3);
+    player.approval = Math.min(100, player.approval + boost);
+
+    if (targetPlayerId) {
+      const target = this.state.players.find(p => p.id === targetPlayerId);
+      if (target) {
+        target.approval = Math.min(100, target.approval + 1);
       }
     }
 
-    this.state.pendingLegislation = null;
-    this.setPhase('legislation_result');
-  }
-
-  acknowledgeLegislationResult(playerId: string): boolean {
-    if (this.state.phase !== 'legislation_result') return false;
-
-    // Any single acknowledgement advances the game
-    this.advanceToEventPhase();
-    return true;
+    return {
+      playerId: player.id, action, success: true,
+      description: `Coalition building. Approval +${boost}.`,
+      approvalChange: boost,
+    };
   }
 
   // ----------------------------------------------------------
-  // Event phase
+  // Automatic policy vote
   // ----------------------------------------------------------
 
-  private advanceToEventPhase(): void {
-    if (this.config.enableEvents && this.allEvents.length > 0) {
-      const event = this.rng.pick(this.allEvents);
-      this.state.currentEvent = event;
+  private automaticPolicyVote(policy: Policy, proposerId: string): PolicyVoteResult {
+    let supportSeats = 0;
+    let opposeSeats = 0;
+    let totalSeats = 0;
 
-      this.applyEventEffects(event);
+    for (const seat of Object.values(this.state.seats)) {
+      if (!seat.ownerPlayerId) continue;
+      totalSeats++;
 
-      this.logEvent({
-        type: 'event_occurred',
-        timestamp: Date.now(),
-        eventId: event.id,
-        eventName: event.name,
-      });
+      const ideologyAlignment = this.computeSeatPolicyAlignment(seat, policy);
 
-      this.setPhase('event');
-    } else {
-      // Skip straight to the next round
-      this.advanceToNextRound();
+      // Party loyalty factor
+      let loyalty = 0;
+      if (seat.ownerPlayerId === proposerId) {
+        loyalty = 0.6; // Strong party discipline
+      } else if (seat.ownerPlayerId === this.state.governmentLeaderId && proposerId === this.state.governmentLeaderId) {
+        loyalty = 0.4; // Government backbench
+      } else {
+        loyalty = -0.2; // Opposition lean
+      }
+
+      const voteScore = loyalty + ideologyAlignment * 0.5;
+
+      // Add small randomness
+      const noise = (this.rng.random() - 0.5) * 0.15;
+
+      if (voteScore + noise > 0) {
+        supportSeats++;
+      } else {
+        opposeSeats++;
+      }
     }
+
+    return {
+      policyId: policy.id,
+      policyName: policy.shortName,
+      proposerId,
+      passed: supportSeats > opposeSeats,
+      supportSeats,
+      opposeSeats,
+      totalSeats,
+    };
   }
+
+  private computeSeatPolicyAlignment(seat: Seat, policy: Policy): number {
+    let score = 0;
+
+    // Social alignment
+    if (seat.ideology.social === 'PROG') {
+      if (policy.stanceTable.progressive === 'favoured') score += 1;
+      else if (policy.stanceTable.progressive === 'opposed') score -= 1;
+    } else if (seat.ideology.social === 'CONS') {
+      if (policy.stanceTable.conservative === 'favoured') score += 1;
+      else if (policy.stanceTable.conservative === 'opposed') score -= 1;
+    }
+
+    // Economic alignment
+    if (seat.ideology.econ === 'RIGHT') {
+      if (policy.stanceTable.market === 'favoured') score += 1;
+      else if (policy.stanceTable.market === 'opposed') score -= 1;
+    } else if (seat.ideology.econ === 'LEFT') {
+      if (policy.stanceTable.interventionist === 'favoured') score += 1;
+      else if (policy.stanceTable.interventionist === 'opposed') score -= 1;
+    }
+
+    return score / 2; // Normalize to [-1, 1]
+  }
+
+  computePolicyAlignmentScore(policy: Policy, player: Player): number {
+    let score = 0;
+
+    const socialStance = player.socialIdeology === 'progressive'
+      ? policy.stanceTable.progressive
+      : policy.stanceTable.conservative;
+    const econStance = player.economicIdeology === 'market'
+      ? policy.stanceTable.market
+      : policy.stanceTable.interventionist;
+
+    if (socialStance === 'favoured') score += 1;
+    else if (socialStance === 'opposed') score -= 1;
+    if (econStance === 'favoured') score += 1;
+    else if (econStance === 'opposed') score -= 1;
+
+    return score; // Range: -2 to 2
+  }
+
+  // ----------------------------------------------------------
+  // Election system
+  // ----------------------------------------------------------
+
+  private resolveElection(): void {
+    const seatChanges: ElectionResult['seatChanges'] = [];
+
+    // For each seat, determine if it flips based on campaign influence,
+    // voter satisfaction, and approval ratings
+    for (const seat of Object.values(this.state.seats)) {
+      if (!seat.ownerPlayerId) continue;
+
+      const currentOwner = this.state.players.find(p => p.id === seat.ownerPlayerId);
+      if (!currentOwner) continue;
+
+      // Calculate retention score for current owner
+      let retentionScore = seat.margin * 0.3; // Incumbency advantage from margin
+      retentionScore += (currentOwner.approval + 100) / 200 * 20; // Approval 0-20
+      retentionScore += (currentOwner.campaignInfluence[seat.state] || 0) * 0.2;
+
+      // Check each challenger
+      let bestChallenger: Player | null = null;
+      let bestChallengeScore = 0;
+
+      for (const challenger of this.state.players) {
+        if (challenger.id === currentOwner.id) continue;
+
+        let score = 0;
+        score += (challenger.approval + 100) / 200 * 20; // Approval 0-20
+        score += (challenger.campaignInfluence[seat.state] || 0) * 0.3;
+        if (this.checkIdeologyMatch(challenger, seat)) score += 8;
+
+        // Voter satisfaction swing
+        if (this.voterEngine) {
+          const nationalSat = this.voterEngine.getNationalSatisfaction();
+          const isGovIncumbent = this.state.governmentLeaderId === currentOwner.id;
+          if (isGovIncumbent && nationalSat < 45) {
+            score += (45 - nationalSat) * 0.3; // Anti-incumbent swing
+          }
+        }
+
+        // Random factor
+        score += this.rng.random() * 8;
+
+        if (score > bestChallengeScore) {
+          bestChallengeScore = score;
+          bestChallenger = challenger;
+        }
+      }
+
+      // Seat flips if challenger score beats retention + threshold
+      const flipThreshold = 5;
+      if (bestChallenger && bestChallengeScore > retentionScore + flipThreshold) {
+        const oldOwner = seat.ownerPlayerId;
+        transferSeat(this.state.seats, seat.id, bestChallenger.id);
+        seat.margin = 10 + this.rng.randomInt(0, 15);
+        seat.contested = true;
+
+        bestChallenger.totalSeatsWon++;
+        if (currentOwner) currentOwner.totalSeatsLost++;
+
+        seatChanges.push({
+          seatId: seat.id,
+          oldOwner,
+          newOwner: bestChallenger.id,
+        });
+      }
+    }
+
+    // Sync everything
+    this.syncPlayerSeatCounts();
+    this.checkStateControlChanges();
+    recomputeChamberPositions(this.state.seats, computePlayerSeatCounts(this.state.seats));
+
+    // Update government
+    this.updateGovernmentLeader();
+
+    // Compute national swing
+    const nationalSwing: Record<string, number> = {};
+    for (const player of this.state.players) {
+      const gained = seatChanges.filter(c => c.newOwner === player.id).length;
+      const lost = seatChanges.filter(c => c.oldOwner === player.id).length;
+      nationalSwing[player.id] = gained - lost;
+    }
+
+    const electionResult: ElectionResult = {
+      round: this.state.round,
+      seatChanges,
+      governmentLeaderId: this.state.governmentLeaderId,
+      nationalSwing,
+    };
+
+    this.state.electionHistory.push(electionResult);
+    this.logEvent({ type: 'election_held', timestamp: Date.now(), result: electionResult });
+
+    // Reset campaign influence after election
+    for (const player of this.state.players) {
+      for (const st of ALL_STATES) {
+        player.campaignInfluence[st] = Math.floor((player.campaignInfluence[st] || 0) * 0.3);
+      }
+    }
+
+    // Decay active policy durations
+    this.state.activePolicies = this.state.activePolicies.filter(ap => {
+      ap.roundsRemaining--;
+      return ap.roundsRemaining > 0;
+    });
+  }
+
+  // ----------------------------------------------------------
+  // Economy
+  // ----------------------------------------------------------
+
+  private tickEconomy(): void {
+    if (!this.economicEngine || !this.config.enableEconomy) return;
+
+    const newState = this.economicEngine.tick(this.activePolicyEffects);
+    this.state.economy = newState;
+    this.state.economyHistory.push({
+      ...newState,
+      sectors: { ...newState.sectors },
+    });
+
+    this.logEvent({
+      type: 'economic_update',
+      timestamp: Date.now(),
+      economy: { ...newState, sectors: { ...newState.sectors } },
+    });
+
+    // Update voter satisfaction
+    if (this.voterEngine && this.config.enableVoterGroups) {
+      const economicValues = this.flattenEconomicState(this.state.economy);
+      this.voterEngine.updateSatisfaction(economicValues);
+
+      // Populate voter group summaries with party leanings
+      const summaries = this.voterEngine.getGroupSummaries();
+      const parties = this.buildPartyProfiles();
+      if (parties.length > 0) {
+        const voteShares = this.voterEngine.calculateVoteShares(parties);
+        for (const summary of summaries) {
+          let maxShare = 0;
+          let leaningId: string | null = null;
+          for (const [partyId, shares] of Object.entries(voteShares)) {
+            const share = shares[summary.id] ?? 0;
+            if (share > maxShare) {
+              maxShare = share;
+              leaningId = partyId;
+            }
+          }
+          summary.leaningPartyId = leaningId;
+        }
+      }
+      this.state.voterGroups = summaries;
+    }
+
+    // Clean up expired policy effects
+    this.activePolicyEffects = this.activePolicyEffects.filter(
+      e => e.delayRemaining > 0 || e.turnsRemaining > 0,
+    );
+  }
+
+  private flattenEconomicState(econ: EconomicStateData): Record<string, number> {
+    return {
+      gdpGrowth: econ.gdpGrowth,
+      unemployment: econ.unemployment,
+      inflation: econ.inflation,
+      publicDebt: econ.publicDebt,
+      budgetBalance: econ.budgetBalance,
+      consumerConfidence: econ.consumerConfidence,
+      businessConfidence: econ.businessConfidence,
+      interestRate: econ.interestRate,
+      ...econ.sectors,
+    };
+  }
+
+  private buildPartyProfiles(): PartyProfile[] {
+    const total = this.state.players.reduce((s, p) => s + p.seats, 0) || 1;
+    const sorted = [...this.state.players].sort((a, b) => b.seats - a.seats);
+
+    return sorted.map((p, i) => ({
+      id: p.id,
+      socialPosition: p.socialIdeology === 'progressive' ? 0.4 : -0.4,
+      economicPosition: p.economicIdeology === 'interventionist' ? 0.4 : -0.4,
+      isGovernment: i === 0,
+      isMainOpposition: i === 1,
+      seatShare: p.seats / total,
+    }));
+  }
+
+  // ----------------------------------------------------------
+  // Events
+  // ----------------------------------------------------------
 
   private applyEventEffects(event: PoliticalEvent): void {
     for (const effect of event.effects) {
@@ -1150,27 +1121,19 @@ export class GameEngine {
           case 'approval':
             target.approval = Math.max(-100, Math.min(100, target.approval + effect.amount));
             this.logEvent({
-              type: 'approval_changed',
-              timestamp: Date.now(),
-              playerId: target.id,
-              delta: effect.amount,
-              newApproval: target.approval,
+              type: 'approval_changed', timestamp: Date.now(),
+              playerId: target.id, delta: effect.amount, newApproval: target.approval,
               reason: `Event: ${event.name}`,
             });
             break;
-
           case 'funds':
             target.funds = Math.max(0, target.funds + effect.amount);
             this.logEvent({
-              type: 'funds_changed',
-              timestamp: Date.now(),
-              playerId: target.id,
-              delta: effect.amount,
-              newFunds: target.funds,
+              type: 'funds_changed', timestamp: Date.now(),
+              playerId: target.id, delta: effect.amount, newFunds: target.funds,
               reason: `Event: ${event.name}`,
             });
             break;
-
           case 'seats':
             if (effect.amount > 0) {
               this.gainRandomSeats(target.id, effect.amount);
@@ -1201,30 +1164,167 @@ export class GameEngine {
         return [...this.state.players];
       case 'random':
         return this.state.players.length > 0 ? [this.rng.pick(this.state.players)] : [];
-      case 'proposer': {
-        // Most-recent bill proposer this round
-        const proposerId = this.currentRoundBillResult?.proposerId;
-        if (proposerId) {
-          const p = this.state.players.find(pp => pp.id === proposerId);
-          if (p) return [p];
-        }
-        return [];
+      case 'government': {
+        const gov = this.state.players.find(p => p.id === this.state.governmentLeaderId);
+        return gov ? [gov] : [];
       }
       default:
         return [];
     }
   }
 
-  acknowledgeEvent(playerId: string): boolean {
-    if (this.state.phase !== 'event') return false;
+  // ----------------------------------------------------------
+  // AI
+  // ----------------------------------------------------------
 
-    if (this.state.currentEvent) {
-      this.state.pastEvents.push(this.state.currentEvent);
-      this.state.currentEvent = null;
+  private processAIActions(): void {
+    for (const player of this.state.players) {
+      if (!player.isAI || player.submittedActions) continue;
+
+      const actions = this.generateAIActions(player);
+      this.submitActions(player.id, actions);
+    }
+  }
+
+  private generateAIActions(player: Player): PlayerAction[] {
+    const actions: PlayerAction[] = [];
+    const maxActions = this.config.actionsPerRound;
+    let remainingFunds = player.funds;
+
+    // Simple AI: strategy-weighted action selection
+    const weights = this.getStrategyWeights(player.aiStrategy || 'pragmatist');
+
+    for (let i = 0; i < maxActions; i++) {
+      const action = this.pickAIAction(player, weights, remainingFunds, actions);
+      if (action) {
+        actions.push(action);
+        remainingFunds -= this.getActionCost(action.type).funds;
+      }
     }
 
-    this.advanceToNextRound();
-    return true;
+    return actions;
+  }
+
+  private getStrategyWeights(strategy: AIStrategy): Record<ActionType, number> {
+    switch (strategy) {
+      case 'campaigner':
+        return { campaign: 2.0, propose_policy: 0.5, attack_ad: 1.5, fundraise: 1.0, media_blitz: 0.8, coalition_talk: 0.3 };
+      case 'policy_wonk':
+        return { campaign: 0.8, propose_policy: 2.5, attack_ad: 0.3, fundraise: 0.8, media_blitz: 0.5, coalition_talk: 1.0 };
+      case 'populist':
+        return { campaign: 1.2, propose_policy: 1.5, attack_ad: 1.0, fundraise: 0.8, media_blitz: 1.5, coalition_talk: 0.5 };
+      case 'pragmatist':
+      default:
+        return { campaign: 1.2, propose_policy: 1.2, attack_ad: 1.0, fundraise: 1.0, media_blitz: 1.0, coalition_talk: 0.8 };
+    }
+  }
+
+  private pickAIAction(
+    player: Player,
+    weights: Record<ActionType, number>,
+    remainingFunds: number,
+    alreadyChosen: PlayerAction[],
+  ): PlayerAction | null {
+    const candidates: { action: PlayerAction; utility: number }[] = [];
+    const noise = this.config.aiDifficulty === 'easy' ? 0.3
+                : this.config.aiDifficulty === 'hard' ? 0.05 : 0.15;
+
+    // Campaign
+    if (remainingFunds >= this.config.campaignCost) {
+      const bestState = this.getBestCampaignState(player);
+      if (bestState) {
+        candidates.push({
+          action: { type: 'campaign', targetState: bestState },
+          utility: weights.campaign * (1 + (this.rng.random() - 0.5) * noise * 2),
+        });
+      }
+    }
+
+    // Propose policy
+    const alreadyProposed = alreadyChosen.filter(a => a.type === 'propose_policy').map(a => a.policyId);
+    const activeIds = this.state.activePolicies.map(ap => ap.policy.id);
+    const availablePolicies = this.allPolicies.filter(
+      p => !activeIds.includes(p.id) && !alreadyProposed.includes(p.id),
+    );
+    if (availablePolicies.length > 0) {
+      // Pick best-aligned policy
+      const scored = availablePolicies.map(p => ({
+        policy: p,
+        score: this.computePolicyAlignmentScore(p, player),
+      })).sort((a, b) => b.score - a.score);
+      const bestPolicy = scored[0].policy;
+
+      candidates.push({
+        action: { type: 'propose_policy', policyId: bestPolicy.id },
+        utility: weights.propose_policy * (1 + (this.rng.random() - 0.5) * noise * 2),
+      });
+    }
+
+    // Attack ad
+    if (remainingFunds >= this.config.attackAdCost) {
+      const opponents = this.state.players.filter(p => p.id !== player.id);
+      if (opponents.length > 0) {
+        // Target the closest competitor
+        opponents.sort((a, b) => b.seats - a.seats);
+        candidates.push({
+          action: { type: 'attack_ad', targetPlayerId: opponents[0].id },
+          utility: weights.attack_ad * (1 + (this.rng.random() - 0.5) * noise * 2),
+        });
+      }
+    }
+
+    // Fundraise
+    candidates.push({
+      action: { type: 'fundraise' },
+      utility: weights.fundraise * (remainingFunds < 15 ? 1.5 : 0.8) * (1 + (this.rng.random() - 0.5) * noise * 2),
+    });
+
+    // Media blitz
+    if (remainingFunds >= this.config.mediaBlitzCost) {
+      candidates.push({
+        action: { type: 'media_blitz' },
+        utility: weights.media_blitz * (player.approval < 30 ? 1.5 : 0.8) * (1 + (this.rng.random() - 0.5) * noise * 2),
+      });
+    }
+
+    // Coalition talk
+    if (remainingFunds >= this.config.coalitionTalkCost) {
+      candidates.push({
+        action: { type: 'coalition_talk' },
+        utility: weights.coalition_talk * (1 + (this.rng.random() - 0.5) * noise * 2),
+      });
+    }
+
+    if (candidates.length === 0) return null;
+
+    // Pick highest utility
+    candidates.sort((a, b) => b.utility - a.utility);
+    return candidates[0].action;
+  }
+
+  private getBestCampaignState(player: Player): StateCode | null {
+    let bestState: StateCode | null = null;
+    let bestScore = -Infinity;
+
+    for (const state of ALL_STATES) {
+      const stateSeats = Object.values(this.state.seats).filter(s => s.state === state);
+      const contestable = stateSeats.filter(
+        s => s.ownerPlayerId && s.ownerPlayerId !== player.id,
+      );
+      if (contestable.length === 0) continue;
+
+      const avgMargin = contestable.reduce((sum, s) => sum + s.margin, 0) / contestable.length;
+      const myInfluence = player.campaignInfluence[state] || 0;
+
+      // Prefer states with many contestable, low-margin seats and low existing influence
+      const score = contestable.length * 3 + (100 - avgMargin) * 0.5 - myInfluence * 0.1;
+      if (score > bestScore) {
+        bestScore = score;
+        bestState = state;
+      }
+    }
+
+    return bestState;
   }
 
   // ----------------------------------------------------------
@@ -1232,243 +1332,141 @@ export class GameEngine {
   // ----------------------------------------------------------
 
   private advanceToNextRound(): void {
-    // Snapshot the round that just ended
-    this.createHistorySnapshot();
-
-    // Win condition: majority threshold
-    const majorityWinner = this.state.players.find(
-      p => p.seats >= this.config.majorityThreshold,
-    );
-
-    // Win condition: max rounds reached
-    if (this.state.round >= this.config.maxRounds || majorityWinner) {
-      this.endGame();
-      return;
-    }
-
-    // Prepare the next round
     this.state.round++;
 
-    // Clear round-level tracking
-    this.state.playersActed = [];
-    this.state.roundActions = [];
+    // Clear round state
+    this.state.roundActions = {};
     this.state.currentEvent = null;
-    this.state.pendingLegislation = null;
-    this.currentRoundBillResult = null;
-
     for (const player of this.state.players) {
-      player.actionsThisRound = [];
-      player.hasProposed = false;
-      player.hasVoted = false;
+      player.submittedActions = false;
     }
 
-    // New shuffled turn order; rotate speaker
-    this.state.turnOrder = this.rng.shuffle([...this.state.turnOrder]);
-    this.state.speakerIndex = (this.state.speakerIndex + 1) % this.state.players.length;
-    this.state.currentPlayerIndex = 0;
+    this.logEvent({ type: 'round_started', timestamp: Date.now(), round: this.state.round });
 
-    // New active issue
-    this.state.activeIssue = this.rng.pick(ISSUES);
+    // Distribute income
+    this.distributeIncome();
 
-    this.logEvent({
-      type: 'round_started',
-      timestamp: Date.now(),
-      round: this.state.round,
-      activeIssue: this.state.activeIssue,
-    });
+    // Enter planning phase
+    this.setPhase('planning');
 
-    // Tick economy and voter satisfaction at start of new round
-    this.tickEconomy();
+    // AI immediately submits
+    this.processAIActions();
+  }
 
-    // Budget phase (auto-advances to action)
-    this.setPhase('budget');
-    this.distributeBudget();
+  private distributeIncome(): void {
+    for (const player of this.state.players) {
+      const income = Math.max(5, this.config.incomePerSeat * player.seats);
+      player.funds += income;
+
+      this.logEvent({
+        type: 'funds_changed', timestamp: Date.now(),
+        playerId: player.id, delta: income, newFunds: player.funds,
+        reason: `Income: ${this.config.incomePerSeat}/seat x ${player.seats} seats (min 5)`,
+      });
+    }
   }
 
   // ----------------------------------------------------------
-  // Game end
+  // Game end & scoring
   // ----------------------------------------------------------
 
   private endGame(): void {
-    this.setPhase('game_over');
-
-    const seatLeader = this.getSeatLeader();
-
-    if (seatLeader) {
-      // Mandate bonus
-      seatLeader.pcap += this.config.mandateValue;
-      this.logEvent({
-        type: 'pcap_awarded',
-        timestamp: Date.now(),
-        playerId: seatLeader.id,
-        amount: this.config.mandateValue,
-        reason: 'Electoral mandate (most seats)',
-      });
-
-      // PM bonus
-      seatLeader.pcap += this.config.pmValue;
-      this.logEvent({
-        type: 'pcap_awarded',
-        timestamp: Date.now(),
-        playerId: seatLeader.id,
-        amount: this.config.pmValue,
-        reason: 'Prime Ministership',
-      });
-    }
-
-    // Calculate final scores
-    const scores: Record<string, number> = {};
-    for (const player of this.state.players) {
-      scores[player.id] = player.pcap;
-    }
+    const scores = this.computeScores();
     this.state.finalScores = scores;
 
-    // Determine winner (highest pcap; tiebreak by seats)
-    const maxScore = Math.max(...Object.values(scores));
-    const winners = this.state.players.filter(p => p.pcap === maxScore);
+    // Winner is highest total score
+    const sorted = [...scores].sort((a, b) => b.total - a.total);
+    const winner = sorted[0];
+    this.state.winner = winner.playerId;
 
-    if (winners.length === 1) {
-      this.state.winner = winners[0].id;
-    } else {
-      const maxSeats = Math.max(...winners.map(p => p.seats));
-      const seatWinner = winners.find(p => p.seats === maxSeats);
-      this.state.winner = seatWinner?.id || winners[0].id;
-    }
+    this.setPhase('game_over');
 
     this.logEvent({
       type: 'game_ended',
       timestamp: Date.now(),
-      winner: this.state.winner,
+      winner: winner.playerId,
       scores,
     });
   }
 
+  private computeScores(): PlayerScore[] {
+    return this.state.players.map(player => {
+      // Seat score: 2 points per seat
+      const seatScore = player.seats * 2;
+
+      // Policy alignment: accumulated from passed policies
+      const policyAlignment = Math.round(player.policyScore * 10) / 10;
+
+      // Economic performance: bonus for government leader based on economy
+      let economicPerformance = 0;
+      if (player.governmentRounds > 0) {
+        const econ = this.state.economy;
+        if (econ.gdpGrowth > 2.5) economicPerformance += 5;
+        else if (econ.gdpGrowth < 1) economicPerformance -= 3;
+
+        if (econ.unemployment < 5) economicPerformance += 4;
+        else if (econ.unemployment > 7) economicPerformance -= 3;
+
+        if (econ.inflation >= 1 && econ.inflation <= 3) economicPerformance += 3;
+        else if (econ.inflation > 5) economicPerformance -= 3;
+
+        if (econ.consumerConfidence > 55) economicPerformance += 2;
+      }
+
+      return {
+        playerId: player.id,
+        seats: seatScore,
+        policyAlignment,
+        economicPerformance,
+        total: seatScore + policyAlignment + economicPerformance,
+      };
+    });
+  }
+
   // ----------------------------------------------------------
-  // Host controls
+  // Force advance (host override)
   // ----------------------------------------------------------
 
   forceAdvancePhase(): boolean {
-    if (this.state.phase === 'waiting' || this.state.phase === 'game_over') return false;
-
-    const oldPhase = this.state.phase;
-
-    switch (this.state.phase) {
-      case 'budget':
-        // Budget already auto-advances, but just in case it's stuck
-        this.setPhase('action');
-        for (const player of this.state.players) {
-          player.actionPoints = this.config.actionPointsPerRound;
-          player.maxActionPoints = this.config.actionPointsPerRound;
+    if (this.state.phase === 'planning') {
+      // Auto-submit empty actions for anyone who hasn't submitted
+      for (const player of this.state.players) {
+        if (!player.submittedActions) {
+          this.state.roundActions[player.id] = [];
+          player.submittedActions = true;
         }
-        this.state.playersActed = [];
-        this.state.currentPlayerIndex = 0;
-        break;
-
-      case 'action':
-        this.state.playersActed = this.state.players.map(p => p.id);
-        this.advanceToLegislationPhase();
-        break;
-
-      case 'legislation_propose':
-        this.advanceToEventPhase();
-        break;
-
-      case 'legislation_vote':
-        if (this.state.pendingLegislation) {
-          // Fill in any missing votes as 'no'
-          for (const player of this.state.players) {
-            if (!this.state.pendingLegislation.votes.find(v => v.playerId === player.id)) {
-              this.state.pendingLegislation.votes.push({
-                playerId: player.id,
-                vote: 'no',
-                seatWeight: player.seats,
-              });
-            }
-          }
-          this.resolveVote();
-        } else {
-          this.advanceToEventPhase();
-        }
-        break;
-
-      case 'legislation_result':
-        this.advanceToEventPhase();
-        break;
-
-      case 'event':
-        if (this.state.currentEvent) {
-          this.state.pastEvents.push(this.state.currentEvent);
-          this.state.currentEvent = null;
-        }
+      }
+      this.resolveRound();
+      return true;
+    }
+    if (this.state.phase === 'resolution') {
+      // Auto-advance past resolution display
+      if (this.state.round >= this.config.totalRounds) {
+        this.endGame();
+      } else {
         this.advanceToNextRound();
-        break;
-
-      default:
-        return false;
+      }
+      return true;
     }
-
-    this.logEvent({
-      type: 'phase_changed',
-      timestamp: Date.now(),
-      fromPhase: oldPhase,
-      toPhase: this.state.phase,
-    });
-
-    return true;
-  }
-
-  updateConfig(config: Partial<GameConfig>): void {
-    if (this.state.phase !== 'waiting') return;
-    this.config = { ...this.config, ...config };
-    this.state.maxRounds = this.config.maxRounds;
-    this.state.totalSeats = this.config.totalSeats;
+    return false;
   }
 
   // ----------------------------------------------------------
-  // History
+  // Utility methods
   // ----------------------------------------------------------
 
-  private createHistorySnapshot(): void {
-    const seatCounts: Record<string, number> = {};
-    const approvalRatings: Record<string, number> = {};
-    const fundBalances: Record<string, number> = {};
-    const pCapTotals: Record<string, number> = {};
-
-    for (const player of this.state.players) {
-      seatCounts[player.id] = player.seats;
-      approvalRatings[player.id] = player.approval;
-      fundBalances[player.id] = player.funds;
-      pCapTotals[player.id] = player.pcap;
+  private setPhase(phase: Phase): void {
+    const old = this.state.phase;
+    this.state.phase = phase;
+    if (old !== phase) {
+      this.logEvent({ type: 'phase_changed', timestamp: Date.now(), fromPhase: old, toPhase: phase });
     }
-
-    this.state.history.push({
-      round: this.state.round,
-      timestamp: Date.now(),
-      activeIssue: this.state.activeIssue,
-      seatCounts,
-      approvalRatings,
-      fundBalances,
-      pCapTotals,
-      billResult: this.currentRoundBillResult,
-      eventOccurred: this.state.currentEvent?.name || null,
-      actionsPerformed: [...this.state.roundActions],
-    });
-  }
-
-  // ----------------------------------------------------------
-  // Private helpers
-  // ----------------------------------------------------------
-
-  private getSeatLeader(): Player | null {
-    if (this.state.players.length === 0) return null;
-    return this.state.players.reduce((leader, p) => (p.seats > leader.seats ? p : leader));
   }
 
   private logEvent(event: GameEvent): void {
     this.state.eventLog.push(event);
   }
 
-  /** Re-derive every player's seat count from the authoritative seat map. */
   private syncPlayerSeatCounts(): void {
     const counts = computePlayerSeatCounts(this.state.seats);
     for (const player of this.state.players) {
@@ -1476,317 +1474,78 @@ export class GameEngine {
     }
   }
 
-  /** Detect state-control changes since the last check and award pcap accordingly. */
+  private getSeatLeader(): Player | null {
+    if (this.state.players.length === 0) return null;
+    return [...this.state.players].sort((a, b) => b.seats - a.seats)[0];
+  }
+
+  private updateGovernmentLeader(): void {
+    const leader = this.getSeatLeader();
+    const oldLeader = this.state.governmentLeaderId;
+    this.state.governmentLeaderId = leader?.id || null;
+
+    if (leader && leader.id !== oldLeader) {
+      this.logEvent({
+        type: 'government_formed', timestamp: Date.now(),
+        leaderId: leader.id, seats: leader.seats,
+      });
+    }
+  }
+
+  private checkIdeologyMatch(player: Player, seat: Seat): boolean {
+    const econMatch =
+      (player.economicIdeology === 'market' && seat.ideology.econ === 'RIGHT') ||
+      (player.economicIdeology === 'interventionist' && seat.ideology.econ === 'LEFT');
+    const socialMatch =
+      (player.socialIdeology === 'progressive' && seat.ideology.social === 'PROG') ||
+      (player.socialIdeology === 'conservative' && seat.ideology.social === 'CONS');
+    return econMatch || socialMatch;
+  }
+
   private checkStateControlChanges(): void {
     const oldControl = this.state.stateControl;
     const newControl = computeStateControl(this.state.seats);
     const changes = compareStateControl(oldControl, newControl);
 
     for (const { playerId, state } of changes.gained) {
-      const player = this.state.players.find(p => p.id === playerId);
-      if (player) {
-        player.pcap += this.config.stateControlValue;
-
-        this.logEvent({
-          type: 'state_control_changed',
-          timestamp: Date.now(),
-          state,
-          oldController: oldControl[state]?.controllerId || null,
-          newController: playerId,
-        });
-
-        this.logEvent({
-          type: 'pcap_awarded',
-          timestamp: Date.now(),
-          playerId,
-          amount: this.config.stateControlValue,
-          reason: `Gained control of ${state}`,
-        });
-      }
+      this.logEvent({
+        type: 'state_control_changed', timestamp: Date.now(),
+        state, oldController: oldControl[state]?.controllerId || null, newController: playerId,
+      });
     }
-
     for (const { playerId, state } of changes.lost) {
       this.logEvent({
-        type: 'state_control_changed',
-        timestamp: Date.now(),
-        state,
-        oldController: playerId,
-        newController: newControl[state]?.controllerId || null,
+        type: 'state_control_changed', timestamp: Date.now(),
+        state, oldController: playerId, newController: newControl[state]?.controllerId || null,
       });
     }
 
-    // Persist the new control map
     this.state.stateControl = newControl;
   }
 
-  /**
-   * Check whether a player's ideology aligns with a seat's ideology.
-   * Match if either economic or social axis aligns.
-   */
-  private checkIdeologyMatch(player: Player, seat: Seat): boolean {
-    const econMatch =
-      (player.economicIdeology === 'interventionist' && seat.ideology.econ === 'LEFT') ||
-      (player.economicIdeology === 'market' && seat.ideology.econ === 'RIGHT');
-
-    const socialMatch =
-      (player.socialIdeology === 'progressive' && seat.ideology.social === 'PROG') ||
-      (player.socialIdeology === 'conservative' && seat.ideology.social === 'CONS');
-
-    return econMatch || socialMatch;
-  }
-
-  /** Transfer random seats from opponents to the given player (for event effects). */
   private gainRandomSeats(playerId: string, amount: number): void {
-    const opponentSeats = Object.values(this.state.seats).filter(
-      s => s.ownerPlayerId !== null && s.ownerPlayerId !== playerId,
+    const available = Object.values(this.state.seats).filter(
+      s => s.ownerPlayerId && s.ownerPlayerId !== playerId,
     );
-    const shuffled = this.rng.shuffle([...opponentSeats]);
-    const count = Math.min(amount, shuffled.length);
+    const shuffled = this.rng.shuffle([...available]);
+    const toGain = Math.min(amount, shuffled.length);
 
-    for (let i = 0; i < count; i++) {
+    for (let i = 0; i < toGain; i++) {
       transferSeat(this.state.seats, shuffled[i].id, playerId);
     }
   }
 
-  /** Remove random seats from the given player and distribute to opponents (for event effects). */
   private loseRandomSeats(playerId: string, amount: number): void {
-    const playerSeats = getPlayerSeats(this.state.seats, playerId);
-    const shuffled = this.rng.shuffle([...playerSeats]);
-    const count = Math.min(amount, shuffled.length);
-
+    const owned = Object.values(this.state.seats).filter(s => s.ownerPlayerId === playerId);
+    const shuffled = this.rng.shuffle([...owned]);
+    const toLose = Math.min(amount, shuffled.length);
     const opponents = this.state.players.filter(p => p.id !== playerId);
-    if (opponents.length === 0) return;
 
-    for (let i = 0; i < count; i++) {
-      const recipient = opponents[i % opponents.length];
-      transferSeat(this.state.seats, shuffled[i].id, recipient.id);
-    }
-  }
-
-  /** Emit a phase_changed log entry and update `state.phase`. */
-  private setPhase(newPhase: Phase): void {
-    const oldPhase = this.state.phase;
-    this.state.phase = newPhase;
-
-    this.logEvent({
-      type: 'phase_changed',
-      timestamp: Date.now(),
-      fromPhase: oldPhase,
-      toPhase: newPhase,
-    });
-  }
-
-  // ----------------------------------------------------------
-  // Economic & Voter Engine Integration
-  // ----------------------------------------------------------
-
-  /** Flatten the economic state into a simple Record for the voter engine. */
-  private flattenEconomicState(economy: EconomicStateData): Record<string, number> {
-    const flat: Record<string, number> = {
-      gdpGrowth: economy.gdpGrowth,
-      unemployment: economy.unemployment,
-      inflation: economy.inflation,
-      publicDebt: economy.publicDebt,
-      budgetBalance: economy.budgetBalance,
-      consumerConfidence: economy.consumerConfidence,
-      businessConfidence: economy.businessConfidence,
-      interestRate: economy.interestRate,
-    };
-    for (const [sector, health] of Object.entries(economy.sectors)) {
-      flat[sector] = health;
-    }
-    return flat;
-  }
-
-  /** Build party profiles for the voter engine from current player state. */
-  private buildPartyProfiles(): PartyProfile[] {
-    const maxSeats = Math.max(...this.state.players.map(p => p.seats), 1);
-    const govPlayer = this.state.players.reduce(
-      (best, p) => p.seats > (best?.seats || 0) ? p : best,
-      this.state.players[0],
-    );
-
-    // Determine main opposition (second most seats)
-    const sortedBySeats = [...this.state.players].sort((a, b) => b.seats - a.seats);
-    const mainOppPlayer = sortedBySeats.length > 1 ? sortedBySeats[1] : null;
-
-    return this.state.players.map(p => ({
-      id: p.id,
-      socialPosition: p.socialIdeology === 'progressive' ? 0.4 : -0.4,
-      economicPosition: p.economicIdeology === 'market' ? -0.4 : 0.4,
-      isGovernment: p.id === govPlayer?.id,
-      isMainOpposition: p.id === mainOppPlayer?.id,
-      seatShare: p.seats / this.config.totalSeats,
-    }));
-  }
-
-  /**
-   * Convert a passed bill into economic ActiveEffects.
-   * Maps bill issue and budget impact to economic variable changes.
-   */
-  private billToEconomicEffects(bill: Bill): ActiveEffect[] {
-    const effects: ActiveEffect[] = [];
-    const isLandmark = bill.isLandmark;
-    const duration = isLandmark ? 5 : 3;
-    const mag = isLandmark ? 1.5 : 1.0;
-
-    // Direct budget balance effect from spending/revenue
-    if (bill.budgetImpact !== 0) {
-      effects.push({
-        policyId: bill.id,
-        effect: {
-          target: 'budgetBalance',
-          immediate: bill.budgetImpact * 0.1 * mag,
-          perPeriod: bill.budgetImpact * 0.02 * mag,
-          duration,
-          delay: 0,
-          uncertainty: 0.2,
-        },
-        turnsRemaining: duration,
-        delayRemaining: 0,
-      });
-    }
-
-    // Issue-specific effects: spending bills boost relevant sectors,
-    // revenue bills can slightly dampen them
-    const issueTargets: Record<Issue, { target: string; multiplier: number }[]> = {
-      economy: [
-        { target: 'gdpGrowth', multiplier: 0.08 },
-        { target: 'businessConfidence', multiplier: 0.5 },
-      ],
-      health: [
-        { target: 'healthcare', multiplier: 0.8 },
-        { target: 'consumerConfidence', multiplier: 0.3 },
-      ],
-      housing: [
-        { target: 'housing', multiplier: 0.8 },
-        { target: 'consumerConfidence', multiplier: 0.2 },
-      ],
-      climate: [
-        { target: 'energy', multiplier: 0.6 },
-        { target: 'manufacturing', multiplier: 0.3 },
-      ],
-      security: [
-        { target: 'businessConfidence', multiplier: 0.4 },
-        { target: 'manufacturing', multiplier: 0.3 },
-      ],
-      education: [
-        { target: 'education', multiplier: 0.8 },
-        { target: 'technology', multiplier: 0.3 },
-      ],
-    };
-
-    const targets = issueTargets[bill.issue] || [];
-    for (const { target, multiplier } of targets) {
-      const magnitude = Math.abs(bill.budgetImpact) * multiplier;
-      if (magnitude === 0) continue;
-      // Spending bills (negative budget) improve sectors; revenue bills dampen
-      const direction = bill.budgetImpact < 0 ? 1 : -0.5;
-
-      effects.push({
-        policyId: bill.id,
-        effect: {
-          target,
-          immediate: magnitude * direction * 0.5 * mag,
-          perPeriod: magnitude * direction * 0.15 * mag,
-          duration,
-          delay: 1,
-          uncertainty: 0.15,
-        },
-        turnsRemaining: duration,
-        delayRemaining: 1,
-      });
-    }
-
-    return effects;
-  }
-
-  /**
-   * Predict how each player's ideology aligns with a bill's stance table.
-   * Returns a tendency ('favoured', 'neutral', 'opposed') and seat weight per player.
-   */
-  getVotePrediction(billId: string): Record<string, { tendency: IdeologyStance; seatWeight: number }> | null {
-    const bill = [
-      ...this.state.availableBills,
-      this.state.pendingLegislation?.bill,
-    ].find(b => b?.id === billId);
-    if (!bill) return null;
-
-    const predictions: Record<string, { tendency: IdeologyStance; seatWeight: number }> = {};
-
-    for (const player of this.state.players) {
-      const socialStance: IdeologyStance = player.socialIdeology === 'progressive'
-        ? bill.stanceTable.progressive
-        : bill.stanceTable.conservative;
-      const econStance: IdeologyStance = player.economicIdeology === 'market'
-        ? bill.stanceTable.market
-        : bill.stanceTable.interventionist;
-
-      // Combine social and economic stances into overall tendency
-      let tendency: IdeologyStance;
-      if (socialStance === 'favoured' && econStance === 'favoured') {
-        tendency = 'favoured';
-      } else if (socialStance === 'opposed' && econStance === 'opposed') {
-        tendency = 'opposed';
-      } else if (socialStance === 'favoured' || econStance === 'favoured') {
-        tendency = (econStance === 'opposed' || socialStance === 'opposed') ? 'neutral' : 'favoured';
-      } else if (socialStance === 'opposed' || econStance === 'opposed') {
-        tendency = 'opposed';
-      } else {
-        tendency = 'neutral';
+    for (let i = 0; i < toLose; i++) {
+      if (opponents.length > 0) {
+        const recipient = opponents[i % opponents.length];
+        transferSeat(this.state.seats, shuffled[i].id, recipient.id);
       }
-
-      predictions[player.id] = { tendency, seatWeight: player.seats };
     }
-
-    return predictions;
-  }
-
-  /** Tick the economy and update voter groups. Called at the start of each round. */
-  tickEconomy(): void {
-    if (this.economicEngine && this.config.enableEconomy) {
-      const newEcon = this.economicEngine.tick(this.activePolicyEffects);
-      this.state.economy = newEcon;
-
-      this.logEvent({
-        type: 'economic_update',
-        timestamp: Date.now(),
-        economy: newEcon,
-      });
-    }
-
-    if (this.voterEngine && this.config.enableVoterGroups) {
-      const economicValues = this.flattenEconomicState(this.state.economy);
-      this.voterEngine.updateSatisfaction(economicValues);
-
-      // Get summaries and populate party leanings from vote share model
-      const summaries = this.voterEngine.getGroupSummaries();
-      const parties = this.buildPartyProfiles();
-      if (parties.length > 0) {
-        const voteShares = this.voterEngine.calculateVoteShares(parties);
-        for (const summary of summaries) {
-          let maxShare = 0;
-          let leaningId: string | null = null;
-          for (const [partyId, shares] of Object.entries(voteShares)) {
-            const share = shares[summary.id] ?? 0;
-            if (share > maxShare) {
-              maxShare = share;
-              leaningId = partyId;
-            }
-          }
-          summary.leaningPartyId = leaningId;
-        }
-      }
-      this.state.voterGroups = summaries;
-    }
-
-    // Clean up expired policy effects
-    this.activePolicyEffects = this.activePolicyEffects.filter(
-      e => e.delayRemaining > 0 || e.turnsRemaining > 0,
-    );
-
-    // Recompute chamber positions based on current ownership (party grouping)
-    const seatCounts = computePlayerSeatCounts(this.state.seats);
-    recomputeChamberPositions(this.state.seats, seatCounts);
   }
 }
