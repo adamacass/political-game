@@ -163,6 +163,11 @@ function App() {
     socket?.emit('resolve_dilemma', { choiceId });
   }, [socket]);
 
+  // Bill vote
+  const submitBillVote = useCallback((billId: string, vote: 'aye' | 'nay' | 'abstain') => {
+    socket?.emit('submit_bill_vote', { billId, vote });
+  }, [socket]);
+
   const sendChat = useCallback((content: string, recipientId: string | null) => {
     socket?.emit('send_chat', { content, recipientId });
   }, [socket]);
@@ -200,6 +205,7 @@ function App() {
           onSubmitAdjustments={submitAdjustments}
           onSubmitActions={submitActions}
           onResolveDilemma={resolveDilemma}
+          onSubmitBillVote={submitBillVote}
           onSendChat={sendChat}
           onForceAdvance={forceAdvance}
         />

@@ -313,6 +313,158 @@ export interface BudgetSummary {
   nationalDebt: number;       // accumulated $B AUD
   debtToGDP: number;          // percentage
   gdpNominal: number;         // $B AUD
+  // Detailed breakdown
+  revenueBreakdown: BudgetLineItem[];
+  expenditureBreakdown: BudgetLineItem[];
+  // Sectoral GDP
+  sectoralGDP: Record<EconomicSector, number>;  // sector → $B
+  tradeBalance: number;       // exports - imports $B
+  interestPayments: number;   // cost of servicing debt $B
+  cashRate: number;           // RBA cash rate %
+  exchangeRate: number;       // AUD/USD
+  wageGrowth: number;         // annual % change
+  housingIndex: number;       // index value (100 = base year)
+  consumerPriceIndex: number; // CPI value
+}
+
+export interface BudgetLineItem {
+  category: string;
+  name: string;
+  amount: number;  // $B AUD
+  change: number;  // delta from last round
+}
+
+export type EconomicSector =
+  | 'mining'
+  | 'finance'
+  | 'healthcare'
+  | 'education_sector'
+  | 'construction'
+  | 'manufacturing'
+  | 'agriculture_sector'
+  | 'technology'
+  | 'tourism'
+  | 'public_admin';
+
+// ============================================================
+// PARLIAMENTARY VOTES — Bills debated and voted on
+// ============================================================
+
+export interface ParliamentaryBill {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  category: PolicyCategory;
+  proposedBy: string;          // playerId
+  proposedByName: string;
+  round: number;
+  // What it does to policies/stats
+  effects: { targetId: string; delta: number }[];
+  // How each party voted
+  votes: Record<string, BillVote>;  // playerId → vote
+  result: 'passed' | 'defeated' | 'pending';
+  votesFor: number;
+  votesAgainst: number;
+  abstentions: number;
+  // Whether this was a contentious vote
+  isContentious: boolean;
+  // Crossbench impact
+  crossbenchSupport: number;  // 0-1 probability from independents
+}
+
+export type BillVote = 'aye' | 'nay' | 'abstain' | 'pending';
+
+// ============================================================
+// DETAILED ELECTION RESULTS
+// ============================================================
+
+export interface DetailedElectionResult {
+  round: number;
+  // National totals
+  totalFormalVotes: number;
+  totalInformalVotes: number;
+  enrolledVoters: number;
+  turnoutPercent: number;
+
+  // Per-party results
+  partyResults: ElectionPartyResult[];
+
+  // Per-state breakdown
+  stateResults: Record<StateCode, StateElectionResult>;
+
+  // Demographic breakdown
+  demographicSwing: DemographicSwingEntry[];
+
+  // Seat-level detail
+  seatResults: SeatElectionResult[];
+
+  // Key narrative
+  swingSeats: SeatSwingDetail[];
+  closestSeats: SeatSwingDetail[];  // margins < 2%
+
+  newGovernmentId: string | null;
+  newGovernmentName: string;
+  isHungParliament: boolean;
+}
+
+export interface ElectionPartyResult {
+  playerId: string;
+  playerName: string;
+  partyName: string;
+  color: string;
+  primaryVotePercent: number;
+  primaryVoteCount: number;
+  twoPartyPreferred: number;
+  seatsWon: number;
+  seatsBefore: number;
+  seatChange: number;
+  swing: number;              // percentage point swing from last election
+}
+
+export interface StateElectionResult {
+  stateCode: StateCode;
+  stateName: string;
+  totalSeats: number;
+  results: Record<string, number>;   // playerId → seats won
+  primaryVote: Record<string, number>;  // playerId → % in this state
+  swing: Record<string, number>;        // playerId → swing
+}
+
+export interface DemographicSwingEntry {
+  groupId: string;
+  groupName: string;
+  icon: string;
+  population: number;
+  voteShare: Record<string, number>;  // playerId → share of this group's vote
+  swingFrom: string | null;           // which party lost the most
+  swingTo: string | null;             // which party gained the most
+  swingMagnitude: number;             // percentage points
+}
+
+export interface SeatElectionResult {
+  seatId: string;
+  seatName: string;
+  state: StateCode;
+  winner: string | null;        // playerId
+  winnerName: string;
+  margin: number;               // winning margin %
+  previousHolder: string | null;
+  changed: boolean;
+  voteBreakdown: Record<string, number>;  // playerId → votes
+  totalVotes: number;
+}
+
+export interface SeatSwingDetail {
+  seatId: string;
+  seatName: string;
+  state: StateCode;
+  from: string | null;
+  fromName: string;
+  to: string | null;
+  toName: string;
+  margin: number;
+  swing: number;
 }
 
 // ============================================================
@@ -369,6 +521,7 @@ export type PartyColorId = typeof PARTY_COLORS[number]['id'];
 export type Phase =
   | 'waiting'
   | 'government_action'     // government adjusts policy sliders
+  | 'parliament_vote'       // parliament votes on key bills
   | 'opposition_action'     // opposition players choose actions simultaneously
   | 'simulation'            // effects propagate, voter groups update
   | 'dilemma'               // government resolves a dilemma
@@ -540,6 +693,12 @@ export interface GameState {
 
   // Economy (realistic Australian scale)
   budget: BudgetSummary;
+  budgetHistory: BudgetSummary[];
+
+  // Parliamentary bills
+  bills: ParliamentaryBill[];
+  pendingBill: ParliamentaryBill | null;
+  billHistory: ParliamentaryBill[];
 
   // Polling
   currentPolling: PollingSnapshot | null;
@@ -547,6 +706,9 @@ export interface GameState {
 
   // Round summaries
   roundSummaries: RoundSummary[];
+
+  // Detailed election results
+  detailedElectionHistory: DetailedElectionResult[];
 
   // History
   policyHistory: { round: number; policyId: string; oldValue: number; newValue: number; playerId: string }[];
@@ -698,6 +860,7 @@ export interface ClientToServerEvents {
   'submit_policy_adjustments': (data: { adjustments: PolicyAdjustment[] }) => void;
   'submit_actions': (data: { actions: PlayerAction[] }) => void;
   'resolve_dilemma': (data: { choiceId: string }) => void;
+  'submit_bill_vote': (data: { billId: string; vote: BillVote }) => void;
   'update_config': (data: { config: Partial<GameConfig> }) => void;
   'request_state': () => void;
   'send_chat': (data: { content: string; recipientId: string | null }) => void;

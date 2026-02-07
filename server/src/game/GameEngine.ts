@@ -27,6 +27,9 @@ import {
   ChatMessage, PartyColorId, PARTY_COLORS,
   SocialIdeology, EconomicIdeology, AIPersonality,
   BudgetSummary, PollingSnapshot, RoundSummary,
+  ParliamentaryBill, BillVote, BudgetLineItem, EconomicSector,
+  DetailedElectionResult, ElectionPartyResult, StateElectionResult,
+  DemographicSwingEntry, SeatElectionResult, SeatSwingDetail,
 } from '../types';
 import {
   simulationTick, SimulationContext, generateMediaFocus,
@@ -40,6 +43,9 @@ import { getAllDilemmas } from './dilemmas';
 import { generateSeatMap, recomputeChamberPositions, computePlayerSeatCounts, transferSeat } from './mapGen';
 
 const ALL_STATES: StateCode[] = ['NSW', 'VIC', 'QLD', 'WA', 'SA', 'TAS', 'ACT', 'NT'];
+
+/** Round to 1 decimal place */
+function r(n: number): number { return Math.round(n * 10) / 10; }
 
 // Australia baseline economic numbers
 const BASE_GDP_BILLIONS = 2150;
@@ -115,17 +121,15 @@ export class GameEngine {
       governmentAdjustments: [],
       oppositionActions: {},
       roundResults: [],
-      budget: {
-        totalRevenue: BASE_REVENUE_BILLIONS,
-        totalExpenditure: BASE_REVENUE_BILLIONS + 42,
-        surplus: -42,
-        nationalDebt: BASE_DEBT_BILLIONS,
-        debtToGDP: Math.round((BASE_DEBT_BILLIONS / BASE_GDP_BILLIONS) * 100 * 10) / 10,
-        gdpNominal: BASE_GDP_BILLIONS,
-      },
+      budget: this.createInitialBudget(),
+      budgetHistory: [],
+      bills: [],
+      pendingBill: null,
+      billHistory: [],
       currentPolling: null,
       pollingHistory: [],
       roundSummaries: [],
+      detailedElectionHistory: [],
       policyHistory: [],
       statHistory: {},
       electionHistory: [],
@@ -134,6 +138,47 @@ export class GameEngine {
       winner: null,
       finalScores: null,
       takenColors: [],
+    };
+  }
+
+  private createInitialBudget(): BudgetSummary {
+    return {
+      totalRevenue: BASE_REVENUE_BILLIONS,
+      totalExpenditure: BASE_REVENUE_BILLIONS + 42,
+      surplus: -42,
+      nationalDebt: BASE_DEBT_BILLIONS,
+      debtToGDP: Math.round((BASE_DEBT_BILLIONS / BASE_GDP_BILLIONS) * 100 * 10) / 10,
+      gdpNominal: BASE_GDP_BILLIONS,
+      revenueBreakdown: [
+        { category: 'tax', name: 'Income Tax', amount: 280, change: 0 },
+        { category: 'tax', name: 'Company Tax', amount: 115, change: 0 },
+        { category: 'tax', name: 'GST', amount: 85, change: 0 },
+        { category: 'tax', name: 'Excise & Customs', amount: 55, change: 0 },
+        { category: 'tax', name: 'Capital Gains', amount: 22, change: 0 },
+        { category: 'tax', name: 'Superannuation Tax', amount: 28, change: 0 },
+        { category: 'other', name: 'Other Revenue', amount: 95, change: 0 },
+      ],
+      expenditureBreakdown: [
+        { category: 'welfare', name: 'Social Security & Welfare', amount: 220, change: 0 },
+        { category: 'health', name: 'Health', amount: 110, change: 0 },
+        { category: 'education', name: 'Education', amount: 48, change: 0 },
+        { category: 'defence', name: 'Defence', amount: 52, change: 0 },
+        { category: 'infrastructure', name: 'Infrastructure', amount: 35, change: 0 },
+        { category: 'interest', name: 'Debt Interest', amount: 26, change: 0 },
+        { category: 'other', name: 'Other Expenditure', amount: 231, change: 0 },
+      ],
+      sectoralGDP: {
+        mining: 320, finance: 280, healthcare: 195, education_sector: 115,
+        construction: 195, manufacturing: 95, agriculture_sector: 55,
+        technology: 160, tourism: 85, public_admin: 145,
+      },
+      tradeBalance: -12,
+      interestPayments: 26,
+      cashRate: 4.35,
+      exchangeRate: 0.67,
+      wageGrowth: 3.2,
+      housingIndex: 100,
+      consumerPriceIndex: 100,
     };
   }
 
@@ -468,6 +513,25 @@ export class GameEngine {
   }
 
   private advanceAfterGovernment(): void {
+    // Generate a bill for parliament to vote on (50% chance per round)
+    if (this.rng() < 0.5 && this.state.round > 1) {
+      const bill = this.generateBill();
+      if (bill) {
+        this.state.pendingBill = bill;
+        this.setPhase('parliament_vote');
+        // AI auto-votes
+        for (const p of this.state.players) {
+          if (p.isAI) {
+            this.submitBillVoteInternal(p.id, this.computeAIBillVote(p, bill));
+          }
+        }
+        return;
+      }
+    }
+    this.advanceToOppositionAction();
+  }
+
+  private advanceToOppositionAction(): void {
     this.setPhase('opposition_action');
     for (const p of this.state.players) {
       if (!p.isGovernment) p.submittedActions = false;
@@ -479,6 +543,176 @@ export class GameEngine {
       }
     }
     this.checkAllOppositionSubmitted();
+  }
+
+  // ── Parliamentary Bills ────────────────────────────────────
+
+  private generateBill(): ParliamentaryBill | null {
+    const govPlayer = this.state.players.find(p => p.isGovernment);
+    if (!govPlayer) return null;
+
+    // Pick a policy that recently changed or that's contentious
+    const recentChanges = this.state.policyHistory.filter(ph => ph.round === this.state.round);
+    const candidates: PolicySlider[] = [];
+
+    if (recentChanges.length > 0) {
+      for (const ch of recentChanges) {
+        const pol = this.state.policies[ch.policyId];
+        if (pol) candidates.push(pol);
+      }
+    }
+
+    // Also pick random contentious policies
+    const contentious = Object.values(this.state.policies).filter(p =>
+      Math.abs(p.currentValue - p.defaultValue) > 0.15 || p.costPerPoint > 20
+    );
+    for (const c of contentious.sort(() => this.rng() - 0.5).slice(0, 2)) {
+      if (!candidates.find(x => x.id === c.id)) candidates.push(c);
+    }
+
+    if (candidates.length === 0) return null;
+    const policy = candidates[Math.floor(this.rng() * candidates.length)];
+
+    const billNames: string[] = [
+      `${policy.name} Amendment Bill`,
+      `${policy.name} Reform Act`,
+      `${policy.name} (Modification) Bill`,
+      `${policy.name} Enhancement Bill`,
+    ];
+
+    const bill: ParliamentaryBill = {
+      id: `bill-${this.state.round}-${policy.id}`,
+      name: billNames[Math.floor(this.rng() * billNames.length)],
+      description: `A bill to ${policy.currentValue > policy.defaultValue ? 'increase' : 'reduce'} ${policy.name.toLowerCase()} funding and coverage.`,
+      icon: policy.icon,
+      category: policy.category,
+      proposedBy: govPlayer.id,
+      proposedByName: govPlayer.name,
+      round: this.state.round,
+      effects: [{ targetId: policy.id, delta: (policy.targetValue - policy.currentValue) * 0.3 }],
+      votes: {},
+      result: 'pending',
+      votesFor: 0,
+      votesAgainst: 0,
+      abstentions: 0,
+      isContentious: Math.abs(policy.currentValue - policy.defaultValue) > 0.2,
+      crossbenchSupport: 0.3 + this.rng() * 0.4,
+    };
+
+    // Government auto-votes aye
+    bill.votes[govPlayer.id] = 'aye';
+
+    return bill;
+  }
+
+  submitBillVote(playerId: string, billId: string, vote: BillVote): boolean {
+    if (this.state.phase !== 'parliament_vote' || !this.state.pendingBill) return false;
+    if (this.state.pendingBill.id !== billId) return false;
+    return this.submitBillVoteInternal(playerId, vote);
+  }
+
+  private submitBillVoteInternal(playerId: string, vote: BillVote): boolean {
+    const bill = this.state.pendingBill;
+    if (!bill) return false;
+
+    const player = this.state.players.find(p => p.id === playerId);
+    if (!player) return false;
+    if (bill.votes[playerId] && bill.votes[playerId] !== 'pending') return false;
+
+    bill.votes[playerId] = vote;
+
+    // Check if all players have voted
+    const allVoted = this.state.players.every(p => bill.votes[p.id] && bill.votes[p.id] !== 'pending');
+    if (allVoted) {
+      this.resolveBill();
+    }
+    return true;
+  }
+
+  private computeAIBillVote(player: Player, bill: ParliamentaryBill): BillVote {
+    // AI votes based on ideology alignment with the bill's policy
+    const policy = this.state.policies[bill.effects[0]?.targetId];
+    if (!policy) return this.rng() > 0.5 ? 'aye' : 'nay';
+
+    const playerSocial = player.socialIdeology === 'progressive' ? 1 : -1;
+    const playerEcon = player.economicIdeology === 'interventionist' ? 1 : -1;
+    const alignment = (policy.ideologicalBias.social * playerSocial + policy.ideologicalBias.economic * playerEcon) / 2;
+    const delta = bill.effects[0]?.delta || 0;
+
+    // If bill pushes policy in direction player likes, vote aye
+    const favorable = (alignment > 0 && delta > 0) || (alignment < 0 && delta < 0);
+    if (favorable) return 'aye';
+    if (Math.abs(alignment) < 0.1) return this.rng() > 0.5 ? 'abstain' : 'nay';
+    return 'nay';
+  }
+
+  private resolveBill(): void {
+    const bill = this.state.pendingBill;
+    if (!bill) return;
+
+    // Count votes weighted by seats
+    let votesFor = 0, votesAgainst = 0, abstentions = 0;
+    for (const p of this.state.players) {
+      const vote = bill.votes[p.id];
+      if (vote === 'aye') votesFor += p.seats;
+      else if (vote === 'nay') votesAgainst += p.seats;
+      else abstentions += p.seats;
+    }
+
+    // Crossbench (unallocated seats) vote probabilistically
+    const totalPlayerSeats = this.state.players.reduce((s, p) => s + p.seats, 0);
+    const crossbenchSeats = this.config.totalSeats - totalPlayerSeats;
+    if (crossbenchSeats > 0) {
+      const crossFor = Math.round(crossbenchSeats * bill.crossbenchSupport);
+      votesFor += crossFor;
+      votesAgainst += crossbenchSeats - crossFor;
+    }
+
+    bill.votesFor = votesFor;
+    bill.votesAgainst = votesAgainst;
+    bill.abstentions = abstentions;
+    bill.result = votesFor > votesAgainst ? 'passed' : 'defeated';
+
+    // Apply effects if passed
+    if (bill.result === 'passed') {
+      for (const effect of bill.effects) {
+        if (this.state.policies[effect.targetId]) {
+          const policy = this.state.policies[effect.targetId];
+          policy.targetValue = Math.max(0, Math.min(1, policy.targetValue + effect.delta));
+        }
+        if (this.state.stats[effect.targetId]) {
+          this.state.stats[effect.targetId].value = Math.max(0, Math.min(1,
+            this.state.stats[effect.targetId].value + effect.delta));
+        }
+      }
+    }
+
+    // Voter reactions to the vote
+    for (const p of this.state.players) {
+      const vote = bill.votes[p.id];
+      // Voters notice when parties vote against popular measures
+      for (const vg of this.state.voterGroups) {
+        const policyId = bill.effects[0]?.targetId;
+        if (!policyId) continue;
+        const vgDef = this.voterGroupDefs.find(d => d.id === vg.id);
+        if (!vgDef) continue;
+        const concern = vgDef.concerns.find(c => c.nodeId === policyId);
+        if (!concern) continue;
+
+        const delta = bill.effects[0]?.delta || 0;
+        const desirable = (concern.desiresHigh && delta > 0) || (!concern.desiresHigh && delta < 0);
+
+        if (vote === 'aye' && desirable) {
+          vg.loyalty[p.id] = (vg.loyalty[p.id] || 0) + 0.02 * concern.weight;
+        } else if (vote === 'nay' && desirable) {
+          vg.loyalty[p.id] = (vg.loyalty[p.id] || 0) - 0.03 * concern.weight;
+        }
+      }
+    }
+
+    this.state.billHistory.push({ ...bill });
+    this.state.pendingBill = null;
+    this.advanceToOppositionAction();
   }
 
   // ── Opposition Actions ─────────────────────────────────────
@@ -684,48 +918,158 @@ export class GameEngine {
     this.advanceToNextRound();
   }
 
-  // ── Budget Computation (realistic Australian $B) ───────────
+  // ── Budget Computation (deep Australian economic model) ─────
 
   private computeBudget(): void {
+    const prev = this.state.budget;
     const gdpGrowth = this.state.stats['gdp_growth'];
     const inflation = this.state.stats['inflation'];
-    const debt = this.state.stats['national_debt'];
+    const unemployment = this.state.stats['unemployment'];
+    const consConfidence = this.state.stats['consumer_confidence'];
+    const techLevel = this.state.stats['technology_level'];
+    const envQuality = this.state.stats['environment_quality'];
+    const intRelations = this.state.stats['international_relations'];
+    const housingAfford = this.state.stats['housing_affordability'];
 
-    // GDP nominal grows/shrinks based on GDP growth stat
-    const growthRate = gdpGrowth ? (gdpGrowth.value * (gdpGrowth.displayMax - gdpGrowth.displayMin) + gdpGrowth.displayMin) / 100 : 0.025;
-    const gdpNominal = Math.round(BASE_GDP_BILLIONS * (1 + growthRate * (this.state.round / 4)));
+    const toReal = (stat: StatDefinition | undefined) =>
+      stat ? stat.value * (stat.displayMax - stat.displayMin) + stat.displayMin : 0;
 
-    // Revenue from tax policies
-    let totalRevenue = 0;
-    const taxPolicies = Object.values(this.state.policies).filter(p => p.category === 'tax');
-    for (const tp of taxPolicies) {
-      totalRevenue += tp.currentValue * tp.costPerPoint * 0.8; // tax revenue
+    const growthPct = gdpGrowth ? toReal(gdpGrowth) : 2.5;
+    const inflationPct = inflation ? toReal(inflation) : 2.5;
+    const unemploymentPct = unemployment ? toReal(unemployment) : 4.0;
+
+    // GDP nominal compounds from previous round
+    const gdpNominal = Math.round(prev.gdpNominal * (1 + growthPct / 100));
+
+    // Sectoral GDP - each sector responds to different policies/stats
+    const sectors: Record<EconomicSector, number> = { ...prev.sectoralGDP };
+    const sectorGrowth = (base: number, factor: number) =>
+      Math.round(base * (1 + (growthPct / 100) * factor + (this.rng() - 0.5) * 0.01));
+
+    const miningPolicy = this.state.policies['mining_royalties'];
+    const techPolicy = this.state.policies['rnd_funding'];
+    const tourismProxy = intRelations ? intRelations.value : 0.5;
+    const agPolicy = this.state.policies['agricultural_subsidies'];
+
+    sectors.mining = sectorGrowth(prev.sectoralGDP.mining, miningPolicy ? 1.2 - miningPolicy.currentValue * 0.4 : 1.0);
+    sectors.finance = sectorGrowth(prev.sectoralGDP.finance, consConfidence ? 0.8 + consConfidence.value * 0.6 : 1.0);
+    sectors.healthcare = sectorGrowth(prev.sectoralGDP.healthcare, 1.1);
+    sectors.education_sector = sectorGrowth(prev.sectoralGDP.education_sector, 1.0);
+    sectors.construction = sectorGrowth(prev.sectoralGDP.construction, housingAfford ? 1.5 - housingAfford.value * 0.6 : 1.0);
+    sectors.manufacturing = sectorGrowth(prev.sectoralGDP.manufacturing, 0.9);
+    sectors.agriculture_sector = sectorGrowth(prev.sectoralGDP.agriculture_sector, agPolicy ? 0.8 + agPolicy.currentValue * 0.4 : 0.9);
+    sectors.technology = sectorGrowth(prev.sectoralGDP.technology, techPolicy ? 1.0 + techPolicy.currentValue * 0.8 : 1.2);
+    sectors.tourism = sectorGrowth(prev.sectoralGDP.tourism, 0.6 + tourismProxy * 0.8);
+    sectors.public_admin = sectorGrowth(prev.sectoralGDP.public_admin, 1.0);
+
+    // Revenue breakdown - linked to tax policies
+    const incomeTax = this.state.policies['income_tax'];
+    const corpTax = this.state.policies['corporate_tax'];
+    const gst = this.state.policies['gst'];
+    const cgt = this.state.policies['capital_gains_tax'];
+
+    const revenueBreakdown: BudgetLineItem[] = [
+      { category: 'tax', name: 'Income Tax', amount: r(280 * (incomeTax ? incomeTax.currentValue / 0.55 : 1) * (gdpNominal / BASE_GDP_BILLIONS)), change: 0 },
+      { category: 'tax', name: 'Company Tax', amount: r(115 * (corpTax ? corpTax.currentValue / 0.50 : 1) * (gdpNominal / BASE_GDP_BILLIONS)), change: 0 },
+      { category: 'tax', name: 'GST', amount: r(85 * (gst ? gst.currentValue / 0.50 : 1) * (gdpNominal / BASE_GDP_BILLIONS)), change: 0 },
+      { category: 'tax', name: 'Excise & Customs', amount: r(55 * (gdpNominal / BASE_GDP_BILLIONS)), change: 0 },
+      { category: 'tax', name: 'Capital Gains', amount: r(22 * (cgt ? cgt.currentValue / 0.50 : 1)), change: 0 },
+      { category: 'tax', name: 'Superannuation Tax', amount: r(28 * (gdpNominal / BASE_GDP_BILLIONS)), change: 0 },
+      { category: 'other', name: 'Other Revenue', amount: r(95 * (gdpNominal / BASE_GDP_BILLIONS)), change: 0 },
+    ];
+
+    // Update change from previous round
+    const prevRevMap = new Map(prev.revenueBreakdown.map(r => [r.name, r.amount]));
+    for (const item of revenueBreakdown) {
+      item.change = r(item.amount - (prevRevMap.get(item.name) || item.amount));
     }
-    // Base non-tax revenue (fees, dividends, etc.) ~$80B
-    totalRevenue += 80;
-    totalRevenue = Math.round(totalRevenue * 10) / 10;
 
-    // Expenditure from policy costs
-    let totalExpenditure = 0;
+    const totalRevenue = r(revenueBreakdown.reduce((s, i) => s + i.amount, 0));
+
+    // Expenditure breakdown - linked to spending policies
+    const expenditureBreakdown: BudgetLineItem[] = [];
+    const categorySpend: Record<string, number> = {};
     for (const policy of Object.values(this.state.policies)) {
-      if (policy.category !== 'tax') {
-        totalExpenditure += policy.currentValue * policy.costPerPoint;
+      if (policy.category === 'tax') continue;
+      const cat = policy.category;
+      const spend = policy.currentValue * policy.costPerPoint;
+      categorySpend[cat] = (categorySpend[cat] || 0) + spend;
+    }
+
+    const expendNames: Record<string, string> = {
+      welfare: 'Social Security & Welfare', health: 'Health', education: 'Education',
+      law_order: 'Law & Order', infrastructure: 'Infrastructure', environment: 'Environment',
+      foreign: 'Foreign Affairs & Defence', immigration: 'Immigration', housing: 'Housing',
+      digital: 'Digital & Communications', agriculture: 'Agriculture', economy: 'Industry & Commerce',
+    };
+
+    for (const [cat, amount] of Object.entries(categorySpend)) {
+      if (amount > 0.5) {
+        expenditureBreakdown.push({
+          category: cat,
+          name: expendNames[cat] || cat,
+          amount: r(amount),
+          change: 0,
+        });
       }
     }
-    totalExpenditure = Math.round(totalExpenditure * 10) / 10;
 
-    const surplus = Math.round((totalRevenue - totalExpenditure) * 10) / 10;
-    const nationalDebt = Math.round((BASE_DEBT_BILLIONS - surplus * this.state.round * 0.25) * 10) / 10;
-    const debtToGDP = Math.round((nationalDebt / gdpNominal) * 100 * 10) / 10;
+    // Debt interest payments
+    const interestPayments = r(prev.nationalDebt * (prev.cashRate / 100));
+    expenditureBreakdown.push({ category: 'interest', name: 'Debt Interest', amount: interestPayments, change: r(interestPayments - prev.interestPayments) });
+
+    // Update expenditure changes
+    const prevExpMap = new Map(prev.expenditureBreakdown.map(e => [e.name, e.amount]));
+    for (const item of expenditureBreakdown) {
+      if (item.category !== 'interest') {
+        item.change = r(item.amount - (prevExpMap.get(item.name) || item.amount));
+      }
+    }
+
+    expenditureBreakdown.sort((a, b) => b.amount - a.amount);
+
+    const totalExpenditure = r(expenditureBreakdown.reduce((s, i) => s + i.amount, 0));
+    const surplus = r(totalRevenue - totalExpenditure);
+    const nationalDebt = Math.max(0, r(prev.nationalDebt - surplus));
+    const debtToGDP = r((nationalDebt / gdpNominal) * 100);
+
+    // RBA cash rate responds to inflation and unemployment (Taylor rule-ish)
+    const targetInflation = 2.5;
+    const targetUnemployment = 4.5;
+    const inflationGap = inflationPct - targetInflation;
+    const unemploymentGap = targetUnemployment - unemploymentPct;
+    let cashRate = prev.cashRate + inflationGap * 0.15 - unemploymentGap * 0.05;
+    cashRate = Math.max(0.1, Math.min(8.0, r(cashRate)));
+
+    // Exchange rate - affected by terms of trade, rates, confidence
+    const rateSpread = (cashRate - 3.5) * 0.02;
+    let exchangeRate = prev.exchangeRate + rateSpread + (this.rng() - 0.5) * 0.02;
+    exchangeRate = Math.max(0.45, Math.min(0.90, r(exchangeRate)));
+
+    // Trade balance
+    const exportBase = sectors.mining + sectors.agriculture_sector + sectors.education_sector * 0.3;
+    const importBase = sectors.manufacturing * 1.5 + sectors.technology * 0.5;
+    const tradeBalance = r((exportBase - importBase) * 0.1 * exchangeRate);
+
+    // Wage growth (Phillips curve-ish: lower unemployment → higher wages)
+    const wageGrowth = r(inflationPct * 0.5 + (targetUnemployment - unemploymentPct) * 0.4 + 1.5);
+
+    // Housing index
+    const housingDemand = consConfidence ? consConfidence.value * 0.3 : 0.15;
+    const housingSupply = housingAfford ? housingAfford.value * 0.2 : 0.1;
+    const housingIndex = r(prev.housingIndex * (1 + (housingDemand - housingSupply + (cashRate < 3 ? 0.02 : -0.01))));
+
+    // CPI
+    const consumerPriceIndex = r(prev.consumerPriceIndex * (1 + inflationPct / 100));
 
     this.state.budget = {
-      totalRevenue,
-      totalExpenditure,
-      surplus,
-      nationalDebt: Math.max(0, nationalDebt),
-      debtToGDP,
-      gdpNominal,
+      totalRevenue, totalExpenditure, surplus, nationalDebt, debtToGDP, gdpNominal,
+      revenueBreakdown, expenditureBreakdown, sectoralGDP: sectors,
+      tradeBalance, interestPayments, cashRate, exchangeRate, wageGrowth,
+      housingIndex, consumerPriceIndex,
     };
+
+    this.state.budgetHistory.push({ ...this.state.budget });
   }
 
   // ── Polling Projection ─────────────────────────────────────
@@ -1184,6 +1528,13 @@ export class GameEngine {
   private runElection(): void {
     this.setPhase('election');
 
+    // Get previous seat counts for comparison
+    const seatsBefore: Record<string, number> = {};
+    for (const p of this.state.players) seatsBefore[p.id] = p.seats;
+
+    // Get previous election for swing calculation
+    const prevElection = this.state.electionHistory[this.state.electionHistory.length - 1];
+
     const elResult = simulateElection(this.state, this.voterGroupDefs, this.rng);
 
     for (const change of elResult.seatChanges) {
@@ -1197,6 +1548,10 @@ export class GameEngine {
     this.syncPlayerSeatCounts();
     recomputeChamberPositions(this.state.seats, computePlayerSeatCounts(this.state.seats));
     this.updateStateInfo();
+
+    // Build detailed election results
+    const detailedResult = this.buildDetailedElectionResult(elResult, seatsBefore, prevElection);
+    this.state.detailedElectionHistory.push(detailedResult);
 
     // Update government and PM
     const oldGov = this.state.players.find(p => p.isGovernment);
@@ -1237,6 +1592,176 @@ export class GameEngine {
     if (this.state.round >= this.state.totalRounds) {
       this.endGame();
     }
+  }
+
+  private buildDetailedElectionResult(
+    elResult: { seatChanges: { seatId: string; from: string | null; to: string | null }[]; voteShare: Record<string, number>; voterGroupVotes: Record<string, Record<string, number>>; newGovernmentId: string | null; swingSeats: number },
+    seatsBefore: Record<string, number>,
+    prevElection: ElectionResult | undefined,
+  ): DetailedElectionResult {
+    const players = this.state.players;
+    const totalSeats = this.config.totalSeats;
+
+    // Simulate realistic vote counts
+    const enrolledVoters = Math.round(17_500_000 + this.rng() * 500_000);
+    const turnoutPercent = r(89 + this.rng() * 6); // Australia has compulsory voting ~93%
+    const totalFormalVotes = Math.round(enrolledVoters * turnoutPercent / 100 * 0.96); // ~4% informal
+    const totalInformalVotes = Math.round(enrolledVoters * turnoutPercent / 100 * 0.04);
+
+    // Per-party results
+    const partyResults: ElectionPartyResult[] = players.map(p => {
+      const primaryVote = elResult.voteShare[p.id] || 0;
+      const seatsWon = p.seats;
+      const prevVote = prevElection?.voteShare[p.id] || (1 / players.length);
+      const swing = r((primaryVote - prevVote) * 100);
+
+      // Compute 2PP simplified (for the two biggest parties)
+      const sortedByVote = [...players].sort((a, b) =>
+        (elResult.voteShare[b.id] || 0) - (elResult.voteShare[a.id] || 0));
+      const top2 = sortedByVote.slice(0, 2);
+      const top2Total = (elResult.voteShare[top2[0]?.id] || 0) + (elResult.voteShare[top2[1]?.id] || 0);
+      const tpp = top2Total > 0 && (p.id === top2[0]?.id || p.id === top2[1]?.id)
+        ? r(((elResult.voteShare[p.id] || 0) / top2Total) * 100)
+        : 0;
+
+      return {
+        playerId: p.id,
+        playerName: p.playerName,
+        partyName: p.name,
+        color: p.color,
+        primaryVotePercent: r(primaryVote * 100),
+        primaryVoteCount: Math.round(totalFormalVotes * primaryVote),
+        twoPartyPreferred: tpp,
+        seatsWon,
+        seatsBefore: seatsBefore[p.id] || 0,
+        seatChange: seatsWon - (seatsBefore[p.id] || 0),
+        swing,
+      };
+    }).sort((a, b) => b.seatsWon - a.seatsWon);
+
+    // State-by-state results
+    const stateResults: Record<StateCode, StateElectionResult> = {} as any;
+    const stateNames: Record<StateCode, string> = {
+      NSW: 'New South Wales', VIC: 'Victoria', QLD: 'Queensland',
+      WA: 'Western Australia', SA: 'South Australia', TAS: 'Tasmania',
+      ACT: 'Australian Capital Territory', NT: 'Northern Territory',
+    };
+
+    for (const code of ALL_STATES) {
+      const stateSeats = Object.values(this.state.seats).filter(s => s.state === code);
+      const results: Record<string, number> = {};
+      const primaryVote: Record<string, number> = {};
+      const swing: Record<string, number> = {};
+      for (const p of players) {
+        results[p.id] = stateSeats.filter(s => s.ownerPlayerId === p.id).length;
+        primaryVote[p.id] = r((elResult.voteShare[p.id] || 0) * 100 + (this.rng() - 0.5) * 8);
+        swing[p.id] = r(primaryVote[p.id] - ((prevElection?.voteShare[p.id] || (1 / players.length)) * 100 + (this.rng() - 0.5) * 4));
+      }
+      stateResults[code] = {
+        stateCode: code, stateName: stateNames[code],
+        totalSeats: stateSeats.length, results, primaryVote, swing,
+      };
+    }
+
+    // Demographic swing
+    const demographicSwing: DemographicSwingEntry[] = this.state.voterGroups.map(vg => {
+      const voteShare: Record<string, number> = {};
+      for (const p of players) {
+        voteShare[p.id] = r((elResult.voterGroupVotes[vg.id]?.[p.id] || 0) * 100);
+      }
+
+      // Find biggest swing
+      let maxSwing = 0, swingTo: string | null = null, swingFrom: string | null = null;
+      for (const p of players) {
+        const prevShare = prevElection?.voterGroupVotes[vg.id]?.[p.id] || (1 / players.length);
+        const currentShare = elResult.voterGroupVotes[vg.id]?.[p.id] || 0;
+        const s = currentShare - prevShare;
+        if (s > maxSwing) { maxSwing = s; swingTo = p.id; }
+        if (s < -maxSwing) { swingFrom = p.id; }
+      }
+
+      return {
+        groupId: vg.id, groupName: vg.name, icon: vg.icon,
+        population: vg.population, voteShare,
+        swingFrom, swingTo, swingMagnitude: r(maxSwing * 100),
+      };
+    });
+
+    // Seat-level results
+    const seatResults: SeatElectionResult[] = Object.values(this.state.seats).map(seat => {
+      const totalVotes = Math.round(totalFormalVotes / totalSeats);
+      const voteBreakdown: Record<string, number> = {};
+      for (const p of players) {
+        const base = (elResult.voteShare[p.id] || 0);
+        // Add local demographic variation
+        let localVar = 0;
+        for (const demo of seat.demographics) {
+          const gv = elResult.voterGroupVotes[demo.groupId]?.[p.id] || 0;
+          localVar += gv * demo.weight;
+        }
+        voteBreakdown[p.id] = Math.round(totalVotes * (base * 0.5 + localVar * 0.5 + (this.rng() - 0.5) * 0.05));
+      }
+
+      const winner = seat.ownerPlayerId;
+      const winnerPlayer = players.find(p => p.id === winner);
+      const change = elResult.seatChanges.find(c => c.seatId === seat.id);
+
+      // Margin = winner's votes vs runner up
+      const sorted = Object.entries(voteBreakdown).sort((a, b) => b[1] - a[1]);
+      const margin = sorted.length >= 2 && sorted[0][1] > 0
+        ? r(((sorted[0][1] - sorted[1][1]) / sorted[0][1]) * 100)
+        : 100;
+
+      return {
+        seatId: seat.id, seatName: seat.name, state: seat.state,
+        winner, winnerName: winnerPlayer?.name || 'Unknown',
+        margin, previousHolder: change?.from || seat.ownerPlayerId,
+        changed: !!change, voteBreakdown, totalVotes: Object.values(voteBreakdown).reduce((s, v) => s + v, 0),
+      };
+    });
+
+    // Swing seats (changed hands)
+    const swingSeats: SeatSwingDetail[] = elResult.seatChanges.map(ch => {
+      const seat = this.state.seats[ch.seatId];
+      const fromP = players.find(p => p.id === ch.from);
+      const toP = players.find(p => p.id === ch.to);
+      const sr = seatResults.find(s => s.seatId === ch.seatId);
+      return {
+        seatId: ch.seatId, seatName: seat?.name || ch.seatId, state: seat?.state || 'NSW' as StateCode,
+        from: ch.from, fromName: fromP?.name || 'Independent',
+        to: ch.to, toName: toP?.name || 'Independent',
+        margin: sr?.margin || 0, swing: r((this.rng() - 0.3) * 10),
+      };
+    });
+
+    // Closest seats (margin < 3%)
+    const closestSeats: SeatSwingDetail[] = seatResults
+      .filter(sr => sr.margin < 3 && sr.margin > 0)
+      .sort((a, b) => a.margin - b.margin)
+      .slice(0, 10)
+      .map(sr => {
+        const seat = this.state.seats[sr.seatId];
+        const winP = players.find(p => p.id === sr.winner);
+        return {
+          seatId: sr.seatId, seatName: seat?.name || sr.seatId, state: sr.state,
+          from: sr.previousHolder, fromName: players.find(p => p.id === sr.previousHolder)?.name || 'Unknown',
+          to: sr.winner, toName: winP?.name || 'Unknown',
+          margin: sr.margin, swing: 0,
+        };
+      });
+
+    const newGovPlayer = players.find(p => p.id === elResult.newGovernmentId);
+    const isHung = !players.some(p => p.seats > totalSeats / 2);
+
+    return {
+      round: this.state.round,
+      totalFormalVotes, totalInformalVotes, enrolledVoters, turnoutPercent,
+      partyResults, stateResults, demographicSwing, seatResults,
+      swingSeats, closestSeats,
+      newGovernmentId: elResult.newGovernmentId,
+      newGovernmentName: newGovPlayer?.name || 'Hung Parliament',
+      isHungParliament: isHung,
+    };
   }
 
   // ── AI ─────────────────────────────────────────────────────
@@ -1392,6 +1917,18 @@ export class GameEngine {
           }
         }
         this.checkAllOppositionSubmitted();
+        return true;
+      }
+      case 'parliament_vote': {
+        // Auto-resolve: all un-voted players abstain
+        if (this.state.pendingBill) {
+          for (const p of this.state.players) {
+            if (!this.state.pendingBill.votes[p.id] || this.state.pendingBill.votes[p.id] === 'pending') {
+              this.submitBillVoteInternal(p.id, 'abstain');
+            }
+          }
+          if (this.state.pendingBill) this.resolveBill();
+        }
         return true;
       }
       case 'dilemma': {

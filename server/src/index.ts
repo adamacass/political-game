@@ -258,6 +258,26 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Submit bill vote
+  socket.on('submit_bill_vote', ({ billId, vote }) => {
+    if (!currentRoomId || !currentPlayerId) {
+      socket.emit('error', { message: 'Not in a game' });
+      return;
+    }
+
+    try {
+      const success = roomManager.submitBillVote(currentRoomId, currentPlayerId, billId, vote);
+      if (success) {
+        broadcastState(currentRoomId);
+      } else {
+        socket.emit('error', { message: 'Cannot submit vote' });
+      }
+    } catch (error) {
+      console.error('Error submitting bill vote:', error);
+      socket.emit('error', { message: 'Server error' });
+    }
+  });
+
   // Update config
   socket.on('update_config', ({ config }) => {
     if (!currentRoomId) {
