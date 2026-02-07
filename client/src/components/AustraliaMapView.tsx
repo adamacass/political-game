@@ -212,16 +212,26 @@ export const AustraliaMapView: React.FC<AustraliaMapViewProps> = ({
   const stateControlInfo = useMemo(() => {
     const info: Partial<Record<StateCode, { color: string; playerId: string }>> = {};
     ALL_STATES.forEach(state => {
-      const control = gameState.stateControl[state];
-      if (control?.controllerId) {
-        const controller = playerMap[control.controllerId];
+      const si = gameState.stateInfo?.[state];
+      if (!si) return;
+      // Find player with majority of seats in this state
+      let maxSeats = 0;
+      let controllerId: string | null = null;
+      for (const [pid, count] of Object.entries(si.ownedBy)) {
+        if (count > maxSeats) {
+          maxSeats = count;
+          controllerId = pid;
+        }
+      }
+      if (controllerId && maxSeats > si.seatCount / 2) {
+        const controller = playerMap[controllerId];
         if (controller) {
           info[state] = { color: controller.color, playerId: controller.id };
         }
       }
     });
     return info;
-  }, [gameState.stateControl, playerMap]);
+  }, [gameState.stateInfo, playerMap]);
 
   // Seat counts per player for the legend
   const seatCounts = useMemo(() => {
@@ -251,7 +261,7 @@ export const AustraliaMapView: React.FC<AustraliaMapViewProps> = ({
 
   const getSeatClass = useCallback((seat: Seat): string => {
     const classes = ['seat-dot'];
-    if (seat.contested) classes.push('contested');
+    if (seat.margin < 20) classes.push('contested');
     if (selectedSeatId === seat.id) classes.push('selected');
     if (targetableSeatIds.includes(seat.id)) classes.push('targetable');
     return classes.join(' ');
@@ -517,7 +527,7 @@ export const AustraliaMapView: React.FC<AustraliaMapViewProps> = ({
               onMouseLeave={handleSeatMouseLeave}
               style={{
                 opacity: seat.margin < 20 ? 0.7 : 1,
-                filter: seat.lastCampaignedBy ? 'saturate(1.3)' : undefined,
+                filter: undefined,
               }}
             />
           );
@@ -581,7 +591,7 @@ export const AustraliaMapView: React.FC<AustraliaMapViewProps> = ({
           </div>
           <div className="font-mono text-xs mt-1" style={{ color: '#a09880' }}>
             {hoveredSeat.state} &middot;{' '}
-            {hoveredSeat.ideology.econ} / {hoveredSeat.ideology.social}
+            {hoveredSeat.demographics.slice(0, 3).map(d => d.groupId.replace(/_/g, ' ')).join(', ')}
           </div>
           <div className="font-mono text-xs mt-1">
             Margin: {hoveredSeat.margin}%
@@ -594,9 +604,9 @@ export const AustraliaMapView: React.FC<AustraliaMapViewProps> = ({
               Held by: {playerMap[hoveredSeat.ownerPlayerId]?.name || 'Unknown'}
             </div>
           )}
-          {hoveredSeat.contested && (
+          {hoveredSeat.margin < 20 && (
             <div className="font-mono text-xs mt-1" style={{ color: '#daa520' }}>
-              CONTESTED
+              MARGINAL
             </div>
           )}
         </div>

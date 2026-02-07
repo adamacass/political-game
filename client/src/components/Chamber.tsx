@@ -203,7 +203,7 @@ export const Chamber: React.FC<ChamberProps> = ({
 
   const getSeatClass = useCallback((seat: Seat): string => {
     const classes = ['seat-dot'];
-    if (seat.contested) classes.push('contested');
+    if (seat.margin < 20) classes.push('contested');
     if (selectedSeatId === seat.id) classes.push('selected');
     if (targetableSeatIds.includes(seat.id)) classes.push('targetable');
     return classes.join(' ');
@@ -462,7 +462,7 @@ export const Chamber: React.FC<ChamberProps> = ({
                 onMouseLeave={handleSeatMouseLeave}
                 style={{
                   opacity: seat.margin < 20 ? 0.7 : 1,
-                  filter: seat.lastCampaignedBy ? 'saturate(1.3)' : undefined,
+                  filter: undefined,
                 }}
               />
             );
@@ -471,7 +471,7 @@ export const Chamber: React.FC<ChamberProps> = ({
           {/* ── Round indicator ── */}
           <text x="20" y="20" fill="rgba(184,134,11,0.6)" fontSize="10"
             fontFamily="'IBM Plex Mono', monospace">
-            ROUND {gameState.round}/{(gameState as any).maxRounds || gameState.totalRounds}
+            ROUND {gameState.round}/{gameState.totalRounds}
           </text>
 
           {/* ── Majority indicator ── */}
@@ -501,7 +501,7 @@ export const Chamber: React.FC<ChamberProps> = ({
             {STATE_ABBREV[hoveredSeat.state]} &middot; {hoveredSeat.chamberSide}
           </div>
           <div className="font-mono text-xs mt-1">
-            {hoveredSeat.ideology.econ} / {hoveredSeat.ideology.social}
+            {hoveredSeat.demographics.slice(0, 3).map(d => d.groupId.replace(/_/g, ' ')).join(', ')}
           </div>
           <div className="font-mono text-xs mt-1">
             Margin: {hoveredSeat.margin}%
@@ -514,9 +514,9 @@ export const Chamber: React.FC<ChamberProps> = ({
               Held by: {playerMap[hoveredSeat.ownerPlayerId]?.name || 'Unknown'}
             </div>
           )}
-          {hoveredSeat.contested && (
+          {hoveredSeat.margin < 20 && (
             <div className="font-mono text-xs mt-1" style={{ color: '#daa520' }}>
-              CONTESTED
+              MARGINAL
             </div>
           )}
         </div>

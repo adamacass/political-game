@@ -160,7 +160,7 @@ io.on('connection', (socket) => {
       if (success) {
         broadcastState(currentRoomId);
       } else {
-        socket.emit('error', { message: 'Cannot start game (need at least 2 players, or 1 player with AI)' });
+        socket.emit('error', { message: 'Cannot start game (need at least 1 human player)' });
       }
     } catch (error) {
       console.error('Error starting game:', error);
@@ -168,7 +168,27 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Submit actions (simultaneous play)
+  // Submit policy adjustments (government player)
+  socket.on('submit_policy_adjustments', ({ adjustments }) => {
+    if (!currentRoomId || !currentPlayerId) {
+      socket.emit('error', { message: 'Not in a game' });
+      return;
+    }
+
+    try {
+      const success = roomManager.submitPolicyAdjustments(currentRoomId, currentPlayerId, adjustments);
+      if (success) {
+        broadcastState(currentRoomId);
+      } else {
+        socket.emit('error', { message: 'Cannot submit policy adjustments' });
+      }
+    } catch (error) {
+      console.error('Error submitting adjustments:', error);
+      socket.emit('error', { message: 'Server error' });
+    }
+  });
+
+  // Submit actions (opposition players)
   socket.on('submit_actions', ({ actions }) => {
     if (!currentRoomId || !currentPlayerId) {
       socket.emit('error', { message: 'Not in a game' });
@@ -184,6 +204,26 @@ io.on('connection', (socket) => {
       }
     } catch (error) {
       console.error('Error submitting actions:', error);
+      socket.emit('error', { message: 'Server error' });
+    }
+  });
+
+  // Resolve dilemma (government player)
+  socket.on('resolve_dilemma', ({ choiceId }) => {
+    if (!currentRoomId || !currentPlayerId) {
+      socket.emit('error', { message: 'Not in a game' });
+      return;
+    }
+
+    try {
+      const success = roomManager.resolveDilemma(currentRoomId, currentPlayerId, choiceId);
+      if (success) {
+        broadcastState(currentRoomId);
+      } else {
+        socket.emit('error', { message: 'Cannot resolve dilemma' });
+      }
+    } catch (error) {
+      console.error('Error resolving dilemma:', error);
       socket.emit('error', { message: 'Server error' });
     }
   });
