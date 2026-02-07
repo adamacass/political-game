@@ -1,5 +1,5 @@
 import { GameEngine } from '../game/GameEngine';
-import { GameConfig, ChatMessage, PartyColorId, SocialIdeology, EconomicIdeology, PlayerAction } from '../types';
+import { GameConfig, ChatMessage, PartyColorId, SocialIdeology, EconomicIdeology, PlayerAction, PolicyAdjustment } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
 interface Room {
@@ -61,7 +61,7 @@ class RoomManager {
       playerName,
       partyName,
       colorId,
-      undefined,  // symbolId removed
+      undefined,
       socialIdeology,
       economicIdeology
     );
@@ -112,12 +112,28 @@ class RoomManager {
     return room.engine.startGame();
   }
 
-  // New: submit actions for simultaneous play
+  // Government: submit policy slider adjustments
+  submitPolicyAdjustments(roomId: string, playerId: string, adjustments: PolicyAdjustment[]): boolean {
+    const room = this.rooms.get(roomId.toUpperCase());
+    if (!room) return false;
+    room.lastActivity = Date.now();
+    return room.engine.submitPolicyAdjustments(playerId, adjustments);
+  }
+
+  // Opposition: submit actions
   submitActions(roomId: string, playerId: string, actions: PlayerAction[]): boolean {
     const room = this.rooms.get(roomId.toUpperCase());
     if (!room) return false;
     room.lastActivity = Date.now();
     return room.engine.submitActions(playerId, actions);
+  }
+
+  // Government: resolve a dilemma
+  resolveDilemma(roomId: string, playerId: string, choiceId: string): boolean {
+    const room = this.rooms.get(roomId.toUpperCase());
+    if (!room) return false;
+    room.lastActivity = Date.now();
+    return room.engine.resolveDilemma(playerId, choiceId);
   }
 
   // Force advance phase (host only)

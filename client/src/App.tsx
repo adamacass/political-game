@@ -6,6 +6,7 @@ import {
   ChatMessage,
   PartyColorId,
   PlayerAction,
+  PolicyAdjustment,
 } from './types';
 import { Lobby } from './components/Lobby';
 import { GameBoard } from './components/GameBoard';
@@ -135,9 +136,19 @@ function App() {
 
   const startGame = useCallback(() => { socket?.emit('start_game'); }, [socket]);
 
-  // Game actions - simultaneous play
+  // Government actions
+  const submitAdjustments = useCallback((adjustments: PolicyAdjustment[]) => {
+    socket?.emit('submit_policy_adjustments', { adjustments });
+  }, [socket]);
+
+  // Opposition actions
   const submitActions = useCallback((actions: PlayerAction[]) => {
     socket?.emit('submit_actions', { actions });
+  }, [socket]);
+
+  // Dilemma
+  const resolveDilemma = useCallback((choiceId: string) => {
+    socket?.emit('resolve_dilemma', { choiceId });
   }, [socket]);
 
   const sendChat = useCallback((content: string, recipientId: string | null) => {
@@ -173,7 +184,9 @@ function App() {
           gameState={gameState}
           config={gameConfig!}
           playerId={playerId}
+          onSubmitAdjustments={submitAdjustments}
           onSubmitActions={submitActions}
+          onResolveDilemma={resolveDilemma}
           onSendChat={sendChat}
           onForceAdvance={forceAdvance}
         />

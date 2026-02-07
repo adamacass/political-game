@@ -1,32 +1,35 @@
-// Config loader for The House
+// Config loader for The House — Democracy 4-style multiplayer
 import { GameConfig } from '../types';
 
 export const DEFAULT_CONFIG: GameConfig = {
   totalSeats: 151,
-  totalRounds: 12,
+  totalRounds: 16,
   electionCycle: 4,
   actionsPerRound: 3,
+  policyAdjustmentsPerRound: 5,
 
-  startingFunds: 30,
-  startingApproval: 50,
+  startingFunds: 50,
+  startingPoliticalCapital: 10,
   incomePerSeat: 2,
+  capitalRegenPerRound: 3,
 
   campaignCost: 8,
-  attackAdCost: 10,
-  mediaBlitzCost: 12,
-  fundraiseAmount: 12,
-  coalitionTalkCost: 5,
+  attackCost: 6,
+  mediaCampaignCost: 10,
+  fundraiseAmount: 15,
+  grassrootsCost: 4,
+  policyResearchCost: 5,
 
   aiPlayerCount: 1,
   aiDifficulty: 'normal',
 
   majorityThreshold: 76,
 
-  enableEvents: true,
+  enableDilemmas: true,
+  enableMediaCycle: true,
+  enableSituations: true,
   enableChat: true,
-  enableEconomy: true,
-  enableVoterGroups: true,
-  economicVolatility: 1.0,
+  simulationSpeed: 1.0,
 };
 
 export function mergeConfig(overrides: Partial<GameConfig>): GameConfig {

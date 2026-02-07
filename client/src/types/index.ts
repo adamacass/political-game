@@ -1,7 +1,36 @@
 // ============================================================
-// THE HOUSE - Australian Political Strategy Game
-// Complete type system for simultaneous-play strategy game
+// THE HOUSE — Democracy 4-Style Multiplayer Political Simulation
+// Complete type system
 // ============================================================
+
+// ============================================================
+// CORE SIMULATION: THE POLICY WEB
+// Everything connects: Policies → Stats → Situations → Voter Groups
+// ============================================================
+
+export type NodeType = 'policy' | 'stat' | 'situation' | 'voter_group' | 'global';
+
+/** A node in the simulation web. */
+export interface SimNode {
+  id: string;
+  type: NodeType;
+  name: string;
+  value: number;        // 0–1 normalised
+  prevValue: number;    // last tick value (for delta display)
+  category?: string;
+}
+
+/** A weighted link between two simulation nodes. */
+export interface SimLink {
+  sourceId: string;
+  targetId: string;
+  multiplier: number;   // effect strength (negative = inverse)
+  formula: LinkFormula;
+  delay: number;        // rounds before effect begins
+  inertia: number;      // 0–1, how quickly the target responds
+}
+
+export type LinkFormula = 'linear' | 'sqrt' | 'squared' | 'threshold' | 'inverse';
 
 // ============================================================
 // IDEOLOGY
@@ -9,156 +38,197 @@
 
 export type SocialIdeology = 'progressive' | 'conservative';
 export type EconomicIdeology = 'market' | 'interventionist';
-export type IdeologyStance = 'favoured' | 'neutral' | 'opposed';
 
 // ============================================================
-// PHASES (simultaneous play model)
-// ============================================================
-
-export type Phase =
-  | 'waiting'      // lobby, pre-game
-  | 'planning'     // all players choose actions simultaneously
-  | 'resolution'   // actions resolve, economy ticks
-  | 'election'     // seats contested based on accumulated campaign + satisfaction
-  | 'game_over';
-
-// ============================================================
-// ACTIONS
-// ============================================================
-
-export type ActionType =
-  | 'campaign'         // target a state to build campaign influence
-  | 'propose_policy'   // propose a policy for automatic vote
-  | 'attack_ad'        // hurt opponent's approval
-  | 'fundraise'        // gain funds
-  | 'media_blitz'      // boost own approval
-  | 'coalition_talk';  // build relationships with another player
-
-/** What a player submits each round (up to actionsPerRound). */
-export interface PlayerAction {
-  type: ActionType;
-  targetState?: StateCode;       // for campaign
-  policyId?: string;             // for propose_policy
-  targetPlayerId?: string;       // for attack_ad, coalition_talk
-}
-
-/** Result of a single resolved action. */
-export interface ActionResult {
-  playerId: string;
-  action: PlayerAction;
-  success: boolean;
-  description: string;
-  seatsCaptured?: number;
-  approvalChange?: number;
-  fundsChange?: number;
-  policyPassed?: boolean;
-}
-
-export interface ActionCost {
-  funds: number;
-  description: string;
-}
-
-// ============================================================
-// POLICIES (replaces Bills)
+// POLICIES — Adjustable sliders (the core of Democracy 4)
 // ============================================================
 
 export type PolicyCategory =
-  | 'taxation'
-  | 'healthcare'
-  | 'education'
-  | 'housing'
-  | 'climate'
-  | 'defence'
-  | 'infrastructure'
+  | 'tax'
+  | 'economy'
   | 'welfare'
-  | 'immigration'
-  | 'trade';
+  | 'health'
+  | 'education'
+  | 'law_order'
+  | 'infrastructure'
+  | 'environment'
+  | 'foreign';
 
-export interface PolicyEffect {
-  target: string;     // economic variable or sector name
-  immediate: number;  // one-time impact when activated
-  perPeriod: number;  // ongoing impact per round
-  duration: number;   // how many rounds the effect lasts
-  delay: number;      // rounds before activation
-  uncertainty: number; // 0-1: random variance factor
-}
-
-export interface Policy {
+export interface PolicySlider {
   id: string;
   name: string;
   shortName: string;
   description: string;
   category: PolicyCategory;
-  stanceTable: {
-    progressive: IdeologyStance;
-    conservative: IdeologyStance;
-    market: IdeologyStance;
-    interventionist: IdeologyStance;
-  };
-  budgetCost: number;             // annual budget impact (negative = spending, positive = revenue)
-  economicEffects: PolicyEffect[];
-  voterImpacts: { groupId: string; impact: number }[];
-  implementationRounds: number;   // rounds before effects begin
-  isLandmark: boolean;
+  icon: string;             // emoji or short code
+  minLabel: string;         // label at 0% e.g. "None"
+  maxLabel: string;         // label at 100% e.g. "Maximum"
+  currentValue: number;     // 0–1
+  targetValue: number;      // government's intended value (transitions over rounds)
+  defaultValue: number;     // starting position
+  costPerPoint: number;     // annual budget cost at 100%
+  implementationDelay: number;  // rounds for currentValue to reach targetValue
+  effects: PolicyEffect[];
+  // Ideological leaning: positive = left/progressive, negative = right/conservative
+  ideologicalBias: { social: number; economic: number };  // -1 to +1
 }
 
-/** A policy currently in effect. */
-export interface ActivePolicy {
-  policy: Policy;
-  proposerId: string;
-  roundPassed: number;
-  roundsRemaining: number;
-}
-
-/** Result of an automatic policy vote. */
-export interface PolicyVoteResult {
-  policyId: string;
-  policyName: string;
-  proposerId: string;
-  passed: boolean;
-  supportSeats: number;
-  opposeSeats: number;
-  totalSeats: number;
+export interface PolicyEffect {
+  targetId: string;      // stat, situation, or voter_group id
+  multiplier: number;    // -1 to +1 effect strength
+  formula: LinkFormula;
+  delay: number;
+  inertia: number;
 }
 
 // ============================================================
-// SEAT MAP TYPES
+// STATISTICS — Computed values driven by policies
+// ============================================================
+
+export interface StatDefinition {
+  id: string;
+  name: string;
+  icon: string;
+  value: number;         // 0–1 normalised
+  prevValue: number;
+  defaultValue: number;
+  displayFormat: 'percent' | 'currency' | 'index' | 'rate';
+  displayMin: number;    // real world display range
+  displayMax: number;
+  isGood: boolean;       // true = higher is better (for colour coding)
+  effects: PolicyEffect[];  // downstream effects on other nodes
+}
+
+// ============================================================
+// SITUATIONS — Emerge dynamically when conditions are met
+// ============================================================
+
+export type SituationSeverity = 'crisis' | 'problem' | 'neutral' | 'good' | 'boom';
+
+export interface SituationDefinition {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  severityType: SituationSeverity;
+  triggerThreshold: number;    // activate when computed input > this
+  deactivateThreshold: number; // deactivate when computed input < this
+  inputs: { sourceId: string; weight: number }[];  // what causes this
+  effects: PolicyEffect[];     // downstream effects when active
+  headline: string;            // news headline when it triggers
+  voterReactions: { groupId: string; delta: number }[];  // direct happiness impact
+}
+
+export interface ActiveSituation {
+  definitionId: string;
+  name: string;
+  icon: string;
+  severityType: SituationSeverity;
+  severity: number;         // 0–1
+  roundActivated: number;
+  headline: string;
+}
+
+// ============================================================
+// VOTER GROUPS — The electorate
+// ============================================================
+
+export interface VoterGroupDefinition {
+  id: string;
+  name: string;
+  icon: string;
+  description: string;
+  basePopulation: number;   // percentage of electorate (can overlap)
+  concerns: VoterConcern[];
+  // Ideological leaning
+  socialLeaning: number;    // -1 (conservative) to +1 (progressive)
+  economicLeaning: number;  // -1 (market) to +1 (interventionist)
+  // How much campaigning affects them
+  persuadability: number;   // 0–1
+  // What situations affect their membership size
+  populationModifiers: { sourceId: string; weight: number }[];
+}
+
+export interface VoterConcern {
+  nodeId: string;           // policy, stat, or situation they care about
+  weight: number;           // how much they care (absolute importance)
+  desiresHigh: boolean;     // true = happy when value is high
+}
+
+export interface VoterGroupState {
+  id: string;
+  name: string;
+  icon: string;
+  population: number;       // current effective population %
+  happiness: number;        // -1 to +1
+  prevHappiness: number;
+  loyalty: Record<string, number>;  // playerId → loyalty from campaigning
+  turnout: number;          // 0–1, how likely to vote (affected by happiness extremes)
+}
+
+// ============================================================
+// DILEMMAS — Tough choice events for the government
+// ============================================================
+
+export interface DilemmaDefinition {
+  id: string;
+  name: string;
+  headline: string;
+  description: string;
+  icon: string;
+  choices: DilemmaChoice[];
+  // Optional trigger condition
+  condition?: { nodeId: string; operator: '>' | '<' | '>=' | '<='; value: number };
+  // Only show once per game
+  oneShot: boolean;
+}
+
+export interface DilemmaChoice {
+  id: string;
+  label: string;
+  description: string;
+  effects: { nodeId: string; delta: number; duration: number }[];
+  voterReactions: { groupId: string; delta: number }[];
+}
+
+export interface PendingDilemma {
+  definitionId: string;
+  name: string;
+  headline: string;
+  description: string;
+  icon: string;
+  choices: DilemmaChoice[];
+  roundTriggered: number;
+}
+
+// ============================================================
+// SEAT MAP (Australian electorates)
 // ============================================================
 
 export type SeatId = string;
 export type StateCode = 'NSW' | 'VIC' | 'QLD' | 'WA' | 'SA' | 'TAS' | 'ACT' | 'NT';
-export type EconBucket = 'LEFT' | 'CENTER' | 'RIGHT';
-export type SocialBucket = 'PROG' | 'CENTER' | 'CONS';
-
-export interface SeatIdeology {
-  econ: EconBucket;
-  social: SocialBucket;
-}
 
 export interface Seat {
   id: SeatId;
   name: string;
   state: StateCode;
-  x: number;
-  y: number;
+  margin: number;               // 0–100, lower = more marginal
+  ownerPlayerId: string | null;
+  // Layout
   chamberRow: number;
   chamberCol: number;
   chamberSide: 'left' | 'right' | 'crossbench';
-  ideology: SeatIdeology;
-  ownerPlayerId: string | null;
-  margin: number;            // 0-100, lower = more marginal
-  lastCampaignedBy: string | null;
-  contested: boolean;
   mapX: number;
   mapY: number;
+  // Electorate demographics: which voter groups are strongest here
+  demographics: { groupId: string; weight: number }[];
 }
 
-export interface StateControl {
-  state: StateCode;
-  controllerId: string | null;
+export interface StateInfo {
+  code: StateCode;
+  name: string;
   seatCount: number;
-  totalSeats: number;
+  ownedBy: Record<string, number>;  // playerId → seat count
 }
 
 // ============================================================
@@ -179,31 +249,74 @@ export const PARTY_COLORS = [
 export type PartyColorId = typeof PARTY_COLORS[number]['id'];
 
 // ============================================================
-// POLITICAL EVENTS
+// PHASES
 // ============================================================
 
-export interface PoliticalEvent {
-  id: string;
-  name: string;
-  headline: string;
+export type Phase =
+  | 'waiting'
+  | 'government_action'     // government adjusts policy sliders
+  | 'opposition_action'     // opposition players choose actions simultaneously
+  | 'simulation'            // effects propagate, voter groups update
+  | 'dilemma'               // government resolves a dilemma
+  | 'media_cycle'           // news focus shifts, spotlight on issues
+  | 'election'              // seats contested
+  | 'election_results'      // show election results
+  | 'game_over';
+
+// ============================================================
+// PLAYER ACTIONS
+// ============================================================
+
+export type ActionType =
+  | 'campaign'           // target a voter group, spend funds to build loyalty
+  | 'shadow_policy'      // publicly propose an alternative slider position
+  | 'attack_government'  // highlight a crisis/negative stat
+  | 'fundraise'          // gain funds
+  | 'coalition_deal'     // form alliance with another player
+  | 'media_campaign'     // boost visibility, increase influence with media coverage
+  | 'grassroots'         // cheap slow campaign targeting your ideological base
+  | 'policy_research';   // reduce implementation delay of your next policy change
+
+export interface PlayerAction {
+  type: ActionType;
+  targetGroupId?: string;       // for campaign, grassroots
+  targetPolicyId?: string;      // for shadow_policy
+  targetPlayerId?: string;      // for attack_government, coalition_deal
+  proposedValue?: number;       // for shadow_policy (the slider value you'd set)
+  targetStatId?: string;        // for attack_government
+  targetSituationId?: string;   // for attack_government
+}
+
+export interface ActionResult {
+  playerId: string;
+  action: PlayerAction;
+  success: boolean;
   description: string;
-  category: 'scandal' | 'economic' | 'international' | 'social' | 'media' | 'disaster';
-  effects: EventEffect[];
-}
-
-export interface EventEffect {
-  target: 'leader' | 'trailer' | 'all' | 'random' | 'government';
-  type: 'approval' | 'funds' | 'seats';
-  amount: number;
-  condition?: string;
+  effects: { type: string; amount: number }[];
 }
 
 // ============================================================
-// AI
+// POLICY ADJUSTMENT (government action)
 // ============================================================
 
-export type AIStrategy = 'campaigner' | 'policy_wonk' | 'populist' | 'pragmatist';
-export type AIDifficulty = 'easy' | 'normal' | 'hard';
+export interface PolicyAdjustment {
+  policyId: string;
+  newValue: number;  // 0–1 target
+}
+
+// ============================================================
+// MEDIA CYCLE
+// ============================================================
+
+export interface MediaFocus {
+  nodeId: string;
+  nodeName: string;
+  nodeType: NodeType;
+  headline: string;
+  sentiment: 'positive' | 'negative' | 'neutral';
+  amplification: number;  // multiplier on voter concern for this node
+  roundsRemaining: number;
+}
 
 // ============================================================
 // PLAYER STATE
@@ -211,7 +324,7 @@ export type AIDifficulty = 'easy' | 'normal' | 'hard';
 
 export interface Player {
   id: string;
-  name: string;
+  name: string;           // party name
   playerName: string;
   colorId: PartyColorId;
   color: string;
@@ -221,85 +334,41 @@ export interface Player {
 
   seats: number;
   funds: number;
-  approval: number;       // -100 to 100
+  politicalCapital: number;  // spent to make policy changes (regenerates)
 
+  isGovernment: boolean;
   isAI: boolean;
-  aiStrategy?: AIStrategy;
-
+  aiPersonality?: AIPersonality;
   connected: boolean;
   isHost: boolean;
 
-  // Simultaneous play
+  // Simultaneous action tracking
   submittedActions: boolean;
+  submittedAdjustments: boolean;
 
-  // Scoring
-  policyScore: number;       // accumulated ideology alignment from passed policies
-  governmentRounds: number;  // rounds spent as government leader
+  // Shadow policies: what this player publicly proposes
+  shadowPolicies: Record<string, number>;  // policyId → proposed value
 
-  // Campaign tracking: accumulated campaign effort per state
-  campaignInfluence: Record<StateCode, number>;
+  // Campaign influence per voter group
+  voterInfluence: Record<string, number>;  // groupId → accumulated influence
 
   // Stats
-  totalSeatsWon: number;
-  totalSeatsLost: number;
-  policiesProposed: number;
-  policiesPassed: number;
+  roundsAsGovernment: number;
+  electionsWon: number;
+  policiesChanged: number;
+  crisisesManaged: number;
+
+  // Scoring
+  ideologyScore: number;        // how much policies align with ideology
+  approvalRating: number;       // -1 to +1, computed from voter happiness
 }
 
 // ============================================================
-// CHAT MESSAGES
+// AI
 // ============================================================
 
-export interface ChatMessage {
-  id: string;
-  senderId: string;
-  senderName: string;
-  recipientId: string | null;
-  content: string;
-  timestamp: number;
-  isPrivate: boolean;
-}
-
-// ============================================================
-// ECONOMIC STATE
-// ============================================================
-
-export interface EconomicStateData {
-  gdpGrowth: number;
-  unemployment: number;
-  inflation: number;
-  publicDebt: number;
-  budgetBalance: number;
-  consumerConfidence: number;
-  businessConfidence: number;
-  interestRate: number;
-  sectors: Record<string, number>;
-}
-
-// ============================================================
-// VOTER GROUPS
-// ============================================================
-
-export interface VoterGroupState {
-  id: string;
-  name: string;
-  population: number;
-  satisfaction: number;
-  leaningPartyId: string | null;
-  topConcerns: { variable: string; satisfaction: number }[];
-}
-
-// ============================================================
-// SCORES
-// ============================================================
-
-export interface PlayerScore {
-  playerId: string;
-  seats: number;
-  policyAlignment: number;
-  economicPerformance: number;
-  total: number;
-}
+export type AIPersonality = 'hawk' | 'dove' | 'populist' | 'technocrat' | 'ideologue';
+export type AIDifficulty = 'easy' | 'normal' | 'hard';
 
 // ============================================================
 // ELECTION
@@ -307,9 +376,11 @@ export interface PlayerScore {
 
 export interface ElectionResult {
   round: number;
-  seatChanges: { seatId: SeatId; oldOwner: string | null; newOwner: string | null }[];
-  governmentLeaderId: string | null;
-  nationalSwing: Record<string, number>;
+  seatChanges: { seatId: SeatId; from: string | null; to: string | null }[];
+  voteShare: Record<string, number>;  // playerId → % of vote
+  voterGroupVotes: Record<string, Record<string, number>>;  // groupId → playerId → votes
+  newGovernmentId: string | null;
+  swingSeats: number;
 }
 
 // ============================================================
@@ -325,34 +396,33 @@ export interface GameState {
 
   players: Player[];
 
+  // The Policy Web
+  policies: Record<string, PolicySlider>;
+  stats: Record<string, StatDefinition>;
+  situations: ActiveSituation[];
+  voterGroups: VoterGroupState[];
+
+  // Media
+  mediaFocus: MediaFocus[];
+
+  // Dilemma
+  pendingDilemma: PendingDilemma | null;
+  resolvedDilemmas: string[];  // definition IDs
+
   // Board
   totalSeats: number;
   seats: Record<SeatId, Seat>;
-  stateControl: Record<StateCode, StateControl>;
+  stateInfo: Record<StateCode, StateInfo>;
 
-  // Policy system
-  policyMenu: Policy[];             // all available policies
-  activePolicies: ActivePolicy[];   // currently in effect
-  policyHistory: PolicyVoteResult[];
+  // Actions this round
+  governmentAdjustments: PolicyAdjustment[];
+  oppositionActions: Record<string, PlayerAction[]>;  // playerId → actions
+  roundResults: ActionResult[];
 
-  // Simultaneous actions
-  roundActions: Record<string, PlayerAction[]>;  // playerId -> submitted actions
-  lastRoundResults: ActionResult[];
-
-  // Economy
-  economy: EconomicStateData;
-  economyHistory: EconomicStateData[];
-  voterGroups: VoterGroupState[];
-
-  // Government
-  governmentLeaderId: string | null;
-  nextElectionRound: number;
-  electionCycle: number;
+  // History
+  policyHistory: { round: number; policyId: string; oldValue: number; newValue: number; playerId: string }[];
+  statHistory: Record<string, number[]>;   // statId → array of values per round
   electionHistory: ElectionResult[];
-
-  // Events
-  currentEvent: PoliticalEvent | null;
-  pastEvents: PoliticalEvent[];
 
   // Log
   eventLog: GameEvent[];
@@ -367,28 +437,60 @@ export interface GameState {
 }
 
 // ============================================================
-// EVENTS (log entries)
+// EVENTS LOG
 // ============================================================
 
 export type GameEvent =
   | { type: 'game_started'; timestamp: number; seed: string }
   | { type: 'player_joined'; timestamp: number; playerId: string; playerName: string; colorId: PartyColorId }
   | { type: 'round_started'; timestamp: number; round: number }
-  | { type: 'actions_submitted'; timestamp: number; playerId: string; actionCount: number }
-  | { type: 'action_resolved'; timestamp: number; result: ActionResult }
-  | { type: 'policy_voted'; timestamp: number; result: PolicyVoteResult }
-  | { type: 'seat_captured'; timestamp: number; seatId: SeatId; seatName: string; fromPlayerId: string | null; toPlayerId: string }
-  | { type: 'seat_lost'; timestamp: number; seatId: SeatId; seatName: string; fromPlayerId: string; reason: string }
+  | { type: 'phase_changed'; timestamp: number; from: Phase; to: Phase }
+  | { type: 'policy_changed'; timestamp: number; playerId: string; policyId: string; policyName: string; oldValue: number; newValue: number }
+  | { type: 'situation_triggered'; timestamp: number; situationId: string; name: string; headline: string; severity: SituationSeverity }
+  | { type: 'situation_resolved'; timestamp: number; situationId: string; name: string }
+  | { type: 'dilemma_presented'; timestamp: number; dilemmaId: string; name: string }
+  | { type: 'dilemma_resolved'; timestamp: number; dilemmaId: string; choiceId: string; description: string }
   | { type: 'election_held'; timestamp: number; result: ElectionResult }
-  | { type: 'government_formed'; timestamp: number; leaderId: string; seats: number }
-  | { type: 'event_occurred'; timestamp: number; eventId: string; eventName: string }
-  | { type: 'approval_changed'; timestamp: number; playerId: string; delta: number; newApproval: number; reason: string }
-  | { type: 'funds_changed'; timestamp: number; playerId: string; delta: number; newFunds: number; reason: string }
-  | { type: 'state_control_changed'; timestamp: number; state: StateCode; oldController: string | null; newController: string | null }
-  | { type: 'economic_update'; timestamp: number; economy: EconomicStateData }
+  | { type: 'government_formed'; timestamp: number; playerId: string; playerName: string; seats: number }
+  | { type: 'media_spotlight'; timestamp: number; nodeId: string; headline: string; sentiment: string }
+  | { type: 'campaign_action'; timestamp: number; playerId: string; targetGroup: string; effect: number }
+  | { type: 'attack_action'; timestamp: number; attackerId: string; targetId: string; issue: string }
+  | { type: 'seat_changed'; timestamp: number; seatId: SeatId; from: string | null; to: string | null }
+  | { type: 'funds_changed'; timestamp: number; playerId: string; delta: number; reason: string }
   | { type: 'chat_message'; timestamp: number; senderId: string; recipientId: string | null; content: string }
-  | { type: 'game_ended'; timestamp: number; winner: string; scores: PlayerScore[] }
-  | { type: 'phase_changed'; timestamp: number; fromPhase: Phase; toPhase: Phase };
+  | { type: 'game_ended'; timestamp: number; winner: string; scores: PlayerScore[] };
+
+// ============================================================
+// SCORES
+// ============================================================
+
+export interface PlayerScore {
+  playerId: string;
+  playerName: string;
+  partyName: string;
+  color: string;
+  seats: number;
+  voteShare: number;
+  ideologyScore: number;       // how well policies match ideology
+  governmentBonus: number;     // bonus for time in government
+  crisisPenalty: number;       // penalty for unresolved crises while in government
+  voterApproval: number;       // average voter group happiness
+  total: number;
+}
+
+// ============================================================
+// CHAT
+// ============================================================
+
+export interface ChatMessage {
+  id: string;
+  senderId: string;
+  senderName: string;
+  recipientId: string | null;
+  content: string;
+  timestamp: number;
+  isPrivate: boolean;
+}
 
 // ============================================================
 // GAME CONFIGURATION
@@ -396,34 +498,37 @@ export type GameEvent =
 
 export interface GameConfig {
   totalSeats: number;
-  totalRounds: number;          // total rounds in game
-  electionCycle: number;        // rounds between elections (default 4)
-  actionsPerRound: number;      // actions each player gets per round (default 3)
+  totalRounds: number;
+  electionCycle: number;
+  actionsPerRound: number;         // actions for opposition players per round
+  policyAdjustmentsPerRound: number;  // sliders government can change per round
 
   startingFunds: number;
-  startingApproval: number;
+  startingPoliticalCapital: number;
   incomePerSeat: number;
+  capitalRegenPerRound: number;
 
   campaignCost: number;
-  attackAdCost: number;
-  mediaBlitzCost: number;
+  attackCost: number;
+  mediaCampaignCost: number;
   fundraiseAmount: number;
-  coalitionTalkCost: number;
+  grassrootsCost: number;
+  policyResearchCost: number;
 
   aiPlayerCount: number;
   aiDifficulty: AIDifficulty;
 
-  majorityThreshold: number;    // seats for government (76)
+  majorityThreshold: number;
 
-  enableEvents: boolean;
+  enableDilemmas: boolean;
+  enableMediaCycle: boolean;
+  enableSituations: boolean;
   enableChat: boolean;
-  enableEconomy: boolean;
-  enableVoterGroups: boolean;
-  economicVolatility: number;
+  simulationSpeed: number;    // 0.5–2.0 multiplier on effect propagation
 }
 
 // ============================================================
-// SOCKET MESSAGES
+// SOCKET EVENTS
 // ============================================================
 
 export interface ClientToServerEvents {
@@ -444,7 +549,9 @@ export interface ClientToServerEvents {
     economicIdeology?: EconomicIdeology;
   }) => void;
   'start_game': () => void;
+  'submit_policy_adjustments': (data: { adjustments: PolicyAdjustment[] }) => void;
   'submit_actions': (data: { actions: PlayerAction[] }) => void;
+  'resolve_dilemma': (data: { choiceId: string }) => void;
   'update_config': (data: { config: Partial<GameConfig> }) => void;
   'request_state': () => void;
   'send_chat': (data: { content: string; recipientId: string | null }) => void;
@@ -462,4 +569,6 @@ export interface ServerToClientEvents {
   'chat_message': (data: { message: ChatMessage }) => void;
   'available_colors': (data: { colors: PartyColorId[] }) => void;
   'session_restored': (data: { success: boolean; roomId: string }) => void;
+  'dilemma_presented': (data: { dilemma: PendingDilemma }) => void;
+  'simulation_tick': (data: { stats: Record<string, number>; situations: ActiveSituation[] }) => void;
 }
