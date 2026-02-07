@@ -3,6 +3,7 @@ import type { Phase, Player, GameState } from '../types';
 export const PHASE_LABELS: Record<Phase, string> = {
   waiting: 'Waiting for Players',
   government_action: 'Government Action',
+  parliament_vote: 'Parliament Vote',
   opposition_action: 'Opposition Action',
   simulation: 'Simulation',
   dilemma: 'Dilemma',
@@ -16,6 +17,7 @@ export const PHASE_LABELS: Record<Phase, string> = {
 export const PHASE_DESCRIPTIONS: Record<Phase, string> = {
   waiting: 'Waiting for players to join...',
   government_action: 'The government is adjusting policy sliders',
+  parliament_vote: 'A bill is before the House for a vote',
   opposition_action: 'Opposition parties are choosing their actions',
   simulation: 'Effects propagating through the policy web...',
   dilemma: 'The government faces a tough choice',

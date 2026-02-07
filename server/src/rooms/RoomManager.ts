@@ -1,5 +1,5 @@
 import { GameEngine } from '../game/GameEngine';
-import { GameConfig, ChatMessage, PartyColorId, SocialIdeology, EconomicIdeology, PlayerAction, PolicyAdjustment } from '../types';
+import { GameConfig, ChatMessage, PartyColorId, SocialIdeology, EconomicIdeology, PlayerAction, PolicyAdjustment, BillVote } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
 interface Room {
@@ -134,6 +134,14 @@ class RoomManager {
     if (!room) return false;
     room.lastActivity = Date.now();
     return room.engine.resolveDilemma(playerId, choiceId);
+  }
+
+  // Parliament: submit bill vote
+  submitBillVote(roomId: string, playerId: string, billId: string, vote: BillVote): boolean {
+    const room = this.rooms.get(roomId.toUpperCase());
+    if (!room) return false;
+    room.lastActivity = Date.now();
+    return room.engine.submitBillVote(playerId, billId, vote);
   }
 
   // Force advance phase (host only)

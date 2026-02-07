@@ -1,12 +1,13 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import {
   GameState, GameConfig, Player, PolicySlider, PolicyAdjustment,
-  PlayerAction, ActionType, ActionResult, StatDefinition,
+  PlayerAction, ActionType, StatDefinition,
   ActiveSituation, VoterGroupState, MediaFocus, PendingDilemma,
-  ElectionResult, PlayerScore, StateCode, Phase, PolicyCategory,
-  BudgetSummary, PollingSnapshot, RoundSummary, Leader, SeatId
+  ElectionResult, PlayerScore, Phase, PolicyCategory,
+  BudgetSummary, PollingSnapshot, RoundSummary, Leader,
+  ParliamentaryBill, BillVote, DetailedElectionResult,
+  EconomicSector, BudgetLineItem,
 } from '../types';
-import { PolicyWeb } from './PolicyWeb';
 import { Chamber } from './Chamber';
 import { AustraliaMapView } from './AustraliaMapView';
 
@@ -21,30 +22,29 @@ interface GameBoardProps {
   onSubmitAdjustments: (adjustments: PolicyAdjustment[]) => void;
   onSubmitActions: (actions: PlayerAction[]) => void;
   onResolveDilemma: (choiceId: string) => void;
+  onSubmitBillVote: (billId: string, vote: 'aye' | 'nay' | 'abstain') => void;
   onSendChat: (content: string, recipientId: string | null) => void;
   onForceAdvance: () => void;
 }
 
 // ============================================================
-// TYPES
+// CONSTANTS
 // ============================================================
 
-type ActiveTab = 'web' | 'chamber' | 'map' | 'economy';
+type ActiveTab = 'dashboard' | 'policies' | 'chamber' | 'economy' | 'election';
 
 const TAB_CONFIG: { id: ActiveTab; label: string }[] = [
-  { id: 'web', label: 'Policy Web' },
+  { id: 'dashboard', label: 'Dashboard' },
+  { id: 'policies', label: 'Policies' },
   { id: 'chamber', label: 'Chamber' },
-  { id: 'map', label: 'Map' },
   { id: 'economy', label: 'Economy' },
+  { id: 'election', label: 'Election' },
 ];
-
-// ============================================================
-// PHASE INFO
-// ============================================================
 
 const PHASE_LABELS: Record<Phase, string> = {
   waiting: 'Waiting',
   government_action: 'Gov. Action',
+  parliament_vote: 'Parliament Vote',
   opposition_action: 'Opp. Action',
   simulation: 'Simulating',
   dilemma: 'Dilemma',
@@ -58,6 +58,7 @@ const PHASE_LABELS: Record<Phase, string> = {
 const PHASE_COLORS: Record<Phase, string> = {
   waiting: 'bg-gray-400',
   government_action: 'bg-amber-500',
+  parliament_vote: 'bg-violet-600',
   opposition_action: 'bg-blue-500',
   simulation: 'bg-purple-500',
   dilemma: 'bg-orange-600',
@@ -67,10 +68,6 @@ const PHASE_COLORS: Record<Phase, string> = {
   round_summary: 'bg-indigo-500',
   game_over: 'bg-gray-700',
 };
-
-// ============================================================
-// ACTION INFO
-// ============================================================
 
 const ACTION_TYPE_INFO: Record<ActionType, { label: string; icon: string; description: string; needsTarget: string }> = {
   campaign: { label: 'Campaign', icon: '\u{1F4E3}', description: 'Target a voter group to build loyalty', needsTarget: 'voter_group' },
@@ -84,11 +81,53 @@ const ACTION_TYPE_INFO: Record<ActionType, { label: string; icon: string; descri
 };
 
 const SEVERITY_COLORS: Record<string, string> = {
-  crisis: 'text-red-600 bg-red-50 border-red-200',
-  problem: 'text-orange-600 bg-orange-50 border-orange-200',
+  crisis: 'text-red-700 bg-red-50 border-red-200',
+  problem: 'text-orange-700 bg-orange-50 border-orange-200',
   neutral: 'text-gray-600 bg-gray-50 border-gray-200',
-  good: 'text-green-600 bg-green-50 border-green-200',
-  boom: 'text-emerald-600 bg-emerald-50 border-emerald-200',
+  good: 'text-green-700 bg-green-50 border-green-200',
+  boom: 'text-emerald-700 bg-emerald-50 border-emerald-200',
+};
+
+const CATEGORY_LABELS: Record<PolicyCategory, { label: string; icon: string }> = {
+  tax: { label: 'Taxation', icon: '\u{1F4B5}' },
+  economy: { label: 'Economy', icon: '\u{1F4C8}' },
+  welfare: { label: 'Welfare', icon: '\u{1F91D}' },
+  health: { label: 'Health', icon: '\u{1F3E5}' },
+  education: { label: 'Education', icon: '\u{1F393}' },
+  law_order: { label: 'Law & Order', icon: '\u2696\uFE0F' },
+  infrastructure: { label: 'Infrastructure', icon: '\u{1F3D7}\uFE0F' },
+  environment: { label: 'Environment', icon: '\u{1F333}' },
+  foreign: { label: 'Foreign Affairs', icon: '\u{1F30F}' },
+  immigration: { label: 'Immigration', icon: '\u{1F6C2}' },
+  housing: { label: 'Housing', icon: '\u{1F3E0}' },
+  digital: { label: 'Digital', icon: '\u{1F4BB}' },
+  agriculture: { label: 'Agriculture', icon: '\u{1F33E}' },
+};
+
+const SECTOR_LABELS: Record<EconomicSector, string> = {
+  mining: 'Mining',
+  finance: 'Finance',
+  healthcare: 'Healthcare',
+  education_sector: 'Education',
+  construction: 'Construction',
+  manufacturing: 'Manufacturing',
+  agriculture_sector: 'Agriculture',
+  technology: 'Technology',
+  tourism: 'Tourism',
+  public_admin: 'Public Admin',
+};
+
+const SECTOR_COLORS: Record<EconomicSector, string> = {
+  mining: '#d97706',
+  finance: '#2563eb',
+  healthcare: '#dc2626',
+  education_sector: '#7c3aed',
+  construction: '#ea580c',
+  manufacturing: '#475569',
+  agriculture_sector: '#16a34a',
+  technology: '#0891b2',
+  tourism: '#e11d48',
+  public_admin: '#64748b',
 };
 
 // ============================================================
@@ -107,16 +146,11 @@ function formatBudget(billions: number): string {
 function formatStatValue(stat: StatDefinition): string {
   const realValue = stat.displayMin + stat.value * (stat.displayMax - stat.displayMin);
   switch (stat.displayFormat) {
-    case 'percent':
-      return `${realValue.toFixed(1)}%`;
-    case 'currency':
-      return formatBudget(realValue);
-    case 'rate':
-      return `${realValue.toFixed(1)}%`;
-    case 'index':
-      return realValue.toFixed(0);
-    default:
-      return realValue.toFixed(1);
+    case 'percent': return `${realValue.toFixed(1)}%`;
+    case 'currency': return formatBudget(realValue);
+    case 'rate': return `${realValue.toFixed(2)}%`;
+    case 'index': return realValue.toFixed(0);
+    default: return realValue.toFixed(1);
   }
 }
 
@@ -165,15 +199,12 @@ function clamp(val: number, min: number, max: number): number {
 }
 
 // ============================================================
-// INLINE SUB-COMPONENTS
+// INLINE CHART COMPONENTS
 // ============================================================
 
-/** Tiny inline sparkline SVG. */
+/** Tiny sparkline for the dashboard bar. */
 function Sparkline({ data, width = 56, height = 18, color = '#3b82f6' }: {
-  data: number[];
-  width?: number;
-  height?: number;
-  color?: string;
+  data: number[]; width?: number; height?: number; color?: string;
 }) {
   if (!data || data.length < 2) return null;
   const maxVal = Math.max(...data, 0.001);
@@ -187,19 +218,118 @@ function Sparkline({ data, width = 56, height = 18, color = '#3b82f6' }: {
   }).join(' ');
   return (
     <svg width={width} height={height} className="inline-block align-middle">
-      <polyline
-        points={points}
-        fill="none"
-        stroke={color}
-        strokeWidth="1.5"
-        strokeLinejoin="round"
-        strokeLinecap="round"
-      />
+      <polyline points={points} fill="none" stroke={color}
+        strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
     </svg>
   );
 }
 
-/** Happiness bar from -1 to +1. Center is 0. */
+/** Multi-line chart for the economy tab. */
+function LineChart({ series, labels, width = 520, height = 200 }: {
+  series: { data: number[]; color: string; label: string }[];
+  labels?: string[];
+  width?: number;
+  height?: number;
+}) {
+  const allValues = series.flatMap(s => s.data);
+  if (allValues.length === 0) return null;
+  const maxVal = Math.max(...allValues, 0.001);
+  const minVal = Math.min(...allValues, 0);
+  const range = maxVal - minVal || 1;
+  const pad = { top: 20, right: 16, bottom: 28, left: 48 };
+  const cw = width - pad.left - pad.right;
+  const ch = height - pad.top - pad.bottom;
+  const maxLen = Math.max(...series.map(s => s.data.length));
+  const stepX = maxLen > 1 ? cw / (maxLen - 1) : 0;
+
+  const gridLines = 4;
+  const gridVals = Array.from({ length: gridLines + 1 }, (_, i) => minVal + (range * i) / gridLines);
+
+  return (
+    <svg width={width} height={height} className="block">
+      {/* Grid lines */}
+      {gridVals.map((gv, i) => {
+        const y = pad.top + ch - ((gv - minVal) / range) * ch;
+        return (
+          <g key={i}>
+            <line x1={pad.left} y1={y} x2={width - pad.right} y2={y}
+              stroke="#e5e7eb" strokeWidth="1" />
+            <text x={pad.left - 4} y={y + 3} textAnchor="end"
+              fill="#9ca3af" fontSize="9" fontFamily="monospace">
+              {gv.toFixed(1)}
+            </text>
+          </g>
+        );
+      })}
+      {/* Series lines */}
+      {series.map((s, si) => {
+        if (s.data.length < 2) return null;
+        const pts = s.data.map((v, i) => {
+          const x = pad.left + i * stepX;
+          const y = pad.top + ch - ((v - minVal) / range) * ch;
+          return `${x.toFixed(1)},${y.toFixed(1)}`;
+        }).join(' ');
+        return <polyline key={si} points={pts} fill="none" stroke={s.color}
+          strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />;
+      })}
+      {/* X-axis labels */}
+      {labels && labels.map((l, i) => (
+        <text key={i} x={pad.left + i * stepX} y={height - 4}
+          textAnchor="middle" fill="#9ca3af" fontSize="9" fontFamily="monospace">
+          {l}
+        </text>
+      ))}
+      {/* Legend */}
+      {series.map((s, si) => (
+        <g key={`leg-${si}`} transform={`translate(${pad.left + si * 90}, ${height - 16})`}>
+          <line x1="0" y1="0" x2="12" y2="0" stroke={s.color} strokeWidth="2" />
+          <text x="16" y="3" fill="#6b7280" fontSize="9">{s.label}</text>
+        </g>
+      ))}
+    </svg>
+  );
+}
+
+/** Horizontal bar chart for budget items. */
+function HorizontalBarChart({ items, maxValue, width = 400 }: {
+  items: { label: string; value: number; color: string; change?: number }[];
+  maxValue: number;
+  width?: number;
+}) {
+  const barH = 22;
+  const labelW = 120;
+  const valueW = 60;
+  const barW = width - labelW - valueW - 16;
+
+  return (
+    <div className="space-y-1">
+      {items.map((item, i) => {
+        const pct = maxValue > 0 ? Math.abs(item.value) / maxValue : 0;
+        return (
+          <div key={i} className="flex items-center gap-2" style={{ height: barH }}>
+            <span className="text-xs text-gray-600 truncate" style={{ width: labelW }}>
+              {item.label}
+            </span>
+            <div className="flex-1 bg-gray-100 rounded-sm overflow-hidden" style={{ height: 14 }}>
+              <div className="h-full rounded-sm transition-all duration-500"
+                style={{ width: `${pct * 100}%`, backgroundColor: item.color }} />
+            </div>
+            <span className="text-xs font-mono text-gray-700 text-right" style={{ width: valueW }}>
+              {formatBudget(item.value)}
+              {item.change !== undefined && item.change !== 0 && (
+                <span className={`ml-1 text-[10px] ${item.change > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                  {item.change > 0 ? '+' : ''}{formatBudget(item.change)}
+                </span>
+              )}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Happiness bar from -1 to +1. */
 function HappinessBar({ value, height = 8 }: { value: number; height?: number }) {
   const clamped = clamp(value, -1, 1);
   const center = 50;
@@ -207,18 +337,10 @@ function HappinessBar({ value, height = 8 }: { value: number; height?: number })
   const left = clamped >= 0 ? center : center + offset;
   const barWidth = Math.abs(offset);
   const colorClass = clamped >= 0 ? 'bg-green-500' : 'bg-red-500';
-
   return (
     <div className="relative w-full rounded-full overflow-hidden bg-gray-200" style={{ height }}>
-      <div
-        className={`absolute top-0 ${colorClass} transition-all duration-500 rounded-full`}
-        style={{
-          left: `${left}%`,
-          width: `${barWidth}%`,
-          height: '100%',
-          opacity: 0.85,
-        }}
-      />
+      <div className={`absolute top-0 ${colorClass} transition-all duration-500 rounded-full`}
+        style={{ left: `${left}%`, width: `${barWidth}%`, height: '100%', opacity: 0.85 }} />
       <div className="absolute top-0 bg-gray-400" style={{ left: '50%', width: 1, height: '100%' }} />
     </div>
   );
@@ -226,15 +348,11 @@ function HappinessBar({ value, height = 8 }: { value: number; height?: number })
 
 /** Horizontal stacked bar for polling projections (seats). */
 function PollingBar({ players, projectedSeats, totalSeats, majorityThreshold }: {
-  players: Player[];
-  projectedSeats: Record<string, number>;
-  totalSeats: number;
-  majorityThreshold: number;
+  players: Player[]; projectedSeats: Record<string, number>; totalSeats: number; majorityThreshold: number;
 }) {
   const entries = players
     .map(p => ({ player: p, seats: projectedSeats[p.id] ?? p.seats }))
     .sort((a, b) => b.seats - a.seats);
-
   const majorityPct = (majorityThreshold / totalSeats) * 100;
 
   return (
@@ -245,23 +363,19 @@ function PollingBar({ players, projectedSeats, totalSeats, majorityThreshold }: 
           const pct = totalSeats > 0 ? (seats / totalSeats) * 100 : 0;
           if (pct < 0.5) return null;
           return (
-            <div
-              key={player.id}
-              className="h-full flex items-center justify-center text-white text-[10px] font-bold transition-all duration-700 relative group"
+            <div key={player.id}
+              className="h-full flex items-center justify-center text-white text-[10px] font-bold transition-all duration-700"
               style={{ width: `${pct}%`, backgroundColor: player.color, minWidth: seats > 0 ? 18 : 0 }}
-              title={`${player.name}: ${seats} seats`}
-            >
+              title={`${player.name}: ${seats} seats`}>
               {pct > 4 && <span className="drop-shadow-sm">{seats}</span>}
             </div>
           );
         })}
-        {/* Majority line */}
-        <div
-          className="absolute top-0 bottom-0 z-10"
-          style={{ left: `${majorityPct}%` }}
-        >
+        <div className="absolute top-0 bottom-0 z-10" style={{ left: `${majorityPct}%` }}>
           <div className="w-0.5 h-full bg-gray-800 opacity-70" />
-          <div className="absolute -top-0.5 left-1/2 -translate-x-1/2 text-[9px] font-bold text-gray-700 whitespace-nowrap bg-white/80 px-1 rounded">{majorityThreshold}</div>
+          <div className="absolute -top-0.5 left-1/2 -translate-x-1/2 text-[9px] font-bold text-gray-700 whitespace-nowrap bg-white/80 px-1 rounded">
+            {majorityThreshold}
+          </div>
         </div>
       </div>
       <div className="flex gap-2 shrink-0 ml-2">
@@ -282,42 +396,33 @@ function PollingBar({ players, projectedSeats, totalSeats, majorityThreshold }: 
 // ============================================================
 
 export function GameBoard({
-  gameState,
-  config,
-  playerId,
-  onSubmitAdjustments,
-  onSubmitActions,
-  onResolveDilemma,
-  onSendChat,
-  onForceAdvance,
+  gameState, config, playerId,
+  onSubmitAdjustments, onSubmitActions, onResolveDilemma,
+  onSubmitBillVote, onSendChat, onForceAdvance,
 }: GameBoardProps) {
-  // ── State ──────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState<ActiveTab>('web');
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+
+  // -- State --
+  const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
   const [actionSlots, setActionSlots] = useState<PlayerAction[]>([]);
   const [pendingAdjustments, setPendingAdjustments] = useState<PolicyAdjustment[]>([]);
   const [selectedSeatId, setSelectedSeatId] = useState<string | null>(null);
+  const [expandedPolicyId, setExpandedPolicyId] = useState<string | null>(null);
   const [showRoundSummary, setShowRoundSummary] = useState(false);
   const [showDilemmaModal, setShowDilemmaModal] = useState(true);
-  const [lastRoundCollapsed, setLastRoundCollapsed] = useState(true);
-
-  // ── Refs ───────────────────────────────────────────────────
+  const [showElectionModal, setShowElectionModal] = useState(false);
   const prevPhaseRef = useRef<Phase>(gameState.phase);
 
-  // ── Derived data ───────────────────────────────────────────
+  // -- Derived --
   const currentPlayer = useMemo(
     () => gameState.players.find(p => p.id === playerId) || null,
     [gameState.players, playerId],
   );
-
   const governmentPlayer = useMemo(
     () => gameState.players.find(p => p.isGovernment) || null,
     [gameState.players],
   );
-
   const isGovernment = currentPlayer?.isGovernment ?? false;
   const isHost = currentPlayer?.isHost ?? false;
-
   const policies = useMemo(() => Object.values(gameState.policies), [gameState.policies]);
   const stats = useMemo(() => Object.values(gameState.stats), [gameState.stats]);
 
@@ -338,10 +443,7 @@ export function GameBoard({
     return gameState.roundSummaries[gameState.roundSummaries.length - 1];
   }, [gameState.roundSummaries]);
 
-  // Key stats for the dashboard bar
-  const keyStat = useCallback((id: string) => {
-    return gameState.stats[id] || null;
-  }, [gameState.stats]);
+  const keyStat = useCallback((id: string) => gameState.stats[id] || null, [gameState.stats]);
 
   const gdpGrowth = keyStat('gdp_growth');
   const unemployment = keyStat('unemployment');
@@ -349,13 +451,28 @@ export function GameBoard({
 
   const projectedSeats = useMemo(() => {
     if (gameState.currentPolling) return gameState.currentPolling.projectedSeats;
-    // Fallback to actual seats
     const m: Record<string, number> = {};
     gameState.players.forEach(p => { m[p.id] = p.seats; });
     return m;
   }, [gameState.currentPolling, gameState.players]);
 
-  // ── Phase change effects ───────────────────────────────────
+  const policiesByCategory = useMemo(() => {
+    const map: Partial<Record<PolicyCategory, PolicySlider[]>> = {};
+    policies.forEach(p => {
+      if (!map[p.category]) map[p.category] = [];
+      map[p.category]!.push(p);
+    });
+    return map;
+  }, [policies]);
+
+  const latestElection = useMemo(() => {
+    if (gameState.detailedElectionHistory.length === 0) return null;
+    return gameState.detailedElectionHistory[gameState.detailedElectionHistory.length - 1];
+  }, [gameState.detailedElectionHistory]);
+
+  const hasElectionData = gameState.detailedElectionHistory.length > 0;
+
+  // -- Phase change effects --
   useEffect(() => {
     if (prevPhaseRef.current !== gameState.phase) {
       prevPhaseRef.current = gameState.phase;
@@ -366,17 +483,15 @@ export function GameBoard({
       }
       if (gameState.phase === 'government_action') {
         setPendingAdjustments([]);
+        setExpandedPolicyId(null);
       }
-      if (gameState.phase === 'dilemma') {
-        setShowDilemmaModal(true);
-      }
-      if (gameState.phase === 'round_summary') {
-        setShowRoundSummary(true);
-      }
+      if (gameState.phase === 'dilemma') setShowDilemmaModal(true);
+      if (gameState.phase === 'round_summary') setShowRoundSummary(true);
+      if (gameState.phase === 'election_results') setShowElectionModal(true);
     }
   }, [gameState.phase, config.actionsPerRound]);
 
-  // ── Action slot handlers ───────────────────────────────────
+  // -- Handlers --
   const updateActionSlot = useCallback((index: number, partial: Partial<PlayerAction>) => {
     setActionSlots(prev => {
       const next = [...prev];
@@ -385,11 +500,8 @@ export function GameBoard({
     });
   }, []);
 
-  const handleSubmitActions = useCallback(() => {
-    onSubmitActions(actionSlots);
-  }, [actionSlots, onSubmitActions]);
+  const handleSubmitActions = useCallback(() => onSubmitActions(actionSlots), [actionSlots, onSubmitActions]);
 
-  // ── Policy adjustment handlers ─────────────────────────────
   const addAdjustment = useCallback((policyId: string, newValue: number) => {
     setPendingAdjustments(prev => {
       const existing = prev.findIndex(a => a.policyId === policyId);
@@ -407,76 +519,78 @@ export function GameBoard({
     setPendingAdjustments(prev => prev.filter(a => a.policyId !== policyId));
   }, []);
 
-  const handleSubmitAdjustments = useCallback(() => {
-    onSubmitAdjustments(pendingAdjustments);
-  }, [pendingAdjustments, onSubmitAdjustments]);
+  const handleSubmitAdjustments = useCallback(() => onSubmitAdjustments(pendingAdjustments), [pendingAdjustments, onSubmitAdjustments]);
 
-  // ── Seat click handler ─────────────────────────────────────
   const handleSeatClick = useCallback((seatId: string) => {
     setSelectedSeatId(prev => prev === seatId ? null : seatId);
   }, []);
 
-  // ── Computed costs ─────────────────────────────────────────
   const totalActionCost = useMemo(() => {
     return actionSlots.reduce((sum, a) => sum + getActionCost(a.type, config), 0);
   }, [actionSlots, config]);
 
+  const totalCapitalCost = useMemo(() => {
+    return pendingAdjustments.reduce((sum, adj) => {
+      const policy = gameState.policies[adj.policyId];
+      if (!policy) return sum;
+      const delta = Math.abs(adj.newValue - policy.currentValue);
+      return sum + Math.ceil(delta * 10);
+    }, 0);
+  }, [pendingAdjustments, gameState.policies]);
+
   // ============================================================
-  // RENDER: TOP DASHBOARD BAR
+  // TOP DASHBOARD BAR
   // ============================================================
 
   const renderDashboardBar = () => {
     const govLeader = governmentPlayer?.leader;
-    const govSeats = governmentPlayer?.seats ?? 0;
     const phaseLabel = PHASE_LABELS[gameState.phase] || 'Unknown';
     const phaseColor = PHASE_COLORS[gameState.phase] || 'bg-gray-400';
+    const b = gameState.budget;
+
+    const dashItems: { label: string; stat: StatDefinition | null; value: string; historyKey?: string; isGoodOverride?: boolean }[] = [
+      { label: 'GDP Growth', stat: gdpGrowth, value: gdpGrowth ? formatStatValue(gdpGrowth) : latestRoundSummary ? `${latestRoundSummary.gdpGrowthPercent.toFixed(1)}%` : '--', historyKey: 'gdp_growth' },
+      { label: 'Unemployment', stat: unemployment, value: unemployment ? formatStatValue(unemployment) : latestRoundSummary ? `${latestRoundSummary.unemploymentPercent.toFixed(1)}%` : '--', historyKey: 'unemployment' },
+      { label: 'Inflation', stat: inflation, value: inflation ? formatStatValue(inflation) : latestRoundSummary ? `${latestRoundSummary.inflationPercent.toFixed(1)}%` : '--', historyKey: 'inflation' },
+      { label: 'Debt', stat: null, value: formatBudget(b.nationalDebt) },
+      { label: 'Cash Rate', stat: null, value: `${b.cashRate.toFixed(2)}%` },
+      { label: 'AUD/USD', stat: null, value: b.exchangeRate.toFixed(4) },
+    ];
 
     return (
       <div className="h-14 bg-white border-b border-gray-200 flex items-center px-4 gap-6 shrink-0 shadow-sm z-20">
         {/* Left: Government info */}
         <div className="flex items-center gap-3 min-w-0">
-          {govLeader && (
-            <span className="text-2xl" title={govLeader.name}>{govLeader.portrait}</span>
-          )}
+          {govLeader && <span className="text-2xl" title={govLeader.name}>{govLeader.portrait}</span>}
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               {governmentPlayer && (
                 <>
                   <span className="font-semibold text-sm text-gray-900 truncate">{governmentPlayer.name}</span>
-                  <span
-                    className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded text-white"
-                    style={{ backgroundColor: governmentPlayer.color }}
-                  >
-                    Government
-                  </span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded text-white"
+                    style={{ backgroundColor: governmentPlayer.color }}>Government</span>
                 </>
               )}
             </div>
             <div className="flex items-center gap-2 text-xs text-gray-500">
-              {govLeader && <span>{govLeader.name} &middot; {govLeader.title}</span>}
-              <span className="font-mono font-medium text-gray-700">{govSeats}/{gameState.totalSeats}</span>
+              {govLeader && <span>{govLeader.name}</span>}
+              <span className="font-mono font-medium text-gray-700">
+                {governmentPlayer?.seats ?? 0}/{gameState.totalSeats}
+              </span>
             </div>
           </div>
         </div>
 
         {/* Center: Key stats */}
         <div className="flex-1 flex items-center justify-center gap-5">
-          {[
-            { label: 'GDP Growth', stat: gdpGrowth, fallbackValue: latestRoundSummary?.gdpGrowthPercent, fallbackDisplay: latestRoundSummary ? `${latestRoundSummary.gdpGrowthPercent > 0 ? '+' : ''}${latestRoundSummary.gdpGrowthPercent.toFixed(1)}%` : '--' },
-            { label: 'Unemployment', stat: unemployment, fallbackValue: latestRoundSummary?.unemploymentPercent, fallbackDisplay: latestRoundSummary ? `${latestRoundSummary.unemploymentPercent.toFixed(1)}%` : '--' },
-            { label: 'Inflation', stat: inflation, fallbackValue: latestRoundSummary?.inflationPercent, fallbackDisplay: latestRoundSummary ? `${latestRoundSummary.inflationPercent.toFixed(1)}%` : '--' },
-            { label: 'Debt', stat: null, fallbackValue: gameState.budget.nationalDebt, fallbackDisplay: formatBudget(gameState.budget.nationalDebt) },
-            { label: 'Deficit', stat: null, fallbackValue: gameState.budget.surplus, fallbackDisplay: formatBudget(gameState.budget.surplus) },
-          ].map((item, i) => {
-            const displayValue = item.stat ? formatStatValue(item.stat) : item.fallbackDisplay;
+          {dashItems.map((item, i) => {
             const delta = item.stat ? formatStatDelta(item.stat) : null;
-            const sparkData = item.stat && gameState.statHistory[item.stat.id];
-
+            const sparkData = item.historyKey ? gameState.statHistory[item.historyKey] : undefined;
             return (
               <div key={i} className="flex flex-col items-center min-w-0">
                 <span className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">{item.label}</span>
                 <div className="flex items-center gap-1">
-                  <span className="text-sm font-semibold text-gray-900 font-mono">{displayValue}</span>
+                  <span className="text-sm font-semibold text-gray-900 font-mono">{item.value}</span>
                   {delta && !delta.neutral && (
                     <span className={`text-[10px] font-bold ${delta.positive ? 'text-green-600' : 'text-red-500'}`}>
                       {delta.positive ? '\u25B2' : '\u25BC'} {delta.text}
@@ -484,38 +598,31 @@ export function GameBoard({
                   )}
                 </div>
                 {sparkData && sparkData.length > 1 && (
-                  <Sparkline data={sparkData} width={40} height={12} color={delta && !delta.neutral ? (delta.positive ? '#16a34a' : '#ef4444') : '#94a3b8'} />
+                  <Sparkline data={sparkData} width={40} height={12}
+                    color={delta && !delta.neutral ? (delta.positive ? '#16a34a' : '#ef4444') : '#94a3b8'} />
                 )}
               </div>
             );
           })}
         </div>
 
-        {/* Right: Round counter + phase */}
+        {/* Right: Round + Phase */}
         <div className="flex items-center gap-4 shrink-0">
           <div className="text-right">
             <div className="text-sm font-semibold text-gray-900">Round {gameState.round}/{gameState.totalRounds}</div>
             <div className="text-[11px] text-gray-500">
               {roundsUntilElection === 0 ? (
                 <span className="text-red-600 font-semibold">Election NOW</span>
-              ) : roundsUntilElection === Infinity ? (
-                'No elections'
-              ) : (
+              ) : roundsUntilElection === Infinity ? 'No elections' : (
                 `Election in ${roundsUntilElection} round${roundsUntilElection !== 1 ? 's' : ''}`
               )}
             </div>
           </div>
-          <span className={`${phaseColor} text-white text-xs font-bold px-2.5 py-1 rounded-md`}>
-            {phaseLabel}
-          </span>
+          <span className={`${phaseColor} text-white text-xs font-bold px-2.5 py-1 rounded-md`}>{phaseLabel}</span>
           {isHost && (
-            <button
-              onClick={onForceAdvance}
+            <button onClick={onForceAdvance}
               className="text-xs text-blue-600 hover:text-blue-800 font-medium hover:bg-blue-50 px-2 py-1 rounded transition-colors"
-              title="Force advance to next phase (host only)"
-            >
-              Skip
-            </button>
+              title="Force advance to next phase (host only)">Skip</button>
           )}
         </div>
       </div>
@@ -523,28 +630,26 @@ export function GameBoard({
   };
 
   // ============================================================
-  // RENDER: POLLING BAR
+  // POLLING BAR
   // ============================================================
 
   const renderPollingBar = () => (
     <div className="h-8 bg-gray-50 border-b border-gray-200 shrink-0">
-      <PollingBar
-        players={gameState.players}
-        projectedSeats={projectedSeats}
-        totalSeats={gameState.totalSeats}
-        majorityThreshold={config.majorityThreshold}
-      />
+      <PollingBar players={gameState.players} projectedSeats={projectedSeats}
+        totalSeats={gameState.totalSeats} majorityThreshold={config.majorityThreshold} />
     </div>
   );
 
   // ============================================================
-  // RENDER: LEFT SIDEBAR - Actions
+  // LEFT SIDEBAR -- Actions
   // ============================================================
 
   const renderLeftSidebar = () => {
+    const showPanel = gameState.phase === 'government_action' || gameState.phase === 'opposition_action' || gameState.phase === 'parliament_vote';
+    if (!showPanel) return null;
+
     return (
       <div className="w-[280px] shrink-0 bg-white border-r border-gray-200 flex flex-col overflow-hidden">
-        {/* Your Actions Panel */}
         <div className="flex-1 overflow-y-auto">
           <div className="p-3 border-b border-gray-100">
             <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Your Actions</h3>
@@ -553,62 +658,52 @@ export function GameBoard({
                 <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: currentPlayer.color }} />
                 <span className="text-sm font-semibold text-gray-800">{currentPlayer.name}</span>
                 <span className="text-xs text-gray-400 ml-auto font-mono">{formatFunds(currentPlayer.funds)}</span>
+                <span className="text-xs text-violet-500 font-mono" title="Political Capital">
+                  {currentPlayer.politicalCapital} PC
+                </span>
               </div>
             )}
           </div>
 
-          {/* Government action: Policy sliders */}
+          {/* GOVERNMENT ACTION PHASE */}
           {isGovernment && gameState.phase === 'government_action' && !currentPlayer?.submittedAdjustments && (
             <div className="p-3">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded">
-                  Adjust Policies ({pendingAdjustments.length}/{config.policyAdjustmentsPerRound})
+                  Adjustments ({pendingAdjustments.length}/{config.policyAdjustmentsPerRound})
                 </span>
+                <span className="text-[10px] text-violet-600 font-mono">Cost: {totalCapitalCost} PC</span>
               </div>
-              <div className="space-y-2 max-h-[320px] overflow-y-auto">
-                {policies.map(policy => {
-                  const adj = pendingAdjustments.find(a => a.policyId === policy.id);
-                  const adjValue = adj ? adj.newValue : policy.targetValue;
-                  return (
-                    <div key={policy.id} className="bg-gray-50 rounded-lg p-2 border border-gray-100">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs font-medium text-gray-700 truncate flex-1">{policy.icon} {policy.shortName}</span>
-                        <span className="text-[10px] text-gray-400 font-mono">{Math.round(adjValue * 100)}%</span>
-                        {adj && (
-                          <button
-                            onClick={() => removeAdjustment(policy.id)}
-                            className="ml-1 text-red-400 hover:text-red-600 text-xs"
-                          >
-                            &#x2715;
-                          </button>
-                        )}
+              {/* Pending adjustments */}
+              {pendingAdjustments.length > 0 && (
+                <div className="mb-3 space-y-1">
+                  {pendingAdjustments.map(adj => {
+                    const pol = gameState.policies[adj.policyId];
+                    if (!pol) return null;
+                    return (
+                      <div key={adj.policyId} className="flex items-center justify-between bg-amber-50 rounded px-2 py-1 border border-amber-100">
+                        <span className="text-xs text-amber-800 font-medium truncate flex-1">
+                          {pol.icon} {pol.shortName}
+                        </span>
+                        <span className="text-[10px] font-mono text-gray-500 mx-2">
+                          {Math.round(pol.currentValue * 100)}% &rarr; {Math.round(adj.newValue * 100)}%
+                        </span>
+                        <button onClick={() => removeAdjustment(adj.policyId)}
+                          className="text-red-400 hover:text-red-600 text-xs ml-1">&times;</button>
                       </div>
-                      <input
-                        type="range"
-                        min={0}
-                        max={100}
-                        value={Math.round(adjValue * 100)}
-                        onChange={e => addAdjustment(policy.id, Number(e.target.value) / 100)}
-                        className="w-full h-1.5 accent-blue-600"
-                      />
-                      <div className="flex justify-between text-[9px] text-gray-400 mt-0.5">
-                        <span>{policy.minLabel}</span>
-                        <span>{policy.maxLabel}</span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              <button
-                onClick={handleSubmitAdjustments}
-                className="w-full mt-3 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold py-2 rounded-lg transition-colors shadow-sm"
-              >
+                    );
+                  })}
+                </div>
+              )}
+              <p className="text-[10px] text-gray-400 mb-2">Go to the Policies tab to adjust sliders.</p>
+              <button onClick={handleSubmitAdjustments}
+                disabled={pendingAdjustments.length === 0}
+                className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white text-sm font-semibold py-2 rounded-lg transition-colors shadow-sm">
                 Submit Adjustments
               </button>
             </div>
           )}
 
-          {/* Government already submitted */}
           {isGovernment && gameState.phase === 'government_action' && currentPlayer?.submittedAdjustments && (
             <div className="p-4 text-center">
               <div className="text-green-600 text-2xl mb-1">&#x2713;</div>
@@ -616,26 +711,89 @@ export function GameBoard({
             </div>
           )}
 
-          {/* Opposition action: Action tiles */}
+          {/* PARLIAMENT VOTE PHASE */}
+          {gameState.phase === 'parliament_vote' && gameState.pendingBill && (() => {
+            const bill = gameState.pendingBill!;
+            const myVote = bill.votes[playerId];
+            const hasVoted = myVote && myVote !== 'pending';
+            return (
+              <div className="p-3">
+                <div className="bg-violet-50 border border-violet-200 rounded-lg p-3 mb-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-lg">{bill.icon}</span>
+                    <div>
+                      <h4 className="text-sm font-bold text-violet-900">{bill.name}</h4>
+                      <p className="text-[10px] text-violet-600">Proposed by {bill.proposedByName}</p>
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-600 mt-2 leading-relaxed">{bill.description}</p>
+                  {bill.effects.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {bill.effects.slice(0, 4).map((eff, i) => (
+                        <span key={i} className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${eff.delta >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                          {eff.targetId}: {eff.delta >= 0 ? '+' : ''}{(eff.delta * 100).toFixed(0)}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {/* Vote progress */}
+                <div className="flex items-center gap-3 mb-3 text-xs">
+                  <span className="text-green-700 font-bold">AYE: {bill.votesFor}</span>
+                  <span className="text-red-700 font-bold">NAY: {bill.votesAgainst}</span>
+                  <span className="text-gray-500">ABS: {bill.abstentions}</span>
+                </div>
+                {/* Other votes */}
+                <div className="space-y-1 mb-3">
+                  {gameState.players.filter(p => p.id !== playerId).map(p => {
+                    const v = bill.votes[p.id];
+                    const voteLabel = v === 'aye' ? 'AYE' : v === 'nay' ? 'NAY' : v === 'abstain' ? 'ABS' : '...';
+                    const voteColor = v === 'aye' ? 'text-green-700' : v === 'nay' ? 'text-red-700' : 'text-gray-400';
+                    return (
+                      <div key={p.id} className="flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: p.color }} />
+                          <span className="text-gray-700">{p.name}</span>
+                        </div>
+                        <span className={`font-bold ${voteColor}`}>{voteLabel}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+                {!hasVoted ? (
+                  <div className="flex gap-2">
+                    <button onClick={() => onSubmitBillVote(bill.id, 'aye')}
+                      className="flex-1 bg-green-600 hover:bg-green-700 text-white text-sm font-bold py-2 rounded-lg transition-colors">AYE</button>
+                    <button onClick={() => onSubmitBillVote(bill.id, 'nay')}
+                      className="flex-1 bg-red-600 hover:bg-red-700 text-white text-sm font-bold py-2 rounded-lg transition-colors">NAY</button>
+                    <button onClick={() => onSubmitBillVote(bill.id, 'abstain')}
+                      className="flex-1 bg-gray-400 hover:bg-gray-500 text-white text-sm font-bold py-2 rounded-lg transition-colors">ABSTAIN</button>
+                  </div>
+                ) : (
+                  <div className="text-center text-sm text-gray-500">
+                    You voted <span className="font-bold uppercase">{myVote}</span>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* OPPOSITION ACTION PHASE */}
           {!isGovernment && gameState.phase === 'opposition_action' && !currentPlayer?.submittedActions && (
             <div className="p-3">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded">
                   Actions ({actionSlots.length})
                 </span>
-                <span className="text-[10px] text-gray-400">
-                  Cost: {formatFunds(totalActionCost)}
-                </span>
+                <span className="text-[10px] text-gray-400">Cost: {formatFunds(totalActionCost)}</span>
               </div>
               <div className="space-y-2">
                 {actionSlots.map((slot, idx) => (
                   <div key={idx} className="bg-gray-50 rounded-lg p-2 border border-gray-100">
                     <div className="text-[10px] font-bold text-gray-400 mb-1">Action {idx + 1}</div>
-                    <select
-                      value={slot.type}
+                    <select value={slot.type}
                       onChange={e => updateActionSlot(idx, { type: e.target.value as ActionType })}
-                      className="w-full text-sm bg-white border border-gray-200 rounded px-2 py-1 text-gray-700 mb-1"
-                    >
+                      className="w-full text-sm bg-white border border-gray-200 rounded px-2 py-1 text-gray-700 mb-1">
                       {(Object.keys(ACTION_TYPE_INFO) as ActionType[]).map(at => (
                         <option key={at} value={at}>
                           {ACTION_TYPE_INFO[at].icon} {ACTION_TYPE_INFO[at].label}
@@ -644,14 +802,10 @@ export function GameBoard({
                       ))}
                     </select>
                     <p className="text-[10px] text-gray-400">{ACTION_TYPE_INFO[slot.type].description}</p>
-
-                    {/* Target selectors */}
                     {ACTION_TYPE_INFO[slot.type].needsTarget === 'voter_group' && (
-                      <select
-                        value={slot.targetGroupId || ''}
+                      <select value={slot.targetGroupId || ''}
                         onChange={e => updateActionSlot(idx, { targetGroupId: e.target.value || undefined })}
-                        className="w-full text-xs bg-white border border-gray-200 rounded px-2 py-1 mt-1 text-gray-700"
-                      >
+                        className="w-full text-xs bg-white border border-gray-200 rounded px-2 py-1 mt-1 text-gray-700">
                         <option value="">Select voter group...</option>
                         {gameState.voterGroups.map(vg => (
                           <option key={vg.id} value={vg.id}>{vg.icon} {vg.name}</option>
@@ -660,34 +814,26 @@ export function GameBoard({
                     )}
                     {ACTION_TYPE_INFO[slot.type].needsTarget === 'policy' && (
                       <>
-                        <select
-                          value={slot.targetPolicyId || ''}
+                        <select value={slot.targetPolicyId || ''}
                           onChange={e => updateActionSlot(idx, { targetPolicyId: e.target.value || undefined })}
-                          className="w-full text-xs bg-white border border-gray-200 rounded px-2 py-1 mt-1 text-gray-700"
-                        >
+                          className="w-full text-xs bg-white border border-gray-200 rounded px-2 py-1 mt-1 text-gray-700">
                           <option value="">Select policy...</option>
                           {policies.map(p => (
                             <option key={p.id} value={p.id}>{p.icon} {p.shortName}</option>
                           ))}
                         </select>
                         {slot.targetPolicyId && (
-                          <input
-                            type="range"
-                            min={0}
-                            max={100}
+                          <input type="range" min={0} max={100}
                             value={Math.round((slot.proposedValue ?? 0.5) * 100)}
                             onChange={e => updateActionSlot(idx, { proposedValue: Number(e.target.value) / 100 })}
-                            className="w-full h-1.5 accent-blue-600 mt-1"
-                          />
+                            className="w-full h-1.5 accent-blue-600 mt-1" />
                         )}
                       </>
                     )}
                     {ACTION_TYPE_INFO[slot.type].needsTarget === 'player' && (
-                      <select
-                        value={slot.targetPlayerId || ''}
+                      <select value={slot.targetPlayerId || ''}
                         onChange={e => updateActionSlot(idx, { targetPlayerId: e.target.value || undefined })}
-                        className="w-full text-xs bg-white border border-gray-200 rounded px-2 py-1 mt-1 text-gray-700"
-                      >
+                        className="w-full text-xs bg-white border border-gray-200 rounded px-2 py-1 mt-1 text-gray-700">
                         <option value="">Select party...</option>
                         {gameState.players.filter(p => p.id !== playerId).map(p => (
                           <option key={p.id} value={p.id}>{p.name}</option>
@@ -695,11 +841,9 @@ export function GameBoard({
                       </select>
                     )}
                     {ACTION_TYPE_INFO[slot.type].needsTarget === 'crisis' && (
-                      <select
-                        value={slot.targetSituationId || ''}
+                      <select value={slot.targetSituationId || ''}
                         onChange={e => updateActionSlot(idx, { targetSituationId: e.target.value || undefined })}
-                        className="w-full text-xs bg-white border border-gray-200 rounded px-2 py-1 mt-1 text-gray-700"
-                      >
+                        className="w-full text-xs bg-white border border-gray-200 rounded px-2 py-1 mt-1 text-gray-700">
                         <option value="">Select issue...</option>
                         {gameState.situations.filter(s => s.severityType === 'crisis' || s.severityType === 'problem').map(s => (
                           <option key={s.definitionId} value={s.definitionId}>{s.icon} {s.name}</option>
@@ -712,11 +856,9 @@ export function GameBoard({
                   </div>
                 ))}
               </div>
-              <button
-                onClick={handleSubmitActions}
+              <button onClick={handleSubmitActions}
                 disabled={totalActionCost > (currentPlayer?.funds ?? 0)}
-                className="w-full mt-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white text-sm font-semibold py-2 rounded-lg transition-colors shadow-sm"
-              >
+                className="w-full mt-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white text-sm font-semibold py-2 rounded-lg transition-colors shadow-sm">
                 Submit Actions
               </button>
               {totalActionCost > (currentPlayer?.funds ?? 0) && (
@@ -725,65 +867,89 @@ export function GameBoard({
             </div>
           )}
 
-          {/* Opposition already submitted */}
           {!isGovernment && gameState.phase === 'opposition_action' && currentPlayer?.submittedActions && (
             <div className="p-4 text-center">
               <div className="text-green-600 text-2xl mb-1">&#x2713;</div>
               <p className="text-sm text-gray-500">Actions submitted. Waiting for others...</p>
             </div>
           )}
+        </div>
+      </div>
+    );
+  };
 
-          {/* Non-action phases: Show status */}
-          {gameState.phase !== 'government_action' && gameState.phase !== 'opposition_action' && (
-            <div className="p-3">
-              <div className="bg-gray-50 rounded-lg p-3 text-center border border-gray-100">
-                <p className="text-xs text-gray-500">
-                  {gameState.phase === 'simulation' && 'Policies are taking effect...'}
-                  {gameState.phase === 'media_cycle' && 'Media is reporting...'}
-                  {gameState.phase === 'election' && 'The nation votes!'}
-                  {gameState.phase === 'election_results' && 'Counting the votes...'}
-                  {gameState.phase === 'dilemma' && (isGovernment ? 'You must resolve a dilemma!' : 'Government is facing a dilemma...')}
-                  {gameState.phase === 'round_summary' && 'Reviewing the round...'}
-                  {gameState.phase === 'waiting' && 'Waiting for game to start...'}
-                  {gameState.phase === 'game_over' && 'The game has ended.'}
-                </p>
+  // ============================================================
+  // TAB: DASHBOARD
+  // ============================================================
+
+  const renderDashboardTab = () => {
+    const b = gameState.budget;
+    return (
+      <div className="p-4 grid grid-cols-3 gap-4">
+        {/* LEFT COLUMN: Policy changes, bill votes, situations */}
+        <div className="space-y-4">
+          {/* Government adjustments this round */}
+          {gameState.governmentAdjustments.length > 0 && (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+              <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Policy Changes This Round</h3>
+              <div className="space-y-1.5">
+                {gameState.governmentAdjustments.map((adj, i) => {
+                  const pol = gameState.policies[adj.policyId];
+                  return (
+                    <div key={i} className="flex items-center justify-between text-sm">
+                      <span className="text-gray-700">{pol?.icon} {pol?.shortName || adj.policyId}</span>
+                      <span className="font-mono text-xs text-blue-700 font-bold">{Math.round(adj.newValue * 100)}%</span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
 
-          {/* Active Situations */}
-          {gameState.situations.length > 0 && (
-            <div className="p-3 border-t border-gray-100">
-              <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Active Situations</h4>
-              <div className="space-y-1">
-                {gameState.situations.map(sit => (
-                  <div
-                    key={sit.definitionId}
-                    className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs border ${SEVERITY_COLORS[sit.severityType] || SEVERITY_COLORS.neutral}`}
-                  >
-                    <span>{sit.icon}</span>
-                    <span className="font-medium truncate">{sit.name}</span>
-                    <span className="ml-auto text-[10px] opacity-70">R{sit.roundActivated}</span>
+          {/* Recent bills */}
+          {gameState.billHistory.length > 0 && (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+              <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Recent Bills</h3>
+              <div className="space-y-1.5">
+                {gameState.billHistory.slice(-5).reverse().map(bill => (
+                  <div key={bill.id} className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-1.5 truncate flex-1">
+                      <span>{bill.icon}</span>
+                      <span className="text-gray-700 truncate">{bill.name}</span>
+                    </div>
+                    <span className={`font-bold px-1.5 py-0.5 rounded text-[10px] ${bill.result === 'passed' ? 'bg-green-100 text-green-700' : bill.result === 'defeated' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-500'}`}>
+                      {bill.result === 'passed' ? 'PASSED' : bill.result === 'defeated' ? 'DEFEATED' : 'PENDING'}
+                    </span>
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Media Headlines */}
+          {/* Active situations */}
+          {gameState.situations.length > 0 && (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+              <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Active Situations</h3>
+              <div className="space-y-1.5">
+                {gameState.situations.map(sit => (
+                  <div key={sit.definitionId}
+                    className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs border ${SEVERITY_COLORS[sit.severityType] || SEVERITY_COLORS.neutral}`}>
+                    <span>{sit.icon}</span>
+                    <span className="font-medium truncate flex-1">{sit.name}</span>
+                    <span className="text-[10px] opacity-70">R{sit.roundActivated}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Media headlines */}
           {gameState.mediaFocus.length > 0 && (
-            <div className="p-3 border-t border-gray-100">
-              <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Media Headlines</h4>
-              <div className="space-y-1">
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+              <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Media Headlines</h3>
+              <div className="space-y-1.5">
                 {gameState.mediaFocus.map((mf, i) => (
-                  <div
-                    key={i}
-                    className={`px-2 py-1.5 rounded text-xs border ${
-                      mf.sentiment === 'negative' ? 'bg-red-50 border-red-100 text-red-700' :
-                      mf.sentiment === 'positive' ? 'bg-green-50 border-green-100 text-green-700' :
-                      'bg-gray-50 border-gray-100 text-gray-600'
-                    }`}
-                  >
+                  <div key={i} className={`px-2 py-1.5 rounded text-xs border ${mf.sentiment === 'negative' ? 'bg-red-50 border-red-100 text-red-700' : mf.sentiment === 'positive' ? 'bg-green-50 border-green-100 text-green-700' : 'bg-gray-50 border-gray-100 text-gray-600'}`}>
                     <p className="font-medium leading-snug">{mf.headline}</p>
                     <span className="text-[10px] opacity-60">{mf.roundsRemaining}r left</span>
                   </div>
@@ -792,307 +958,253 @@ export function GameBoard({
             </div>
           )}
         </div>
-      </div>
-    );
-  };
 
-  // ============================================================
-  // RENDER: CENTER CONTENT (Tabs)
-  // ============================================================
-
-  const renderCenterContent = () => {
-    return (
-      <div className="flex-1 flex flex-col min-w-0 bg-gray-50 overflow-hidden">
-        {/* Tab Bar */}
-        <div className="flex items-center bg-white border-b border-gray-200 px-3 h-9 shrink-0">
-          {TAB_CONFIG.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`px-4 py-1.5 text-xs font-semibold rounded-t transition-colors relative ${
-                activeTab === tab.id
-                  ? 'text-blue-600 bg-blue-50'
-                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-              }`}
-            >
-              {tab.label}
-              {activeTab === tab.id && (
-                <div className="absolute bottom-0 left-2 right-2 h-0.5 bg-blue-600 rounded-full" />
-              )}
-            </button>
-          ))}
-        </div>
-
-        {/* Tab Content */}
-        <div className="flex-1 overflow-auto">
-          {activeTab === 'web' && (
-            <PolicyWeb
-              policies={gameState.policies}
-              stats={gameState.stats}
-              situations={gameState.situations}
-              voterGroups={gameState.voterGroups}
-              isGovernment={isGovernment}
-              onPolicyAdjust={isGovernment && gameState.phase === 'government_action' ? addAdjustment : undefined}
-              selectedNodeId={selectedNodeId}
-              onSelectNode={setSelectedNodeId}
-            />
-          )}
-          {activeTab === 'chamber' && (
-            <Chamber
-              gameState={gameState}
-              playerId={playerId}
-              selectedSeatId={selectedSeatId}
-              onSeatClick={handleSeatClick}
-            />
-          )}
-          {activeTab === 'map' && (
-            <AustraliaMapView
-              gameState={gameState}
-              playerId={playerId}
-              selectedSeatId={selectedSeatId}
-              onSeatClick={handleSeatClick}
-            />
-          )}
-          {activeTab === 'economy' && renderEconomyTab()}
-        </div>
-      </div>
-    );
-  };
-
-  // ============================================================
-  // RENDER: ECONOMY TAB
-  // ============================================================
-
-  const renderEconomyTab = () => {
-    const b = gameState.budget;
-    return (
-      <div className="p-4 space-y-4">
-        {/* Budget Summary */}
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-100">
-            <h3 className="text-sm font-bold text-gray-800">Federal Budget</h3>
-          </div>
-          <div className="grid grid-cols-3 divide-x divide-gray-100">
-            {[
-              { label: 'Revenue', value: b.totalRevenue, color: 'text-green-700' },
-              { label: 'Expenditure', value: b.totalExpenditure, color: 'text-red-700' },
-              { label: 'Surplus/Deficit', value: b.surplus, color: b.surplus >= 0 ? 'text-green-700' : 'text-red-700' },
-            ].map((item, i) => (
-              <div key={i} className="px-4 py-3 text-center">
-                <div className="text-[10px] text-gray-400 uppercase tracking-wider mb-1">{item.label}</div>
-                <div className={`text-lg font-bold font-mono ${item.color}`}>{formatBudget(item.value)}</div>
-              </div>
-            ))}
-          </div>
-          <div className="grid grid-cols-3 divide-x divide-gray-100 border-t border-gray-100">
-            {[
-              { label: 'National Debt', value: formatBudget(b.nationalDebt) },
-              { label: 'Debt to GDP', value: `${b.debtToGDP.toFixed(1)}%` },
-              { label: 'Nominal GDP', value: formatBudget(b.gdpNominal) },
-            ].map((item, i) => (
-              <div key={i} className="px-4 py-3 text-center">
-                <div className="text-[10px] text-gray-400 uppercase tracking-wider mb-1">{item.label}</div>
-                <div className="text-sm font-semibold text-gray-800 font-mono">{item.value}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Stat Detail Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-          {stats.map(stat => {
-            const delta = formatStatDelta(stat);
-            const historyData = gameState.statHistory[stat.id];
-            return (
-              <div key={stat.id} className="bg-white rounded-xl border border-gray-200 shadow-sm p-3">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs text-gray-500">{stat.icon} {stat.name}</span>
-                  {!delta.neutral && (
-                    <span className={`text-[10px] font-bold ${delta.positive ? 'text-green-600' : 'text-red-500'}`}>
-                      {delta.text}
-                    </span>
-                  )}
+        {/* CENTER COLUMN: Economy overview */}
+        <div className="space-y-4">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Economy Overview</h3>
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { label: 'GDP Nominal', value: formatBudget(b.gdpNominal) },
+                { label: 'Surplus/Deficit', value: formatBudget(b.surplus), color: b.surplus >= 0 ? 'text-green-700' : 'text-red-600' },
+                { label: 'Revenue', value: formatBudget(b.totalRevenue), color: 'text-green-700' },
+                { label: 'Expenditure', value: formatBudget(b.totalExpenditure), color: 'text-red-600' },
+                { label: 'Trade Balance', value: formatBudget(b.tradeBalance), color: b.tradeBalance >= 0 ? 'text-green-700' : 'text-red-600' },
+                { label: 'Wage Growth', value: `${b.wageGrowth.toFixed(1)}%` },
+                { label: 'Housing Index', value: b.housingIndex.toFixed(0) },
+                { label: 'CPI', value: b.consumerPriceIndex.toFixed(1) },
+              ].map((item, i) => (
+                <div key={i} className="bg-gray-50 rounded-lg px-3 py-2">
+                  <div className="text-[10px] text-gray-400 uppercase">{item.label}</div>
+                  <div className={`text-sm font-bold font-mono ${item.color || 'text-gray-800'}`}>{item.value}</div>
                 </div>
-                <div className="text-xl font-bold text-gray-900 font-mono">{formatStatValue(stat)}</div>
-                {historyData && historyData.length > 1 && (
-                  <div className="mt-2">
-                    <Sparkline
-                      data={historyData}
-                      width={100}
-                      height={24}
-                      color={!delta.neutral ? (delta.positive ? '#16a34a' : '#ef4444') : '#94a3b8'}
-                    />
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    );
-  };
-
-  // ============================================================
-  // RENDER: RIGHT SIDEBAR - Parliament
-  // ============================================================
-
-  const renderRightSidebar = () => {
-    return (
-      <div className="w-[260px] shrink-0 bg-white border-l border-gray-200 flex flex-col overflow-hidden">
-        {/* Parliament Panel */}
-        <div className="flex-1 overflow-y-auto">
-          <div className="p-3 border-b border-gray-100">
-            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Parliament</h3>
+              ))}
+            </div>
           </div>
-          <div className="p-3 space-y-2">
-            {gameState.players
-              .sort((a, b) => b.seats - a.seats)
-              .map(player => {
-                const approval = gameState.currentPolling?.approvalRatings[player.id];
-                const projSeats = projectedSeats[player.id] ?? player.seats;
-                const seatDelta = projSeats - player.seats;
-                const isCurrentPlayer = player.id === playerId;
-
+          {/* Sectoral GDP */}
+          {b.sectoralGDP && (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+              <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Sectoral GDP</h3>
+              {(() => {
+                const sectors = Object.entries(b.sectoralGDP) as [EconomicSector, number][];
+                const total = sectors.reduce((s, [, v]) => s + v, 0);
+                const sorted = sectors.sort((a, b) => b[1] - a[1]);
                 return (
-                  <div
-                    key={player.id}
-                    className={`rounded-lg border p-2.5 transition-colors ${
-                      isCurrentPlayer ? 'border-blue-200 bg-blue-50/50' : 'border-gray-100 bg-gray-50/50'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      {player.leader && (
-                        <span className="text-lg">{player.leader.portrait}</span>
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: player.color }} />
-                          <span className="text-xs font-bold text-gray-800 truncate">{player.name}</span>
-                          {player.isGovernment && (
-                            <span className="text-[9px] bg-amber-100 text-amber-700 px-1 py-0.5 rounded font-bold">GOV</span>
-                          )}
-                          {isCurrentPlayer && (
-                            <span className="text-[9px] bg-blue-100 text-blue-700 px-1 py-0.5 rounded font-bold">YOU</span>
-                          )}
-                        </div>
-                        {player.leader && (
-                          <p className="text-[10px] text-gray-400 truncate">{player.leader.name} &middot; {player.leader.title}</p>
-                        )}
-                      </div>
+                  <div className="space-y-1.5">
+                    {/* Stacked bar */}
+                    <div className="flex h-5 rounded-md overflow-hidden">
+                      {sorted.map(([sector, val]) => {
+                        const pct = total > 0 ? (val / total) * 100 : 0;
+                        if (pct < 1) return null;
+                        return (
+                          <div key={sector} style={{ width: `${pct}%`, backgroundColor: SECTOR_COLORS[sector] }}
+                            className="h-full" title={`${SECTOR_LABELS[sector]}: ${formatBudget(val)}`} />
+                        );
+                      })}
                     </div>
-                    <div className="flex items-center gap-3 mt-1.5 text-xs">
-                      <div>
-                        <span className="text-gray-400">Seats </span>
-                        <span className="font-bold text-gray-800 font-mono">{player.seats}</span>
-                        {seatDelta !== 0 && (
-                          <span className={`ml-0.5 text-[10px] font-bold ${seatDelta > 0 ? 'text-green-600' : 'text-red-500'}`}>
-                            ({seatDelta > 0 ? '+' : ''}{seatDelta})
-                          </span>
-                        )}
-                      </div>
-                      <div>
-                        <span className="text-gray-400">Funds </span>
-                        <span className="font-medium text-gray-700 font-mono">{formatFunds(player.funds)}</span>
-                      </div>
-                      {approval !== undefined && (
-                        <div>
-                          <span className="text-gray-400">App. </span>
-                          <span className={`font-bold font-mono ${approval >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                            {approval >= 0 ? '+' : ''}{(approval * 100).toFixed(0)}
-                          </span>
+                    {/* Legend */}
+                    <div className="grid grid-cols-2 gap-1 mt-2">
+                      {sorted.slice(0, 8).map(([sector, val]) => (
+                        <div key={sector} className="flex items-center gap-1.5 text-xs">
+                          <span className="w-2 h-2 rounded-sm shrink-0" style={{ backgroundColor: SECTOR_COLORS[sector] }} />
+                          <span className="text-gray-600 truncate">{SECTOR_LABELS[sector]}</span>
+                          <span className="text-gray-400 font-mono ml-auto">{formatBudget(val)}</span>
                         </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+        </div>
+
+        {/* RIGHT COLUMN: Voter groups */}
+        <div className="space-y-4">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Voter Groups</h3>
+            <div className="space-y-3">
+              {gameState.voterGroups.map(vg => {
+                const happinessDelta = vg.happiness - vg.prevHappiness;
+                return (
+                  <div key={vg.id} className="border border-gray-100 rounded-lg p-2.5">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span className="text-sm">{vg.icon}</span>
+                      <span className="text-xs font-semibold text-gray-800 flex-1 truncate">{vg.name}</span>
+                      {Math.abs(happinessDelta) > 0.01 && (
+                        <span className={`text-[10px] font-bold ${happinessDelta > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                          {happinessDelta > 0 ? '\u25B2' : '\u25BC'}{Math.abs(happinessDelta * 100).toFixed(0)}
+                        </span>
                       )}
+                    </div>
+                    <HappinessBar value={vg.happiness} height={6} />
+                    <div className="flex items-center gap-1 mt-1.5 flex-wrap">
+                      {gameState.players.map(p => {
+                        const share = vg.partyPolling[p.id] ?? 0;
+                        if (share < 0.01) return null;
+                        return (
+                          <span key={p.id} className="flex items-center gap-0.5 text-[10px]">
+                            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: p.color }} />
+                            <span className="text-gray-500">{(share * 100).toFixed(0)}%</span>
+                          </span>
+                        );
+                      })}
                     </div>
                   </div>
                 );
               })}
-          </div>
-
-          {/* Last Round summary collapsible */}
-          {latestRoundSummary && gameState.phase !== 'round_summary' && (
-            <div className="border-t border-gray-100">
-              <button
-                onClick={() => setLastRoundCollapsed(p => !p)}
-                className="w-full px-3 py-2 flex items-center justify-between text-xs font-bold text-gray-500 uppercase tracking-wider hover:bg-gray-50 transition-colors"
-              >
-                <span>Last Round</span>
-                <span className="text-gray-400">{lastRoundCollapsed ? '\u25BC' : '\u25B2'}</span>
-              </button>
-              {!lastRoundCollapsed && (
-                <div className="px-3 pb-3 space-y-2">
-                  {latestRoundSummary.mediaHeadlines.length > 0 && (
-                    <div>
-                      <p className="text-[10px] text-gray-400 mb-1">Headlines</p>
-                      {latestRoundSummary.mediaHeadlines.slice(0, 3).map((h, i) => (
-                        <p key={i} className="text-xs text-gray-600 leading-snug">&bull; {h}</p>
-                      ))}
-                    </div>
-                  )}
-                  {latestRoundSummary.policiesChanged.length > 0 && (
-                    <div>
-                      <p className="text-[10px] text-gray-400 mb-1">Policy Changes</p>
-                      {latestRoundSummary.policiesChanged.map((pc, i) => (
-                        <p key={i} className="text-xs text-gray-600">
-                          {pc.policyName}: {Math.round(pc.oldValue * 100)}% &rarr; {Math.round(pc.newValue * 100)}%
-                        </p>
-                      ))}
-                    </div>
-                  )}
-                  {latestRoundSummary.oppositionActions.length > 0 && (
-                    <div>
-                      <p className="text-[10px] text-gray-400 mb-1">Opposition Moves</p>
-                      {latestRoundSummary.oppositionActions.map((oa, i) => (
-                        <div key={i} className="text-xs text-gray-600">
-                          <span className="font-medium">{oa.playerName}</span>: {oa.actions.join(', ')}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
-          )}
+          </div>
         </div>
       </div>
     );
   };
 
   // ============================================================
-  // RENDER: BOTTOM VOTER STRIP
+  // TAB: POLICIES
   // ============================================================
 
-  const renderVoterStrip = () => {
+  const renderPoliciesTab = () => {
+    const canAdjust = isGovernment && gameState.phase === 'government_action' && !currentPlayer?.submittedAdjustments;
+    const categories = Object.keys(policiesByCategory) as PolicyCategory[];
+
     return (
-      <div className="h-[100px] bg-white border-t border-gray-200 shrink-0 flex items-center overflow-x-auto px-3 gap-2">
-        {gameState.voterGroups.map(vg => {
-          const myPolling = vg.partyPolling[playerId] ?? 0;
-          const happinessColor = vg.happiness >= 0.1 ? 'border-green-200 bg-green-50/30' :
-                                 vg.happiness <= -0.1 ? 'border-red-200 bg-red-50/30' :
-                                 'border-gray-200 bg-gray-50/30';
-          const happinessDelta = vg.happiness - vg.prevHappiness;
+      <div className="p-4 space-y-6">
+        {/* Pending adjustments banner */}
+        {canAdjust && pendingAdjustments.length > 0 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center justify-between">
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="text-xs font-bold text-amber-800">
+                {pendingAdjustments.length}/{config.policyAdjustmentsPerRound} adjustments pending
+              </span>
+              {pendingAdjustments.map(adj => {
+                const pol = gameState.policies[adj.policyId];
+                return pol ? (
+                  <span key={adj.policyId} className="text-xs bg-white border border-amber-200 rounded px-2 py-0.5 text-amber-700">
+                    {pol.icon} {pol.shortName}: {Math.round(adj.newValue * 100)}%
+                  </span>
+                ) : null;
+              })}
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-violet-600 font-mono">Cost: {totalCapitalCost} PC</span>
+              <button onClick={handleSubmitAdjustments}
+                className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-4 py-1.5 rounded-lg transition-colors">
+                Submit
+              </button>
+            </div>
+          </div>
+        )}
+
+        {categories.map(cat => {
+          const catPolicies = policiesByCategory[cat];
+          if (!catPolicies || catPolicies.length === 0) return null;
+          const catInfo = CATEGORY_LABELS[cat];
 
           return (
-            <div
-              key={vg.id}
-              className={`shrink-0 w-[140px] rounded-lg border p-2 ${happinessColor} transition-colors`}
-            >
-              <div className="flex items-center gap-1.5 mb-1">
-                <span className="text-sm">{vg.icon}</span>
-                <span className="text-[11px] font-semibold text-gray-800 truncate">{vg.name}</span>
-              </div>
-              <HappinessBar value={vg.happiness} height={6} />
-              <div className="flex items-center justify-between mt-1">
-                <span className="text-[10px] text-gray-500">
-                  You: <span className="font-bold text-gray-700">{(myPolling * 100).toFixed(0)}%</span>
-                </span>
-                {Math.abs(happinessDelta) > 0.01 && (
-                  <span className={`text-[10px] font-bold ${happinessDelta > 0 ? 'text-green-600' : 'text-red-500'}`}>
-                    {happinessDelta > 0 ? '\u25B2' : '\u25BC'} {Math.abs(happinessDelta * 100).toFixed(0)}
-                  </span>
-                )}
-              </div>
-              <div className="text-[9px] text-gray-400 mt-0.5">
-                Pop: {(vg.population * 100).toFixed(0)}% &middot; Turnout: {(vg.turnout * 100).toFixed(0)}%
+            <div key={cat}>
+              <h3 className="text-sm font-bold text-gray-800 mb-2 flex items-center gap-2">
+                <span>{catInfo.icon}</span> {catInfo.label}
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {catPolicies.map(policy => {
+                  const adj = pendingAdjustments.find(a => a.policyId === policy.id);
+                  const displayValue = adj ? adj.newValue : policy.targetValue;
+                  const isExpanded = expandedPolicyId === policy.id;
+                  const delta = policy.targetValue - policy.currentValue;
+                  const shadowValues = gameState.players
+                    .filter(p => !p.isGovernment && p.shadowPolicies[policy.id] !== undefined)
+                    .map(p => ({ player: p, value: p.shadowPolicies[policy.id] }));
+
+                  return (
+                    <div key={policy.id}
+                      className={`bg-white rounded-xl border shadow-sm transition-all ${isExpanded ? 'border-blue-300 ring-1 ring-blue-100' : 'border-gray-200 hover:border-gray-300'} ${adj ? 'ring-2 ring-amber-200' : ''}`}>
+                      <div className="p-3 cursor-pointer" onClick={() => setExpandedPolicyId(isExpanded ? null : policy.id)}>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-xs font-semibold text-gray-800 flex items-center gap-1.5">
+                            <span>{policy.icon}</span> {policy.name}
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-mono font-bold text-gray-900">{Math.round(displayValue * 100)}%</span>
+                            {Math.abs(delta) > 0.01 && (
+                              <span className={`text-[10px] font-bold ${delta > 0 ? 'text-blue-600' : 'text-orange-600'}`}>
+                                {delta > 0 ? '\u25B2' : '\u25BC'}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        {/* Progress bar */}
+                        <div className="relative h-2 bg-gray-100 rounded-full overflow-hidden">
+                          <div className="absolute h-full bg-blue-500 rounded-full transition-all duration-300"
+                            style={{ width: `${displayValue * 100}%` }} />
+                          {adj && (
+                            <div className="absolute h-full bg-amber-400 rounded-full opacity-50"
+                              style={{ width: `${adj.newValue * 100}%` }} />
+                          )}
+                        </div>
+                        <div className="flex justify-between text-[9px] text-gray-400 mt-0.5">
+                          <span>{policy.minLabel}</span>
+                          <span>{policy.maxLabel}</span>
+                        </div>
+                        {/* Shadow policy indicators */}
+                        {shadowValues.length > 0 && (
+                          <div className="flex gap-1 mt-1">
+                            {shadowValues.map(sv => (
+                              <span key={sv.player.id} className="text-[9px] px-1 py-0.5 rounded"
+                                style={{ backgroundColor: sv.player.color + '20', color: sv.player.color }}>
+                                {sv.player.name}: {Math.round(sv.value * 100)}%
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      {/* Expanded view */}
+                      {isExpanded && (
+                        <div className="border-t border-gray-100 p-3">
+                          <p className="text-xs text-gray-500 mb-2 leading-relaxed">{policy.description}</p>
+                          <div className="text-[10px] text-gray-400 mb-2">
+                            Cost per point: <span className="font-mono">{formatBudget(policy.costPerPoint)}</span>
+                            {policy.implementationDelay > 0 && (
+                              <span className="ml-2">Delay: {policy.implementationDelay} rounds</span>
+                            )}
+                          </div>
+                          {canAdjust && (
+                            <div className="mt-2">
+                              <input type="range" min={0} max={100}
+                                value={Math.round(displayValue * 100)}
+                                onChange={e => addAdjustment(policy.id, Number(e.target.value) / 100)}
+                                className="w-full h-2 accent-blue-600" />
+                              <div className="flex justify-between items-center mt-1">
+                                <span className="text-[10px] text-gray-400">{policy.minLabel}</span>
+                                <span className="text-xs font-mono font-bold text-blue-700">{Math.round(displayValue * 100)}%</span>
+                                <span className="text-[10px] text-gray-400">{policy.maxLabel}</span>
+                              </div>
+                              {adj && (
+                                <button onClick={(e) => { e.stopPropagation(); removeAdjustment(policy.id); }}
+                                  className="mt-1 text-xs text-red-500 hover:text-red-700 transition-colors">
+                                  Remove adjustment
+                                </button>
+                              )}
+                            </div>
+                          )}
+                          {/* Effects preview */}
+                          {policy.effects.length > 0 && (
+                            <div className="mt-2">
+                              <div className="text-[10px] text-gray-400 mb-1">Effects:</div>
+                              <div className="flex flex-wrap gap-1">
+                                {policy.effects.slice(0, 6).map((eff, i) => (
+                                  <span key={i} className={`text-[10px] px-1.5 py-0.5 rounded ${eff.multiplier >= 0 ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                                    {eff.targetId} {eff.multiplier >= 0 ? '+' : ''}{(eff.multiplier * 100).toFixed(0)}%
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           );
@@ -1102,17 +1214,463 @@ export function GameBoard({
   };
 
   // ============================================================
-  // RENDER: ROUND SUMMARY MODAL
+  // TAB: ECONOMY
   // ============================================================
+
+  const renderEconomyTab = () => {
+    const b = gameState.budget;
+    const roundLabels = gameState.budgetHistory.map((_, i) => `R${i + 1}`);
+
+    // Build series from stat history
+    const gdpSeries = gameState.statHistory['gdp_growth'] || [];
+    const unempSeries = gameState.statHistory['unemployment'] || [];
+    const inflSeries = gameState.statHistory['inflation'] || [];
+
+    // Budget history series
+    const debtToGdpSeries = gameState.budgetHistory.map(bh => bh.debtToGDP);
+    const budgetLabels = gameState.budgetHistory.map((_, i) => `R${i + 1}`);
+
+    const maxRevenue = Math.max(...(b.revenueBreakdown || []).map(r => r.amount), 1);
+    const maxExpenditure = Math.max(...(b.expenditureBreakdown || []).map(r => r.amount), 1);
+
+    return (
+      <div className="p-4 space-y-4">
+        {/* Key indicators */}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+          <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Key Indicators</h3>
+          <div className="grid grid-cols-5 gap-3">
+            {[
+              { label: 'Cash Rate', value: `${b.cashRate.toFixed(2)}%` },
+              { label: 'Exchange Rate', value: `A$1 = US$${b.exchangeRate.toFixed(4)}` },
+              { label: 'Wage Growth', value: `${b.wageGrowth.toFixed(1)}%`, color: b.wageGrowth >= 0 ? 'text-green-700' : 'text-red-600' },
+              { label: 'Housing Index', value: b.housingIndex.toFixed(0) },
+              { label: 'CPI', value: b.consumerPriceIndex.toFixed(1) },
+            ].map((item, i) => (
+              <div key={i} className="bg-gray-50 rounded-lg px-3 py-2 text-center">
+                <div className="text-[10px] text-gray-400 uppercase">{item.label}</div>
+                <div className={`text-sm font-bold font-mono ${item.color || 'text-gray-800'}`}>{item.value}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Charts row */}
+        <div className="grid grid-cols-2 gap-4">
+          {/* GDP, Unemployment, Inflation chart */}
+          {(gdpSeries.length > 1 || unempSeries.length > 1) && (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+              <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Economic Trends</h3>
+              <LineChart
+                series={[
+                  ...(gdpSeries.length > 1 ? [{ data: gdpSeries, color: '#16a34a', label: 'GDP Growth' }] : []),
+                  ...(unempSeries.length > 1 ? [{ data: unempSeries, color: '#dc2626', label: 'Unemployment' }] : []),
+                  ...(inflSeries.length > 1 ? [{ data: inflSeries, color: '#d97706', label: 'Inflation' }] : []),
+                ]}
+                labels={roundLabels.length > 0 ? roundLabels : undefined}
+                width={440}
+                height={200}
+              />
+            </div>
+          )}
+
+          {/* Debt-to-GDP chart */}
+          {debtToGdpSeries.length > 1 && (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+              <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Debt to GDP Ratio</h3>
+              <LineChart
+                series={[{ data: debtToGdpSeries, color: '#7c3aed', label: 'Debt/GDP %' }]}
+                labels={budgetLabels}
+                width={440}
+                height={200}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Budget breakdown */}
+        <div className="grid grid-cols-2 gap-4">
+          {b.revenueBreakdown && b.revenueBreakdown.length > 0 && (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+              <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">
+                Revenue Breakdown <span className="text-green-600 font-mono">{formatBudget(b.totalRevenue)}</span>
+              </h3>
+              <HorizontalBarChart
+                items={b.revenueBreakdown.map(r => ({
+                  label: r.name, value: r.amount, color: '#16a34a', change: r.change,
+                }))}
+                maxValue={maxRevenue}
+              />
+            </div>
+          )}
+          {b.expenditureBreakdown && b.expenditureBreakdown.length > 0 && (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+              <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">
+                Expenditure Breakdown <span className="text-red-600 font-mono">{formatBudget(b.totalExpenditure)}</span>
+              </h3>
+              <HorizontalBarChart
+                items={b.expenditureBreakdown.map(r => ({
+                  label: r.name, value: r.amount, color: '#dc2626', change: r.change,
+                }))}
+                maxValue={maxExpenditure}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Sectoral GDP */}
+        {b.sectoralGDP && (
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Sectoral GDP Contribution</h3>
+            {(() => {
+              const sectors = Object.entries(b.sectoralGDP) as [EconomicSector, number][];
+              const maxSector = Math.max(...sectors.map(([, v]) => v), 1);
+              return (
+                <HorizontalBarChart
+                  items={sectors.sort((a, b) => b[1] - a[1]).map(([sector, val]) => ({
+                    label: SECTOR_LABELS[sector], value: val, color: SECTOR_COLORS[sector],
+                  }))}
+                  maxValue={maxSector}
+                />
+              );
+            })()}
+          </div>
+        )}
+
+        {/* Stat cards */}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+          <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">All Statistics</h3>
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+            {stats.map(stat => {
+              const delta = formatStatDelta(stat);
+              const historyData = gameState.statHistory[stat.id];
+              return (
+                <div key={stat.id} className="bg-gray-50 rounded-lg p-3">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs text-gray-500">{stat.icon} {stat.name}</span>
+                    {!delta.neutral && (
+                      <span className={`text-[10px] font-bold ${delta.positive ? 'text-green-600' : 'text-red-500'}`}>{delta.text}</span>
+                    )}
+                  </div>
+                  <div className="text-xl font-bold text-gray-900 font-mono">{formatStatValue(stat)}</div>
+                  {historyData && historyData.length > 1 && (
+                    <div className="mt-2">
+                      <Sparkline data={historyData} width={100} height={24}
+                        color={!delta.neutral ? (delta.positive ? '#16a34a' : '#ef4444') : '#94a3b8'} />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ============================================================
+  // TAB: ELECTION
+  // ============================================================
+
+  const renderElectionTab = () => {
+    if (!latestElection) {
+      return (
+        <div className="flex items-center justify-center h-64 text-gray-400 text-sm">
+          No election results yet. Elections occur every {config.electionCycle} rounds.
+        </div>
+      );
+    }
+    return renderElectionContent(latestElection);
+  };
+
+  const renderElectionContent = (election: DetailedElectionResult) => {
+    const partyResults = [...election.partyResults].sort((a, b) => b.seatsWon - a.seatsWon);
+
+    return (
+      <div className="p-4 space-y-4">
+        {/* Header */}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-lg font-bold text-gray-900">
+              Election Results - Round {election.round}
+            </h3>
+            <div className="text-right">
+              <div className="text-sm text-gray-500">
+                {election.totalFormalVotes.toLocaleString()} formal votes
+              </div>
+              <div className="text-xs text-gray-400">
+                Turnout: {election.turnoutPercent.toFixed(1)}% of {election.enrolledVoters.toLocaleString()} enrolled
+              </div>
+            </div>
+          </div>
+          {election.isHungParliament && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-sm text-amber-800 font-medium mb-3">
+              Hung Parliament - No party achieved a majority
+            </div>
+          )}
+          {election.newGovernmentName && (
+            <div className="text-sm text-gray-700">
+              New Government: <span className="font-bold">{election.newGovernmentName}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Party results table */}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-200">
+                <th className="text-left px-4 py-2 text-xs font-bold text-gray-500 uppercase">Party</th>
+                <th className="text-right px-3 py-2 text-xs font-bold text-gray-500 uppercase">Primary %</th>
+                <th className="text-right px-3 py-2 text-xs font-bold text-gray-500 uppercase">2PP %</th>
+                <th className="text-right px-3 py-2 text-xs font-bold text-gray-500 uppercase">Seats</th>
+                <th className="text-right px-3 py-2 text-xs font-bold text-gray-500 uppercase">Change</th>
+                <th className="text-right px-4 py-2 text-xs font-bold text-gray-500 uppercase">Swing</th>
+              </tr>
+            </thead>
+            <tbody>
+              {partyResults.map(pr => (
+                <tr key={pr.playerId} className="border-b border-gray-100 hover:bg-gray-50">
+                  <td className="px-4 py-2">
+                    <div className="flex items-center gap-2">
+                      <span className="w-3 h-3 rounded-full" style={{ backgroundColor: pr.color }} />
+                      <span className="font-medium text-gray-800">{pr.partyName}</span>
+                    </div>
+                  </td>
+                  <td className="text-right px-3 py-2 font-mono text-gray-700">{pr.primaryVotePercent.toFixed(1)}%</td>
+                  <td className="text-right px-3 py-2 font-mono text-gray-700">{pr.twoPartyPreferred.toFixed(1)}%</td>
+                  <td className="text-right px-3 py-2 font-mono font-bold text-gray-900">{pr.seatsWon}</td>
+                  <td className="text-right px-3 py-2 font-mono">
+                    <span className={pr.seatChange > 0 ? 'text-green-600' : pr.seatChange < 0 ? 'text-red-600' : 'text-gray-400'}>
+                      {pr.seatChange > 0 ? '+' : ''}{pr.seatChange}
+                    </span>
+                  </td>
+                  <td className="text-right px-4 py-2 font-mono">
+                    <span className={pr.swing > 0 ? 'text-green-600' : pr.swing < 0 ? 'text-red-600' : 'text-gray-400'}>
+                      {pr.swing > 0 ? '+' : ''}{pr.swing.toFixed(1)}%
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* State-by-state breakdown */}
+        {election.stateResults && Object.keys(election.stateResults).length > 0 && (
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-100">
+              <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">State-by-State Breakdown</h3>
+            </div>
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="text-left px-4 py-2 font-bold text-gray-500 uppercase">State</th>
+                  <th className="text-right px-3 py-2 font-bold text-gray-500 uppercase">Seats</th>
+                  {partyResults.slice(0, 4).map(pr => (
+                    <th key={pr.playerId} className="text-right px-3 py-2 font-bold uppercase" style={{ color: pr.color }}>
+                      {pr.partyName}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {Object.entries(election.stateResults).map(([code, sr]) => (
+                  <tr key={code} className="border-b border-gray-100">
+                    <td className="px-4 py-1.5 font-medium text-gray-700">{sr.stateName} ({code})</td>
+                    <td className="text-right px-3 py-1.5 font-mono text-gray-600">{sr.totalSeats}</td>
+                    {partyResults.slice(0, 4).map(pr => (
+                      <td key={pr.playerId} className="text-right px-3 py-1.5 font-mono text-gray-600">
+                        {sr.results[pr.playerId] ?? 0}
+                        {sr.swing[pr.playerId] !== undefined && sr.swing[pr.playerId] !== 0 && (
+                          <span className={`ml-1 ${sr.swing[pr.playerId] > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                            ({sr.swing[pr.playerId] > 0 ? '+' : ''}{sr.swing[pr.playerId].toFixed(1)}%)
+                          </span>
+                        )}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Demographic swing */}
+        {election.demographicSwing && election.demographicSwing.length > 0 && (
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Demographic Swing Analysis</h3>
+            <div className="grid grid-cols-2 gap-2">
+              {election.demographicSwing.map(ds => (
+                <div key={ds.groupId} className="border border-gray-100 rounded-lg p-2.5">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span className="text-sm">{ds.icon}</span>
+                    <span className="text-xs font-semibold text-gray-800">{ds.groupName}</span>
+                  </div>
+                  <div className="flex items-center gap-1 flex-wrap">
+                    {Object.entries(ds.voteShare).map(([pid, share]) => {
+                      const p = playerMap[pid];
+                      if (!p || share < 0.01) return null;
+                      return (
+                        <span key={pid} className="text-[10px] flex items-center gap-0.5">
+                          <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: p.color }} />
+                          <span className="text-gray-500">{(share * 100).toFixed(0)}%</span>
+                        </span>
+                      );
+                    })}
+                  </div>
+                  {ds.swingTo && ds.swingMagnitude > 0 && (
+                    <div className="text-[10px] text-gray-500 mt-1">
+                      Swing to <span className="font-bold" style={{ color: playerMap[ds.swingTo]?.color }}>
+                        {playerMap[ds.swingTo]?.name}
+                      </span> ({ds.swingMagnitude.toFixed(1)}pp)
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Swing seats and closest seats */}
+        <div className="grid grid-cols-2 gap-4">
+          {election.swingSeats && election.swingSeats.length > 0 && (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+              <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Swing Seats</h3>
+              <div className="space-y-1.5">
+                {election.swingSeats.map(ss => (
+                  <div key={ss.seatId} className="flex items-center justify-between text-xs border border-gray-100 rounded px-2 py-1.5">
+                    <div>
+                      <span className="font-medium text-gray-800">{ss.seatName}</span>
+                      <span className="text-gray-400 ml-1">({ss.state})</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span style={{ color: playerMap[ss.from || '']?.color || '#999' }}>{ss.fromName}</span>
+                      <span className="text-gray-300">&rarr;</span>
+                      <span className="font-bold" style={{ color: playerMap[ss.to || '']?.color || '#999' }}>{ss.toName}</span>
+                      <span className="text-gray-400 font-mono ml-1">{ss.swing.toFixed(1)}%</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {election.closestSeats && election.closestSeats.length > 0 && (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+              <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Closest Seats (&lt;2%)</h3>
+              <div className="space-y-1.5">
+                {election.closestSeats.map(cs => (
+                  <div key={cs.seatId} className="flex items-center justify-between text-xs border border-gray-100 rounded px-2 py-1.5">
+                    <div>
+                      <span className="font-medium text-gray-800">{cs.seatName}</span>
+                      <span className="text-gray-400 ml-1">({cs.state})</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="font-bold" style={{ color: playerMap[cs.to || '']?.color || '#999' }}>{cs.toName}</span>
+                      <span className="text-red-500 font-mono ml-1">{cs.margin.toFixed(1)}%</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // ============================================================
+  // MAIN CONTENT AREA (tabs)
+  // ============================================================
+
+  const renderCenterContent = () => {
+    const visibleTabs = TAB_CONFIG.filter(t => t.id !== 'election' || hasElectionData);
+
+    return (
+      <div className="flex-1 flex flex-col min-w-0 bg-gray-50 overflow-hidden">
+        {/* Tab bar */}
+        <div className="flex items-center bg-white border-b border-gray-200 px-3 h-9 shrink-0">
+          {visibleTabs.map(tab => (
+            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+              className={`px-4 py-1.5 text-xs font-semibold rounded-t transition-colors relative ${activeTab === tab.id ? 'text-blue-600 bg-blue-50' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}>
+              {tab.label}
+              {activeTab === tab.id && (
+                <div className="absolute bottom-0 left-2 right-2 h-0.5 bg-blue-600 rounded-full" />
+              )}
+            </button>
+          ))}
+        </div>
+
+        {/* Tab content */}
+        <div className="flex-1 overflow-auto">
+          {activeTab === 'dashboard' && renderDashboardTab()}
+          {activeTab === 'policies' && renderPoliciesTab()}
+          {activeTab === 'chamber' && (
+            <Chamber gameState={gameState} playerId={playerId}
+              selectedSeatId={selectedSeatId} onSeatClick={handleSeatClick} />
+          )}
+          {activeTab === 'economy' && renderEconomyTab()}
+          {activeTab === 'election' && renderElectionTab()}
+        </div>
+      </div>
+    );
+  };
+
+  // ============================================================
+  // MODALS
+  // ============================================================
+
+  const renderDilemmaModal = () => {
+    if (gameState.phase !== 'dilemma' || !isGovernment || !gameState.pendingDilemma || !showDilemmaModal) return null;
+    const d = gameState.pendingDilemma;
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+        <div className="bg-white rounded-2xl shadow-2xl max-w-xl w-full mx-4 overflow-hidden">
+          <div className="bg-gradient-to-r from-orange-500 to-red-500 px-6 py-5 text-white">
+            <div className="flex items-center gap-3">
+              <span className="text-3xl">{d.icon}</span>
+              <div>
+                <h2 className="text-lg font-bold">{d.name}</h2>
+                <p className="text-sm text-orange-100">{d.headline}</p>
+              </div>
+            </div>
+          </div>
+          <div className="px-6 py-4 border-b border-gray-100">
+            <p className="text-sm text-gray-700 leading-relaxed">{d.description}</p>
+          </div>
+          <div className="px-6 py-4 space-y-3">
+            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Your Decision</h3>
+            {d.choices.map(choice => (
+              <button key={choice.id}
+                onClick={() => { setShowDilemmaModal(false); onResolveDilemma(choice.id); }}
+                className="w-full text-left bg-gray-50 hover:bg-blue-50 border border-gray-200 hover:border-blue-300 rounded-xl p-4 transition-all group">
+                <div className="font-semibold text-sm text-gray-900 group-hover:text-blue-700 transition-colors">{choice.label}</div>
+                <p className="text-xs text-gray-500 mt-1 leading-relaxed">{choice.description}</p>
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {choice.effects.slice(0, 4).map((eff, i) => (
+                    <span key={i} className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${eff.delta >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                      {eff.nodeId}: {eff.delta >= 0 ? '+' : ''}{(eff.delta * 100).toFixed(0)}
+                    </span>
+                  ))}
+                  {choice.voterReactions.slice(0, 3).map((vr, i) => (
+                    <span key={`vr-${i}`} className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${vr.delta >= 0 ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
+                      {vr.groupId}: {vr.delta >= 0 ? '+' : ''}{(vr.delta * 100).toFixed(0)}
+                    </span>
+                  ))}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   const renderRoundSummaryModal = () => {
     if (gameState.phase !== 'round_summary' || !showRoundSummary || !latestRoundSummary) return null;
     const rs = latestRoundSummary;
-
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
         <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 max-h-[85vh] overflow-y-auto">
-          {/* Header */}
           <div className="px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-indigo-50 to-blue-50 rounded-t-2xl">
             <div className="flex items-center justify-between">
               <div>
@@ -1121,7 +1679,6 @@ export function GameBoard({
               </div>
               <span className="text-3xl font-bold text-indigo-200">R{rs.round}</span>
             </div>
-            {/* Key headline */}
             {rs.mediaHeadlines.length > 0 && (
               <div className="mt-2 bg-white/70 rounded-lg px-3 py-2 border border-indigo-100">
                 <p className="text-sm font-semibold text-gray-800">{rs.mediaHeadlines[0]}</p>
@@ -1129,7 +1686,7 @@ export function GameBoard({
             )}
           </div>
 
-          {/* Economy Snapshot */}
+          {/* Economy */}
           <div className="px-6 py-4 border-b border-gray-100">
             <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Economy</h3>
             <div className="grid grid-cols-3 gap-3">
@@ -1149,7 +1706,7 @@ export function GameBoard({
             </div>
           </div>
 
-          {/* Policy Changes */}
+          {/* Policy changes */}
           {rs.policiesChanged.length > 0 && (
             <div className="px-6 py-4 border-b border-gray-100">
               <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Policy Changes</h3>
@@ -1168,34 +1725,7 @@ export function GameBoard({
             </div>
           )}
 
-          {/* Situations */}
-          {(rs.situationsTriggered.length > 0 || rs.situationsResolved.length > 0) && (
-            <div className="px-6 py-4 border-b border-gray-100">
-              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Situations</h3>
-              {rs.situationsTriggered.map((s, i) => (
-                <div key={`t-${i}`} className="flex items-center gap-2 text-sm text-red-600 mb-1">
-                  <span className="text-red-400">&#x26A0;</span> <span className="font-medium">{s}</span> <span className="text-[10px] text-gray-400">triggered</span>
-                </div>
-              ))}
-              {rs.situationsResolved.map((s, i) => (
-                <div key={`r-${i}`} className="flex items-center gap-2 text-sm text-green-600 mb-1">
-                  <span className="text-green-400">&#x2713;</span> <span className="font-medium">{s}</span> <span className="text-[10px] text-gray-400">resolved</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Dilemma resolved */}
-          {rs.dilemmaResolved && (
-            <div className="px-6 py-4 border-b border-gray-100">
-              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Dilemma Resolved</h3>
-              <p className="text-sm text-gray-700">
-                <span className="font-semibold">{rs.dilemmaResolved.name}</span>: chose "{rs.dilemmaResolved.choiceLabel}"
-              </p>
-            </div>
-          )}
-
-          {/* Voter Group Movements */}
+          {/* Voter movements */}
           {rs.voterGroupChanges.length > 0 && (
             <div className="px-6 py-4 border-b border-gray-100">
               <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Voter Movements</h3>
@@ -1212,28 +1742,23 @@ export function GameBoard({
             </div>
           )}
 
-          {/* Polling Projection */}
+          {/* Polling projection */}
           {Object.keys(rs.pollingProjection).length > 0 && (
             <div className="px-6 py-4 border-b border-gray-100">
               <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Polling Projection</h3>
               <div className="flex gap-3 flex-wrap">
-                {gameState.players
-                  .sort((a, b) => (rs.pollingProjection[b.id] ?? 0) - (rs.pollingProjection[a.id] ?? 0))
-                  .map(player => {
-                    const projSeats = rs.pollingProjection[player.id] ?? 0;
-                    return (
-                      <div key={player.id} className="flex items-center gap-1.5 bg-gray-50 rounded-lg px-3 py-1.5">
-                        <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: player.color }} />
-                        <span className="text-xs font-medium text-gray-700">{player.name}</span>
-                        <span className="text-sm font-bold text-gray-900 font-mono">{projSeats}</span>
-                      </div>
-                    );
-                  })}
+                {gameState.players.sort((a, b) => (rs.pollingProjection[b.id] ?? 0) - (rs.pollingProjection[a.id] ?? 0)).map(player => (
+                  <div key={player.id} className="flex items-center gap-1.5 bg-gray-50 rounded-lg px-3 py-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: player.color }} />
+                    <span className="text-xs font-medium text-gray-700">{player.name}</span>
+                    <span className="text-sm font-bold text-gray-900 font-mono">{rs.pollingProjection[player.id] ?? 0}</span>
+                  </div>
+                ))}
               </div>
             </div>
           )}
 
-          {/* Opposition Actions */}
+          {/* Opposition actions */}
           {rs.oppositionActions.length > 0 && (
             <div className="px-6 py-4 border-b border-gray-100">
               <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Opposition Actions</h3>
@@ -1245,15 +1770,10 @@ export function GameBoard({
             </div>
           )}
 
-          {/* Continue Button */}
+          {/* Continue */}
           <div className="px-6 py-4 flex justify-end">
-            <button
-              onClick={() => {
-                setShowRoundSummary(false);
-                onForceAdvance();
-              }}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2.5 rounded-lg transition-colors shadow-sm"
-            >
+            <button onClick={() => { setShowRoundSummary(false); onForceAdvance(); }}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2.5 rounded-lg transition-colors shadow-sm">
               Continue
             </button>
           </div>
@@ -1262,89 +1782,99 @@ export function GameBoard({
     );
   };
 
-  // ============================================================
-  // RENDER: DILEMMA MODAL
-  // ============================================================
-
-  const renderDilemmaModal = () => {
-    if (gameState.phase !== 'dilemma' || !isGovernment || !gameState.pendingDilemma || !showDilemmaModal) return null;
-    const d = gameState.pendingDilemma;
+  const renderElectionResultsModal = () => {
+    if (gameState.phase !== 'election_results' || !showElectionModal || !latestElection) return null;
+    const e = latestElection;
+    const partyResults = [...e.partyResults].sort((a, b) => b.seatsWon - a.seatsWon);
+    const winner = partyResults[0];
 
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-        <div className="bg-white rounded-2xl shadow-2xl max-w-xl w-full mx-4 overflow-hidden">
-          {/* Header */}
-          <div className="bg-gradient-to-r from-orange-500 to-red-500 px-6 py-5 text-white">
-            <div className="flex items-center gap-3">
-              <span className="text-3xl">{d.icon}</span>
-              <div>
-                <h2 className="text-lg font-bold">{d.name}</h2>
-                <p className="text-sm text-orange-100">{d.headline}</p>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+        <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 max-h-[85vh] overflow-y-auto">
+          <div className="bg-gradient-to-r from-red-600 to-blue-600 px-6 py-5 text-white rounded-t-2xl">
+            <h2 className="text-xl font-bold">Election Results</h2>
+            <p className="text-sm text-white/80">Round {e.round}</p>
+            {e.isHungParliament ? (
+              <p className="text-sm font-bold text-amber-300 mt-1">HUNG PARLIAMENT</p>
+            ) : winner && (
+              <p className="text-sm mt-1">
+                <span className="font-bold">{winner.partyName}</span> wins with {winner.seatsWon} seats
+              </p>
+            )}
+          </div>
+
+          <div className="px-6 py-4">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-200">
+                  <th className="text-left py-2 text-xs font-bold text-gray-500">Party</th>
+                  <th className="text-right py-2 text-xs font-bold text-gray-500">Primary</th>
+                  <th className="text-right py-2 text-xs font-bold text-gray-500">Seats</th>
+                  <th className="text-right py-2 text-xs font-bold text-gray-500">+/-</th>
+                  <th className="text-right py-2 text-xs font-bold text-gray-500">Swing</th>
+                </tr>
+              </thead>
+              <tbody>
+                {partyResults.map(pr => (
+                  <tr key={pr.playerId} className="border-b border-gray-100">
+                    <td className="py-2">
+                      <div className="flex items-center gap-2">
+                        <span className="w-3 h-3 rounded-full" style={{ backgroundColor: pr.color }} />
+                        <span className="font-medium">{pr.partyName}</span>
+                      </div>
+                    </td>
+                    <td className="text-right py-2 font-mono">{pr.primaryVotePercent.toFixed(1)}%</td>
+                    <td className="text-right py-2 font-mono font-bold">{pr.seatsWon}</td>
+                    <td className="text-right py-2 font-mono">
+                      <span className={pr.seatChange > 0 ? 'text-green-600' : pr.seatChange < 0 ? 'text-red-600' : 'text-gray-400'}>
+                        {pr.seatChange > 0 ? '+' : ''}{pr.seatChange}
+                      </span>
+                    </td>
+                    <td className="text-right py-2 font-mono">
+                      <span className={pr.swing > 0 ? 'text-green-600' : pr.swing < 0 ? 'text-red-600' : 'text-gray-400'}>
+                        {pr.swing > 0 ? '+' : ''}{pr.swing.toFixed(1)}%
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Swing seats in modal */}
+          {e.swingSeats.length > 0 && (
+            <div className="px-6 py-3 border-t border-gray-100">
+              <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Key Swing Seats</h4>
+              <div className="space-y-1">
+                {e.swingSeats.slice(0, 8).map(ss => (
+                  <div key={ss.seatId} className="flex items-center justify-between text-xs">
+                    <span className="text-gray-700">{ss.seatName} ({ss.state})</span>
+                    <div className="flex items-center gap-1">
+                      <span style={{ color: playerMap[ss.from || '']?.color }}>{ss.fromName}</span>
+                      <span className="text-gray-300">&rarr;</span>
+                      <span className="font-bold" style={{ color: playerMap[ss.to || '']?.color }}>{ss.toName}</span>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
-          </div>
+          )}
 
-          {/* Description */}
-          <div className="px-6 py-4 border-b border-gray-100">
-            <p className="text-sm text-gray-700 leading-relaxed">{d.description}</p>
-          </div>
-
-          {/* Choices */}
-          <div className="px-6 py-4 space-y-3">
-            <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Your Decision</h3>
-            {d.choices.map(choice => (
-              <button
-                key={choice.id}
-                onClick={() => {
-                  setShowDilemmaModal(false);
-                  onResolveDilemma(choice.id);
-                }}
-                className="w-full text-left bg-gray-50 hover:bg-blue-50 border border-gray-200 hover:border-blue-300 rounded-xl p-4 transition-all group"
-              >
-                <div className="font-semibold text-sm text-gray-900 group-hover:text-blue-700 transition-colors">
-                  {choice.label}
-                </div>
-                <p className="text-xs text-gray-500 mt-1 leading-relaxed">{choice.description}</p>
-                {/* Effects preview */}
-                <div className="flex flex-wrap gap-1.5 mt-2">
-                  {choice.effects.slice(0, 4).map((eff, i) => (
-                    <span
-                      key={i}
-                      className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-                        eff.delta >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                      }`}
-                    >
-                      {eff.nodeId}: {eff.delta >= 0 ? '+' : ''}{(eff.delta * 100).toFixed(0)}
-                    </span>
-                  ))}
-                  {choice.voterReactions.slice(0, 3).map((vr, i) => (
-                    <span
-                      key={`vr-${i}`}
-                      className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-                        vr.delta >= 0 ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'
-                      }`}
-                    >
-                      {vr.groupId}: {vr.delta >= 0 ? '+' : ''}{(vr.delta * 100).toFixed(0)}
-                    </span>
-                  ))}
-                </div>
-              </button>
-            ))}
+          <div className="px-6 py-4 flex justify-end border-t border-gray-100">
+            <button onClick={() => { setShowElectionModal(false); onForceAdvance(); }}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2.5 rounded-lg transition-colors shadow-sm">
+              Continue
+            </button>
           </div>
         </div>
       </div>
     );
   };
 
-  // ============================================================
-  // RENDER: GAME OVER OVERLAY
-  // ============================================================
-
   const renderGameOver = () => {
     if (gameState.phase !== 'game_over' || !gameState.finalScores) return null;
     const sortedScores = [...gameState.finalScores].sort((a, b) => b.total - a.total);
     const winner = sortedScores[0];
-
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
         <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full mx-4 overflow-hidden">
@@ -1358,13 +1888,9 @@ export function GameBoard({
           </div>
           <div className="px-6 py-4 space-y-2">
             {sortedScores.map((score, rank) => (
-              <div
-                key={score.playerId}
-                className={`flex items-center gap-3 p-3 rounded-lg ${rank === 0 ? 'bg-amber-50 border border-amber-200' : 'bg-gray-50 border border-gray-100'}`}
-              >
-                <span className={`text-lg font-bold ${rank === 0 ? 'text-amber-600' : 'text-gray-400'}`}>
-                  #{rank + 1}
-                </span>
+              <div key={score.playerId}
+                className={`flex items-center gap-3 p-3 rounded-lg ${rank === 0 ? 'bg-amber-50 border border-amber-200' : 'bg-gray-50 border border-gray-100'}`}>
+                <span className={`text-lg font-bold ${rank === 0 ? 'text-amber-600' : 'text-gray-400'}`}>#{rank + 1}</span>
                 <span className="w-3 h-3 rounded-full" style={{ backgroundColor: score.color }} />
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-bold text-gray-800">{score.partyName}</div>
@@ -1389,30 +1915,17 @@ export function GameBoard({
   // ============================================================
 
   return (
-    <div className="flex flex-col w-full h-screen overflow-hidden bg-gray-100 text-gray-900" style={{ fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif" }}>
-      {/* 1. Top Dashboard Bar */}
+    <div className="flex flex-col w-full h-screen overflow-hidden bg-gray-100 text-gray-900"
+      style={{ fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif" }}>
       {renderDashboardBar()}
-
-      {/* 2. Polling Bar */}
       {renderPollingBar()}
-
-      {/* 3. Main Content Row */}
       <div className="flex-1 flex min-h-0 overflow-hidden">
         {renderLeftSidebar()}
         {renderCenterContent()}
-        {renderRightSidebar()}
       </div>
-
-      {/* 4. Bottom Voter Strip */}
-      {renderVoterStrip()}
-
-      {/* 5. Round Summary Modal */}
       {renderRoundSummaryModal()}
-
-      {/* 6. Dilemma Modal */}
       {renderDilemmaModal()}
-
-      {/* 7. Game Over Overlay */}
+      {renderElectionResultsModal()}
       {renderGameOver()}
     </div>
   );
