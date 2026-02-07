@@ -33,6 +33,55 @@ export interface SimLink {
 export type LinkFormula = 'linear' | 'sqrt' | 'squared' | 'threshold' | 'inverse';
 
 // ============================================================
+// LEADER / CHARACTER SYSTEM
+// ============================================================
+
+export interface LeaderTrait {
+  id: string;
+  name: string;
+  description: string;
+  effects: {
+    campaignBonus?: number;       // multiplier bonus (e.g. 0.15 = +15%)
+    fundraiseBonus?: number;
+    capitalBonus?: number;        // extra political capital per round
+    approvalBonus?: number;       // flat approval modifier
+    mediaSavvy?: number;          // reduce negative media impact (0-1)
+    loyaltyBonus?: number;        // voter loyalty stickiness
+    policySpeed?: number;         // faster policy implementation (reduces delay)
+    attackResistance?: number;    // reduce damage from attacks (0-1)
+  };
+}
+
+export interface LeaderDefinition {
+  id: string;
+  name: string;
+  title: string;           // e.g. "The Pragmatist", "The Firebrand"
+  portrait: string;        // emoji
+  backstory: string;
+  traits: LeaderTrait[];
+  baseApproval: number;    // starting personal approval (-1 to 1)
+  charisma: number;        // 0-1, affects campaign effectiveness
+  experience: number;      // 0-1, affects policy implementation
+  scandalRisk: number;     // 0-1, chance of negative events
+}
+
+export interface Leader {
+  definitionId: string;
+  name: string;
+  title: string;
+  portrait: string;
+  traits: LeaderTrait[];
+  personalApproval: number;  // tracked separately from party approval
+  charisma: number;
+  experience: number;
+  scandalRisk: number;
+  isPM: boolean;
+  roundsAsPM: number;
+  defected: boolean;
+  defectedTo?: string;       // playerId they defected to
+}
+
+// ============================================================
 // IDEOLOGY
 // ============================================================
 
@@ -52,7 +101,11 @@ export type PolicyCategory =
   | 'law_order'
   | 'infrastructure'
   | 'environment'
-  | 'foreign';
+  | 'foreign'
+  | 'immigration'
+  | 'housing'
+  | 'digital'
+  | 'agriculture';
 
 export interface PolicySlider {
   id: string;
@@ -66,7 +119,7 @@ export interface PolicySlider {
   currentValue: number;     // 0–1
   targetValue: number;      // government's intended value (transitions over rounds)
   defaultValue: number;     // starting position
-  costPerPoint: number;     // annual budget cost at 100%
+  costPerPoint: number;     // budget cost in $B AUD at 100%
   implementationDelay: number;  // rounds for currentValue to reach targetValue
   effects: PolicyEffect[];
   // Ideological leaning: positive = left/progressive, negative = right/conservative
@@ -164,6 +217,8 @@ export interface VoterGroupState {
   prevHappiness: number;
   loyalty: Record<string, number>;  // playerId → loyalty from campaigning
   turnout: number;          // 0–1, how likely to vote (affected by happiness extremes)
+  // Per-party polling: projected vote intention from this group
+  partyPolling: Record<string, number>;  // playerId → projected vote share 0-1
 }
 
 // ============================================================
@@ -199,6 +254,65 @@ export interface PendingDilemma {
   icon: string;
   choices: DilemmaChoice[];
   roundTriggered: number;
+}
+
+// ============================================================
+// ROUND SUMMARY — What happened this round
+// ============================================================
+
+export interface RoundSummary {
+  round: number;
+  governmentPlayerId: string;
+  governmentPlayerName: string;
+
+  // Key economic numbers (realistic $B AUD)
+  gdpBillions: number;          // e.g. 2,150
+  gdpGrowthPercent: number;     // e.g. 2.3
+  unemploymentPercent: number;  // e.g. 3.8
+  debtBillions: number;         // e.g. 895
+  deficitBillions: number;      // e.g. -42
+  inflationPercent: number;     // e.g. 3.1
+
+  // What changed
+  policiesChanged: { policyId: string; policyName: string; oldValue: number; newValue: number }[];
+  situationsTriggered: string[];
+  situationsResolved: string[];
+  dilemmaResolved?: { name: string; choiceLabel: string };
+  mediaHeadlines: string[];
+
+  // Voter movement
+  voterGroupChanges: { groupId: string; groupName: string; happinessDelta: number }[];
+
+  // Overall polling (projected seat count per player)
+  pollingProjection: Record<string, number>;  // playerId → projected seats
+
+  // Actions taken by opposition
+  oppositionActions: { playerId: string; playerName: string; actions: string[] }[];
+}
+
+// ============================================================
+// POLLING PROJECTION
+// ============================================================
+
+export interface PollingSnapshot {
+  round: number;
+  projectedSeats: Record<string, number>;     // playerId → projected seat count
+  primaryVote: Record<string, number>;        // playerId → % of primary vote
+  twoPartyPreferred: Record<string, number>;  // playerId → 2PP %
+  approvalRatings: Record<string, number>;    // playerId → approval -1 to 1
+}
+
+// ============================================================
+// BUDGET — Realistic Australian scale ($B AUD)
+// ============================================================
+
+export interface BudgetSummary {
+  totalRevenue: number;       // $B AUD
+  totalExpenditure: number;   // $B AUD
+  surplus: number;            // revenue - expenditure
+  nationalDebt: number;       // accumulated $B AUD
+  debtToGDP: number;          // percentage
+  gdpNominal: number;         // $B AUD
 }
 
 // ============================================================
@@ -261,6 +375,7 @@ export type Phase =
   | 'media_cycle'           // news focus shifts, spotlight on issues
   | 'election'              // seats contested
   | 'election_results'      // show election results
+  | 'round_summary'         // show round outcomes
   | 'game_over';
 
 // ============================================================
@@ -332,6 +447,9 @@ export interface Player {
   socialIdeology: SocialIdeology;
   economicIdeology: EconomicIdeology;
 
+  // Leader
+  leader: Leader | null;
+
   seats: number;
   funds: number;
   politicalCapital: number;  // spent to make policy changes (regenerates)
@@ -393,6 +511,7 @@ export interface GameState {
   phase: Phase;
   round: number;
   totalRounds: number;
+  isSinglePlayer: boolean;
 
   players: Player[];
 
@@ -418,6 +537,16 @@ export interface GameState {
   governmentAdjustments: PolicyAdjustment[];
   oppositionActions: Record<string, PlayerAction[]>;  // playerId → actions
   roundResults: ActionResult[];
+
+  // Economy (realistic Australian scale)
+  budget: BudgetSummary;
+
+  // Polling
+  currentPolling: PollingSnapshot | null;
+  pollingHistory: PollingSnapshot[];
+
+  // Round summaries
+  roundSummaries: RoundSummary[];
 
   // History
   policyHistory: { round: number; policyId: string; oldValue: number; newValue: number; playerId: string }[];
@@ -458,6 +587,7 @@ export type GameEvent =
   | { type: 'seat_changed'; timestamp: number; seatId: SeatId; from: string | null; to: string | null }
   | { type: 'funds_changed'; timestamp: number; playerId: string; delta: number; reason: string }
   | { type: 'chat_message'; timestamp: number; senderId: string; recipientId: string | null; content: string }
+  | { type: 'leader_defected'; timestamp: number; leaderId: string; fromPlayerId: string; toPlayerId: string }
   | { type: 'game_ended'; timestamp: number; winner: string; scores: PlayerScore[] };
 
 // ============================================================
@@ -503,12 +633,13 @@ export interface GameConfig {
   actionsPerRound: number;         // actions for opposition players per round
   policyAdjustmentsPerRound: number;  // sliders government can change per round
 
-  startingFunds: number;
+  // Budget in $B AUD (realistic Australian scale)
+  startingFunds: number;           // party war chest $M
   startingPoliticalCapital: number;
-  incomePerSeat: number;
+  incomePerSeat: number;           // $M per seat per round
   capitalRegenPerRound: number;
 
-  campaignCost: number;
+  campaignCost: number;            // $M
   attackCost: number;
   mediaCampaignCost: number;
   fundraiseAmount: number;
@@ -524,7 +655,11 @@ export interface GameConfig {
   enableMediaCycle: boolean;
   enableSituations: boolean;
   enableChat: boolean;
+  enableLeaders: boolean;
   simulationSpeed: number;    // 0.5–2.0 multiplier on effect propagation
+
+  // Single player
+  isSinglePlayer: boolean;
 }
 
 // ============================================================
@@ -538,6 +673,7 @@ export interface ClientToServerEvents {
     colorId?: PartyColorId;
     socialIdeology?: SocialIdeology;
     economicIdeology?: EconomicIdeology;
+    leaderId?: string;
     configOverrides?: Partial<GameConfig>;
   }) => void;
   'join_room': (data: {
@@ -547,8 +683,18 @@ export interface ClientToServerEvents {
     colorId?: PartyColorId;
     socialIdeology?: SocialIdeology;
     economicIdeology?: EconomicIdeology;
+    leaderId?: string;
   }) => void;
   'start_game': () => void;
+  'start_single_player': (data: {
+    playerName: string;
+    partyName: string;
+    colorId?: PartyColorId;
+    socialIdeology?: SocialIdeology;
+    economicIdeology?: EconomicIdeology;
+    leaderId?: string;
+    configOverrides?: Partial<GameConfig>;
+  }) => void;
   'submit_policy_adjustments': (data: { adjustments: PolicyAdjustment[] }) => void;
   'submit_actions': (data: { actions: PlayerAction[] }) => void;
   'resolve_dilemma': (data: { choiceId: string }) => void;

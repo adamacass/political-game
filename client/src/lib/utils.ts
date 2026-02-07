@@ -9,6 +9,7 @@ export const PHASE_LABELS: Record<Phase, string> = {
   media_cycle: 'Media Cycle',
   election: 'Election',
   election_results: 'Election Results',
+  round_summary: 'Round Summary',
   game_over: 'Game Over',
 };
 
@@ -21,6 +22,7 @@ export const PHASE_DESCRIPTIONS: Record<Phase, string> = {
   media_cycle: 'The news spotlight shifts...',
   election: 'Seats are being contested!',
   election_results: 'Election results are in',
+  round_summary: 'Here\'s what happened this round',
   game_over: 'The game is over!',
 };
 

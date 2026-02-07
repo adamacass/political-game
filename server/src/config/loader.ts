@@ -20,7 +20,7 @@ export const DEFAULT_CONFIG: GameConfig = {
   grassrootsCost: 4,
   policyResearchCost: 5,
 
-  aiPlayerCount: 1,
+  aiPlayerCount: 3,
   aiDifficulty: 'normal',
 
   majorityThreshold: 76,
@@ -29,7 +29,10 @@ export const DEFAULT_CONFIG: GameConfig = {
   enableMediaCycle: true,
   enableSituations: true,
   enableChat: true,
+  enableLeaders: true,
   simulationSpeed: 1.0,
+
+  isSinglePlayer: false,
 };
 
 export function mergeConfig(overrides: Partial<GameConfig>): GameConfig {

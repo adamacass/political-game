@@ -122,19 +122,31 @@ function App() {
   // Room actions
   const createRoom = useCallback((
     playerName: string, partyName: string, colorId: string,
-    socialIdeology: string, economicIdeology: string
+    socialIdeology: string, economicIdeology: string, leaderId?: string
   ) => {
-    socket?.emit('create_room', { playerName, partyName, colorId, socialIdeology, economicIdeology });
+    socket?.emit('create_room', { playerName, partyName, colorId, socialIdeology, economicIdeology, leaderId });
   }, [socket]);
 
   const joinRoom = useCallback((
     rid: string, playerName: string, partyName: string, colorId: string,
-    socialIdeology: string, economicIdeology: string
+    socialIdeology: string, economicIdeology: string, leaderId?: string
   ) => {
-    socket?.emit('join_room', { roomId: rid, playerName, partyName, colorId, socialIdeology, economicIdeology });
+    socket?.emit('join_room', { roomId: rid, playerName, partyName, colorId, socialIdeology, economicIdeology, leaderId });
   }, [socket]);
 
   const startGame = useCallback(() => { socket?.emit('start_game'); }, [socket]);
+
+  // Single player
+  const startSinglePlayer = useCallback((
+    playerName: string, partyName: string, colorId: string,
+    socialIdeology: string, economicIdeology: string, leaderId: string,
+    config: Record<string, any>
+  ) => {
+    socket?.emit('start_single_player', {
+      playerName, partyName, colorId, socialIdeology, economicIdeology, leaderId,
+      configOverrides: config,
+    });
+  }, [socket]);
 
   // Government actions
   const submitAdjustments = useCallback((adjustments: PolicyAdjustment[]) => {
@@ -162,8 +174,8 @@ function App() {
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--bg-primary)' }}>
       {error && (
-        <div className="fixed top-4 right-4 z-50 px-4 py-3 font-mono text-sm"
-          style={{ backgroundColor: 'var(--no-red)', color: 'var(--parchment)', border: '1px solid #7f0000' }}>
+        <div className="fixed top-4 right-4 z-50 px-4 py-3 rounded-lg text-sm shadow-lg"
+          style={{ backgroundColor: '#dc2626', color: '#fff' }}>
           {error}
         </div>
       )}
@@ -178,6 +190,7 @@ function App() {
           onCreateRoom={createRoom}
           onJoinRoom={joinRoom}
           onStartGame={startGame}
+          onStartSinglePlayer={startSinglePlayer}
         />
       ) : (
         <GameBoard

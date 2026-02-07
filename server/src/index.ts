@@ -168,6 +168,36 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Start single player game
+  socket.on('start_single_player', ({ playerName, partyName, colorId, socialIdeology, economicIdeology, leaderId, configOverrides }) => {
+    try {
+      const spConfig = { ...(configOverrides || {}), isSinglePlayer: true };
+      const roomId = roomManager.createRoom(spConfig);
+      const result = roomManager.joinRoom(roomId, socket.id, playerName, partyName, colorId, socialIdeology, economicIdeology);
+
+      if (result.success && result.playerId) {
+        currentRoomId = roomId;
+        currentPlayerId = result.playerId;
+        socket.join(roomId);
+        socket.emit('room_created', { roomId });
+        socket.emit('room_joined', { roomId, playerId: result.playerId });
+
+        // Auto-start for single player
+        const success = roomManager.startGame(roomId);
+        if (success) {
+          broadcastState(roomId);
+        } else {
+          socket.emit('error', { message: 'Failed to start single player game' });
+        }
+      } else {
+        socket.emit('error', { message: result.error || 'Failed to create single player game' });
+      }
+    } catch (error) {
+      console.error('Error starting single player:', error);
+      socket.emit('error', { message: 'Server error' });
+    }
+  });
+
   // Submit policy adjustments (government player)
   socket.on('submit_policy_adjustments', ({ adjustments }) => {
     if (!currentRoomId || !currentPlayerId) {

@@ -66,6 +66,10 @@ const CAT_COLORS: Record<PolicyCategory, string> = {
   infrastructure: '#e67e22',
   environment: '#2ecc71',
   foreign: '#1abc9c',
+  immigration: '#8e44ad',
+  housing: '#d35400',
+  digital: '#2980b9',
+  agriculture: '#27ae60',
 };
 
 const SEV_COLORS: Record<string, string> = {
@@ -87,6 +91,7 @@ const T3 = '#555577';
 const CAT_ORDER: PolicyCategory[] = [
   'tax', 'economy', 'welfare', 'health', 'education',
   'law_order', 'infrastructure', 'environment', 'foreign',
+  'immigration', 'housing', 'digital', 'agriculture',
 ];
 
 // =====================================================

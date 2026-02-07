@@ -8,15 +8,16 @@
 //   3. simulation         — Policy web propagates, stats update
 //   4. dilemma            — Government resolves a dilemma (if triggered)
 //   5. media_cycle        — News spotlight shifts
-//   6. election           — (every N rounds) seats contested
-//   7. election_results   — Show results, new government formed
+//   6. round_summary      — Show what happened this round + polling
+//   7. election           — (every N rounds) seats contested
+//   8. election_results   — Show results, new government formed
 //   → next round or game_over
 // ============================================================
 
 import seedrandom from 'seedrandom';
 import { v4 as uuidv4 } from 'uuid';
 import {
-  GameState, GameConfig, GameEvent, Phase, Player,
+  GameState, GameConfig, GameEvent, Phase, Player, Leader,
   PolicySlider, PolicyAdjustment, StatDefinition,
   ActiveSituation, SituationDefinition,
   VoterGroupState, VoterGroupDefinition,
@@ -25,6 +26,7 @@ import {
   ElectionResult, PlayerScore, Seat, SeatId, StateCode, StateInfo,
   ChatMessage, PartyColorId, PARTY_COLORS,
   SocialIdeology, EconomicIdeology, AIPersonality,
+  BudgetSummary, PollingSnapshot, RoundSummary,
 } from '../types';
 import {
   simulationTick, SimulationContext, generateMediaFocus,
@@ -38,6 +40,11 @@ import { getAllDilemmas } from './dilemmas';
 import { generateSeatMap, recomputeChamberPositions, computePlayerSeatCounts, transferSeat } from './mapGen';
 
 const ALL_STATES: StateCode[] = ['NSW', 'VIC', 'QLD', 'WA', 'SA', 'TAS', 'ACT', 'NT'];
+
+// Australia baseline economic numbers
+const BASE_GDP_BILLIONS = 2150;
+const BASE_DEBT_BILLIONS = 895;
+const BASE_REVENUE_BILLIONS = 680;
 
 const DEFAULT_CONFIG: GameConfig = {
   totalSeats: 151,
@@ -55,14 +62,16 @@ const DEFAULT_CONFIG: GameConfig = {
   fundraiseAmount: 15,
   grassrootsCost: 4,
   policyResearchCost: 5,
-  aiPlayerCount: 1,
+  aiPlayerCount: 3,
   aiDifficulty: 'normal',
   majorityThreshold: 76,
   enableDilemmas: true,
   enableMediaCycle: true,
   enableSituations: true,
   enableChat: true,
+  enableLeaders: true,
   simulationSpeed: 1.0,
+  isSinglePlayer: false,
 };
 
 export class GameEngine {
@@ -91,6 +100,7 @@ export class GameEngine {
       phase: 'waiting',
       round: 0,
       totalRounds: this.config.totalRounds,
+      isSinglePlayer: this.config.isSinglePlayer,
       players: [],
       policies: {},
       stats: {},
@@ -105,6 +115,17 @@ export class GameEngine {
       governmentAdjustments: [],
       oppositionActions: {},
       roundResults: [],
+      budget: {
+        totalRevenue: BASE_REVENUE_BILLIONS,
+        totalExpenditure: BASE_REVENUE_BILLIONS + 42,
+        surplus: -42,
+        nationalDebt: BASE_DEBT_BILLIONS,
+        debtToGDP: Math.round((BASE_DEBT_BILLIONS / BASE_GDP_BILLIONS) * 100 * 10) / 10,
+        gdpNominal: BASE_GDP_BILLIONS,
+      },
+      currentPolling: null,
+      pollingHistory: [],
+      roundSummaries: [],
       policyHistory: [],
       statHistory: {},
       electionHistory: [],
@@ -136,6 +157,7 @@ export class GameEngine {
     _symbolId?: string,
     socialIdeology?: SocialIdeology,
     economicIdeology?: EconomicIdeology,
+    leader?: Leader | null,
   ): Player | null {
     if (this.state.phase !== 'waiting') return null;
     if (this.state.players.length >= 6) return null;
@@ -159,6 +181,7 @@ export class GameEngine {
       color: colorHex,
       socialIdeology: socialIdeology || 'progressive',
       economicIdeology: economicIdeology || 'market',
+      leader: leader || null,
       seats: 0,
       funds: this.config.startingFunds,
       politicalCapital: this.config.startingPoliticalCapital,
@@ -252,17 +275,24 @@ export class GameEngine {
       this.state.statHistory[sd.id] = [sd.value];
     }
 
-    // Initialize voter groups
-    this.state.voterGroups = this.voterGroupDefs.map(vgd => ({
-      id: vgd.id,
-      name: vgd.name,
-      icon: vgd.icon,
-      population: vgd.basePopulation,
-      happiness: 0,
-      prevHappiness: 0,
-      loyalty: {},
-      turnout: 0.6,
-    }));
+    // Initialize voter groups with partyPolling
+    this.state.voterGroups = this.voterGroupDefs.map(vgd => {
+      const partyPolling: Record<string, number> = {};
+      for (const p of this.state.players) {
+        partyPolling[p.id] = 1 / this.state.players.length;
+      }
+      return {
+        id: vgd.id,
+        name: vgd.name,
+        icon: vgd.icon,
+        population: vgd.basePopulation,
+        happiness: 0,
+        prevHappiness: 0,
+        loyalty: {},
+        turnout: 0.6,
+        partyPolling,
+      };
+    });
 
     // Initialize voter influence
     for (const p of this.state.players) {
@@ -280,9 +310,15 @@ export class GameEngine {
     recomputeChamberPositions(this.state.seats, computePlayerSeatCounts(this.state.seats));
     this.updateStateInfo();
 
-    // First player is initial government
+    // First player is initial government + PM
     this.state.players[0].isGovernment = true;
+    if (this.state.players[0].leader) {
+      this.state.players[0].leader.isPM = true;
+    }
     this.syncPlayerSeatCounts();
+
+    // Compute initial budget
+    this.computeBudget();
 
     this.logEvent({ type: 'game_started', timestamp: Date.now(), seed: this.state.seed });
     this.logEvent({
@@ -307,20 +343,37 @@ export class GameEngine {
   }
 
   private addAIPlayers(): void {
-    const aiTemplates: { name: string; party: string; social: SocialIdeology; economic: EconomicIdeology; personality: AIPersonality }[] = [
-      { name: 'Margaret', party: 'Iron Coalition', social: 'conservative', economic: 'market', personality: 'hawk' },
-      { name: 'Kevin', party: "People's Alliance", social: 'progressive', economic: 'interventionist', personality: 'populist' },
-      { name: 'Julia', party: 'Forward Australia', social: 'progressive', economic: 'interventionist', personality: 'technocrat' },
-      { name: 'Tony', party: 'Freedom Party', social: 'conservative', economic: 'market', personality: 'ideologue' },
-      { name: 'Malcolm', party: 'Modern Centre', social: 'progressive', economic: 'market', personality: 'dove' },
+    const aiTemplates: { name: string; party: string; social: SocialIdeology; economic: EconomicIdeology; personality: AIPersonality; portrait: string; title: string }[] = [
+      { name: 'Margaret', party: 'Iron Coalition', social: 'conservative', economic: 'market', personality: 'hawk', portrait: '🦅', title: 'The Iron Lady' },
+      { name: 'Kevin', party: "People's Alliance", social: 'progressive', economic: 'interventionist', personality: 'populist', portrait: '📢', title: 'The Populist' },
+      { name: 'Julia', party: 'Forward Australia', social: 'progressive', economic: 'interventionist', personality: 'technocrat', portrait: '📊', title: 'The Technocrat' },
+      { name: 'Tony', party: 'Freedom Party', social: 'conservative', economic: 'market', personality: 'ideologue', portrait: '⚡', title: 'The True Believer' },
+      { name: 'Malcolm', party: 'Modern Centre', social: 'progressive', economic: 'market', personality: 'dove', portrait: '🕊️', title: 'The Moderate' },
     ];
 
     const needed = Math.min(this.config.aiPlayerCount, 5 - this.state.players.filter(p => !p.isAI).length);
     for (let i = 0; i < needed; i++) {
       const ai = aiTemplates[i % aiTemplates.length];
+
+      // Create AI leader
+      const aiLeader: Leader = {
+        definitionId: `ai_leader_${i}`,
+        name: ai.name,
+        title: ai.title,
+        portrait: ai.portrait,
+        traits: [],
+        personalApproval: 0,
+        charisma: 0.4 + this.rng() * 0.4,
+        experience: 0.3 + this.rng() * 0.5,
+        scandalRisk: 0.1 + this.rng() * 0.3,
+        isPM: false,
+        roundsAsPM: 0,
+        defected: false,
+      };
+
       const player = this.addPlayer(
         `ai-${uuidv4().slice(0, 8)}`, ai.name, ai.party,
-        undefined, undefined, ai.social, ai.economic,
+        undefined, undefined, ai.social, ai.economic, aiLeader,
       );
       if (player) {
         player.isAI = true;
@@ -381,6 +434,15 @@ export class GameEngine {
       if (player.politicalCapital < capitalCost) continue;
       player.politicalCapital -= capitalCost;
 
+      // Leader policySpeed bonus
+      if (player.leader) {
+        for (const trait of player.leader.traits) {
+          if (trait.effects.policySpeed) {
+            // Faster implementation doesn't change cost but we note it
+          }
+        }
+      }
+
       policy.targetValue = newVal;
       player.policiesChanged++;
 
@@ -431,8 +493,19 @@ export class GameEngine {
 
     for (const action of validActions) {
       const cost = this.getActionCost(action.type);
-      if (player.funds < cost) continue;
-      player.funds -= cost;
+
+      // Leader bonuses
+      let effectiveCost = cost;
+      if (player.leader) {
+        for (const trait of player.leader.traits) {
+          if (action.type === 'fundraise' && trait.effects.fundraiseBonus) {
+            // Bonus applied to income, not cost
+          }
+        }
+      }
+
+      if (player.funds < effectiveCost) continue;
+      player.funds -= effectiveCost;
       processedActions.push(action);
     }
 
@@ -469,6 +542,9 @@ export class GameEngine {
     this.setPhase('simulation');
     this.state.roundResults = [];
 
+    // Track pre-round situation state
+    const preSituations = this.state.situations.map(s => s.definitionId);
+
     // Resolve opposition actions
     for (const [playerId, actions] of Object.entries(this.state.oppositionActions)) {
       const player = this.state.players.find(p => p.id === playerId);
@@ -483,7 +559,15 @@ export class GameEngine {
     const govPlayer = this.state.players.find(p => p.isGovernment);
     if (govPlayer) {
       govPlayer.roundsAsGovernment++;
-      govPlayer.politicalCapital = Math.min(govPlayer.politicalCapital + this.config.capitalRegenPerRound, 20);
+      let capitalRegen = this.config.capitalRegenPerRound;
+      // Leader capital bonus
+      if (govPlayer.leader) {
+        for (const trait of govPlayer.leader.traits) {
+          if (trait.effects.capitalBonus) capitalRegen += trait.effects.capitalBonus;
+        }
+        govPlayer.leader.roundsAsPM++;
+      }
+      govPlayer.politicalCapital = Math.min(govPlayer.politicalCapital + capitalRegen, 20);
     }
 
     // Income
@@ -531,17 +615,31 @@ export class GameEngine {
       p.ideologyScore = computeIdeologyScore(p, this.state.policies);
     }
 
+    // Update voter group party polling
+    this.computeVoterGroupPolling();
+
+    // Compute budget
+    this.computeBudget();
+
+    // Compute polling projection
+    this.computePolling();
+
     // Media cycle
+    const mediaHeadlines: string[] = [];
     if (this.config.enableMediaCycle && this.rng() < 0.6) {
       const media = generateMediaFocus(simCtx);
       if (media) {
         this.state.mediaFocus.push(media);
+        mediaHeadlines.push(media.headline);
         this.logEvent({
           type: 'media_spotlight', timestamp: Date.now(),
           nodeId: media.nodeId, headline: media.headline, sentiment: media.sentiment,
         });
       }
     }
+
+    // Generate round summary
+    this.generateRoundSummary(preSituations, tickResult, mediaHeadlines);
 
     // Check for dilemma
     if (this.config.enableDilemmas && this.rng() < 0.35) {
@@ -563,6 +661,16 @@ export class GameEngine {
   }
 
   private postSimulation(): void {
+    // Show round summary before checking election
+    this.setPhase('round_summary');
+
+    // In single player or if all players are AI except one, auto-advance after brief pause
+    if (this.config.isSinglePlayer) {
+      // Don't auto-advance - let player see the summary and click continue
+    }
+  }
+
+  private postRoundSummary(): void {
     // Election check
     if (this.state.round > 0 && this.state.round % this.config.electionCycle === 0) {
       this.runElection();
@@ -574,6 +682,218 @@ export class GameEngine {
       return;
     }
     this.advanceToNextRound();
+  }
+
+  // ── Budget Computation (realistic Australian $B) ───────────
+
+  private computeBudget(): void {
+    const gdpGrowth = this.state.stats['gdp_growth'];
+    const inflation = this.state.stats['inflation'];
+    const debt = this.state.stats['national_debt'];
+
+    // GDP nominal grows/shrinks based on GDP growth stat
+    const growthRate = gdpGrowth ? (gdpGrowth.value * (gdpGrowth.displayMax - gdpGrowth.displayMin) + gdpGrowth.displayMin) / 100 : 0.025;
+    const gdpNominal = Math.round(BASE_GDP_BILLIONS * (1 + growthRate * (this.state.round / 4)));
+
+    // Revenue from tax policies
+    let totalRevenue = 0;
+    const taxPolicies = Object.values(this.state.policies).filter(p => p.category === 'tax');
+    for (const tp of taxPolicies) {
+      totalRevenue += tp.currentValue * tp.costPerPoint * 0.8; // tax revenue
+    }
+    // Base non-tax revenue (fees, dividends, etc.) ~$80B
+    totalRevenue += 80;
+    totalRevenue = Math.round(totalRevenue * 10) / 10;
+
+    // Expenditure from policy costs
+    let totalExpenditure = 0;
+    for (const policy of Object.values(this.state.policies)) {
+      if (policy.category !== 'tax') {
+        totalExpenditure += policy.currentValue * policy.costPerPoint;
+      }
+    }
+    totalExpenditure = Math.round(totalExpenditure * 10) / 10;
+
+    const surplus = Math.round((totalRevenue - totalExpenditure) * 10) / 10;
+    const nationalDebt = Math.round((BASE_DEBT_BILLIONS - surplus * this.state.round * 0.25) * 10) / 10;
+    const debtToGDP = Math.round((nationalDebt / gdpNominal) * 100 * 10) / 10;
+
+    this.state.budget = {
+      totalRevenue,
+      totalExpenditure,
+      surplus,
+      nationalDebt: Math.max(0, nationalDebt),
+      debtToGDP,
+      gdpNominal,
+    };
+  }
+
+  // ── Polling Projection ─────────────────────────────────────
+
+  private computePolling(): void {
+    // Run a simulated election without applying results
+    const projectedResult = simulateElection(this.state, this.voterGroupDefs, this.rng);
+
+    const projectedSeats: Record<string, number> = {};
+    const currentSeats = computePlayerSeatCounts(this.state.seats);
+
+    // Count projected seats from vote share
+    for (const p of this.state.players) {
+      const voteShare = projectedResult.voteShare[p.id] || 0;
+      projectedSeats[p.id] = Math.round(voteShare * this.config.totalSeats);
+    }
+
+    // Ensure total adds up
+    const total = Object.values(projectedSeats).reduce((s, v) => s + v, 0);
+    if (total !== this.config.totalSeats && this.state.players.length > 0) {
+      const leader = this.state.players.reduce((a, b) =>
+        (projectedSeats[a.id] || 0) >= (projectedSeats[b.id] || 0) ? a : b);
+      projectedSeats[leader.id] = (projectedSeats[leader.id] || 0) + (this.config.totalSeats - total);
+    }
+
+    // Compute 2PP (two-party preferred) - simplified
+    const twoPartyPreferred: Record<string, number> = {};
+    const totalVotes = Object.values(projectedResult.voteShare).reduce((s, v) => s + v, 0);
+    for (const p of this.state.players) {
+      twoPartyPreferred[p.id] = totalVotes > 0
+        ? Math.round(((projectedResult.voteShare[p.id] || 0) / totalVotes) * 100 * 10) / 10
+        : 0;
+    }
+
+    const approvalRatings: Record<string, number> = {};
+    for (const p of this.state.players) {
+      approvalRatings[p.id] = Math.round(p.approvalRating * 100) / 100;
+    }
+
+    const snapshot: PollingSnapshot = {
+      round: this.state.round,
+      projectedSeats,
+      primaryVote: projectedResult.voteShare,
+      twoPartyPreferred,
+      approvalRatings,
+    };
+
+    this.state.currentPolling = snapshot;
+    this.state.pollingHistory.push(snapshot);
+  }
+
+  // ── Voter Group Polling ────────────────────────────────────
+
+  private computeVoterGroupPolling(): void {
+    for (const vg of this.state.voterGroups) {
+      const vgDef = this.voterGroupDefs.find(d => d.id === vg.id);
+      if (!vgDef) continue;
+
+      const totalScore: Record<string, number> = {};
+      let totalSum = 0;
+
+      for (const p of this.state.players) {
+        // Base: ideology alignment
+        const playerSocial = p.socialIdeology === 'progressive' ? 1 : -1;
+        const playerEcon = p.economicIdeology === 'interventionist' ? 1 : -1;
+        const alignment = 1 - (Math.abs(playerSocial - vgDef.socialLeaning) + Math.abs(playerEcon - vgDef.economicLeaning)) / 4;
+
+        // Loyalty from campaigning
+        const loyalty = vg.loyalty[p.id] || 0;
+
+        // Government bonus/penalty
+        const govMod = p.isGovernment ? vg.happiness * 0.3 : 0;
+
+        const score = Math.max(0.01, alignment * 0.4 + loyalty * 0.35 + govMod + 0.25);
+        totalScore[p.id] = score;
+        totalSum += score;
+      }
+
+      // Normalize to percentages
+      for (const p of this.state.players) {
+        vg.partyPolling[p.id] = totalSum > 0
+          ? Math.round((totalScore[p.id] / totalSum) * 1000) / 1000
+          : 1 / this.state.players.length;
+      }
+    }
+  }
+
+  // ── Round Summary Generation ───────────────────────────────
+
+  private generateRoundSummary(
+    preSituations: string[],
+    tickResult: { situationsTriggered: ActiveSituation[]; situationsResolved: ActiveSituation[] },
+    mediaHeadlines: string[],
+  ): void {
+    const govPlayer = this.state.players.find(p => p.isGovernment);
+    if (!govPlayer) return;
+
+    // Get economic stats for realistic display
+    const gdpGrowthStat = this.state.stats['gdp_growth'];
+    const unemploymentStat = this.state.stats['unemployment'];
+    const inflationStat = this.state.stats['inflation'];
+
+    const toReal = (stat: StatDefinition | undefined) => {
+      if (!stat) return 0;
+      return Math.round((stat.value * (stat.displayMax - stat.displayMin) + stat.displayMin) * 10) / 10;
+    };
+
+    // Voter group happiness changes
+    const voterGroupChanges = this.state.voterGroups
+      .map(vg => ({
+        groupId: vg.id,
+        groupName: vg.name,
+        happinessDelta: Math.round((vg.happiness - vg.prevHappiness) * 100) / 100,
+      }))
+      .filter(c => Math.abs(c.happinessDelta) > 0.01)
+      .sort((a, b) => Math.abs(b.happinessDelta) - Math.abs(a.happinessDelta))
+      .slice(0, 8);
+
+    // Opposition action descriptions
+    const oppositionActions = this.state.players
+      .filter(p => !p.isGovernment)
+      .map(p => ({
+        playerId: p.id,
+        playerName: p.name,
+        actions: (this.state.oppositionActions[p.id] || []).map(a => {
+          const r = this.state.roundResults.find(rr => rr.playerId === p.id && rr.action.type === a.type);
+          return r?.description || a.type;
+        }),
+      }));
+
+    // Policy changes this round
+    const policiesChanged = this.state.policyHistory
+      .filter(ph => ph.round === this.state.round)
+      .map(ph => ({
+        policyId: ph.policyId,
+        policyName: this.state.policies[ph.policyId]?.name || ph.policyId,
+        oldValue: ph.oldValue,
+        newValue: ph.newValue,
+      }));
+
+    // Polling projection
+    const pollingProjection: Record<string, number> = {};
+    if (this.state.currentPolling) {
+      for (const [pid, seats] of Object.entries(this.state.currentPolling.projectedSeats)) {
+        pollingProjection[pid] = seats;
+      }
+    }
+
+    const summary: RoundSummary = {
+      round: this.state.round,
+      governmentPlayerId: govPlayer.id,
+      governmentPlayerName: govPlayer.name,
+      gdpBillions: this.state.budget.gdpNominal,
+      gdpGrowthPercent: toReal(gdpGrowthStat),
+      unemploymentPercent: toReal(unemploymentStat),
+      debtBillions: this.state.budget.nationalDebt,
+      deficitBillions: this.state.budget.surplus,
+      inflationPercent: toReal(inflationStat),
+      policiesChanged,
+      situationsTriggered: tickResult.situationsTriggered.map(s => s.name),
+      situationsResolved: tickResult.situationsResolved.map(s => s.name),
+      mediaHeadlines,
+      voterGroupChanges,
+      pollingProjection,
+      oppositionActions,
+    };
+
+    this.state.roundSummaries.push(summary);
   }
 
   // ── Action Execution ───────────────────────────────────────
@@ -602,7 +922,16 @@ export class GameEngine {
 
     const def = this.voterGroupDefs.find(d => d.id === groupId);
     const persuadability = def?.persuadability || 0.5;
-    const loyaltyGain = 0.1 + this.rng() * 0.1 * persuadability;
+    let loyaltyGain = 0.1 + this.rng() * 0.1 * persuadability;
+
+    // Leader charisma + campaign bonus
+    if (player.leader) {
+      loyaltyGain *= (1 + player.leader.charisma * 0.3);
+      for (const trait of player.leader.traits) {
+        if (trait.effects.campaignBonus) loyaltyGain *= (1 + trait.effects.campaignBonus);
+      }
+    }
+
     vg.loyalty[player.id] = (vg.loyalty[player.id] || 0) + loyaltyGain;
     player.voterInfluence[groupId] = (player.voterInfluence[groupId] || 0) + loyaltyGain;
 
@@ -639,10 +968,13 @@ export class GameEngine {
     if (!govPlayer) return { playerId: player.id, action, success: false, description: 'No government', effects: [] };
 
     let issue = 'government record';
+    let attackDamage = 0.05;
+
     if (action.targetSituationId) {
       const sit = this.state.situations.find(s => s.definitionId === action.targetSituationId);
       if (sit) {
         issue = sit.name;
+        attackDamage = 0.07 + sit.severity * 0.05; // crises do more damage
         const sitDef = this.situationDefs.find(d => d.id === sit.definitionId);
         if (sitDef) {
           for (const vr of sitDef.voterReactions) {
@@ -659,7 +991,16 @@ export class GameEngine {
       if (stat) issue = stat.name;
     }
 
-    govPlayer.approvalRating = Math.max(-1, govPlayer.approvalRating - 0.05);
+    // Leader attack resistance
+    if (govPlayer.leader) {
+      for (const trait of govPlayer.leader.traits) {
+        if (trait.effects.attackResistance) {
+          attackDamage *= (1 - trait.effects.attackResistance);
+        }
+      }
+    }
+
+    govPlayer.approvalRating = Math.max(-1, govPlayer.approvalRating - attackDamage);
 
     this.logEvent({
       type: 'attack_action', timestamp: Date.now(),
@@ -669,12 +1010,22 @@ export class GameEngine {
     return {
       playerId: player.id, action, success: true,
       description: `Attacked government on ${issue}`,
-      effects: [{ type: 'approval_damage', amount: -0.05 }],
+      effects: [{ type: 'approval_damage', amount: -attackDamage }],
     };
   }
 
   private executeFundraise(player: Player): ActionResult {
-    const amount = this.config.fundraiseAmount + Math.floor(this.rng() * 5);
+    let amount = this.config.fundraiseAmount + Math.floor(this.rng() * 5);
+
+    // Leader fundraise bonus
+    if (player.leader) {
+      for (const trait of player.leader.traits) {
+        if (trait.effects.fundraiseBonus) {
+          amount = Math.round(amount * (1 + trait.effects.fundraiseBonus));
+        }
+      }
+    }
+
     player.funds += amount;
     this.logEvent({
       type: 'funds_changed', timestamp: Date.now(),
@@ -687,14 +1038,22 @@ export class GameEngine {
   }
 
   private executeMediaCampaign(player: Player): ActionResult {
+    let gain = 0.02 + this.rng() * 0.03;
+
+    // Leader media savvy
+    if (player.leader) {
+      for (const trait of player.leader.traits) {
+        if (trait.effects.mediaSavvy) gain *= (1 + trait.effects.mediaSavvy * 0.5);
+      }
+    }
+
     for (const vg of this.state.voterGroups) {
-      const gain = 0.02 + this.rng() * 0.03;
       vg.loyalty[player.id] = (vg.loyalty[player.id] || 0) + gain;
     }
     return {
       playerId: player.id, action: { type: 'media_campaign' }, success: true,
       description: 'Media campaign boosted visibility across all groups',
-      effects: [{ type: 'visibility', amount: 0.03 }],
+      effects: [{ type: 'visibility', amount: gain }],
     };
   }
 
@@ -767,6 +1126,15 @@ export class GameEngine {
       if (vg) vg.happiness = Math.max(-1, Math.min(1, vg.happiness + reaction.delta));
     }
 
+    // Update the last round summary with dilemma info
+    const lastSummary = this.state.roundSummaries[this.state.roundSummaries.length - 1];
+    if (lastSummary) {
+      lastSummary.dilemmaResolved = {
+        name: this.state.pendingDilemma.name,
+        choiceLabel: choice.label,
+      };
+    }
+
     this.state.resolvedDilemmas.push(this.state.pendingDilemma.definitionId);
     this.logEvent({
       type: 'dilemma_resolved', timestamp: Date.now(),
@@ -830,13 +1198,17 @@ export class GameEngine {
     recomputeChamberPositions(this.state.seats, computePlayerSeatCounts(this.state.seats));
     this.updateStateInfo();
 
-    // Update government
+    // Update government and PM
+    const oldGov = this.state.players.find(p => p.isGovernment);
+    if (oldGov?.leader) oldGov.leader.isPM = false;
+
     for (const p of this.state.players) {
       p.isGovernment = (p.id === elResult.newGovernmentId);
     }
     const newGov = this.state.players.find(p => p.isGovernment);
     if (newGov) {
       newGov.electionsWon++;
+      if (newGov.leader) newGov.leader.isPM = true;
       this.logEvent({
         type: 'government_formed', timestamp: Date.now(),
         playerId: newGov.id, playerName: newGov.name, seats: newGov.seats,
@@ -1027,6 +1399,10 @@ export class GameEngine {
         if (gov && this.state.pendingDilemma?.choices[0]) {
           this.resolveDilemma(gov.id, this.state.pendingDilemma.choices[0].id);
         }
+        return true;
+      }
+      case 'round_summary': {
+        this.postRoundSummary();
         return true;
       }
       case 'election_results': {
