@@ -557,7 +557,7 @@ export const AustraliaMapView: React.FC<AustraliaMapViewProps> = ({
           fill="rgba(184,134,11,0.6)" fontSize="10"
           fontFamily="'IBM Plex Mono', monospace"
         >
-          ROUND {gameState.round}/{gameState.maxRounds}
+          ROUND {gameState.round}/{gameState.totalRounds}
         </text>
       </svg>
 

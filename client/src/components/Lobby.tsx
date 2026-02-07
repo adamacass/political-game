@@ -14,12 +14,12 @@ interface LobbyProps {
   availableColors: PartyColorId[];
   error: string | null;
   onCreateRoom: (
-    playerName: string, partyName: string, colorId: string, symbolId: string,
+    playerName: string, partyName: string, colorId: string,
     socialIdeology: string, economicIdeology: string,
   ) => void;
   onJoinRoom: (
     roomId: string, playerName: string, partyName: string, colorId: string,
-    symbolId: string, socialIdeology: string, economicIdeology: string,
+    socialIdeology: string, economicIdeology: string,
   ) => void;
   onStartGame: () => void;
 }
@@ -57,7 +57,6 @@ export function Lobby({
         playerName.trim(),
         partyName.trim(),
         selectedColor || '',
-        '',
         socialIdeology,
         economicIdeology,
       );
@@ -71,7 +70,6 @@ export function Lobby({
         playerName.trim(),
         partyName.trim(),
         selectedColor || '',
-        '',
         socialIdeology,
         economicIdeology,
       );
@@ -378,7 +376,7 @@ export function Lobby({
             </div>
             <div>
               <div style={{ color: 'var(--text-muted)' }}>Rounds</div>
-              <div style={{ color: 'var(--parchment)' }}>{gameState.maxRounds}</div>
+              <div style={{ color: 'var(--parchment)' }}>{gameState.totalRounds}</div>
             </div>
             <div>
               <div style={{ color: 'var(--text-muted)' }}>Majority</div>

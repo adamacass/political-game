@@ -1,32 +1,126 @@
 // ============================================================
 // THE HOUSE - Australian Political Strategy Game
-// Complete type system for action-based gameplay
+// Complete type system for simultaneous-play strategy game
 // ============================================================
 
-export type Issue = 'economy' | 'health' | 'housing' | 'climate' | 'security' | 'education';
+// ============================================================
+// IDEOLOGY
+// ============================================================
+
 export type SocialIdeology = 'progressive' | 'conservative';
 export type EconomicIdeology = 'market' | 'interventionist';
 export type IdeologyStance = 'favoured' | 'neutral' | 'opposed';
 
+// ============================================================
+// PHASES (simultaneous play model)
+// ============================================================
+
 export type Phase =
-  | 'waiting'
-  | 'budget'
-  | 'action'
-  | 'legislation_propose'
-  | 'legislation_vote'
-  | 'legislation_result'
-  | 'event'
+  | 'waiting'      // lobby, pre-game
+  | 'planning'     // all players choose actions simultaneously
+  | 'resolution'   // actions resolve, economy ticks
+  | 'election'     // seats contested based on accumulated campaign + satisfaction
   | 'game_over';
 
-export type ActionType =
-  | 'campaign'
-  | 'policy_speech'
-  | 'attack_ad'
-  | 'fundraise'
-  | 'media_blitz'
-  | 'pork_barrel';
+// ============================================================
+// ACTIONS
+// ============================================================
 
-export type PCapType = 'mandate' | 'prime_ministership' | 'legislation' | 'state_control' | 'approval_bonus';
+export type ActionType =
+  | 'campaign'         // target a state to build campaign influence
+  | 'propose_policy'   // propose a policy for automatic vote
+  | 'attack_ad'        // hurt opponent's approval
+  | 'fundraise'        // gain funds
+  | 'media_blitz'      // boost own approval
+  | 'coalition_talk';  // build relationships with another player
+
+/** What a player submits each round (up to actionsPerRound). */
+export interface PlayerAction {
+  type: ActionType;
+  targetState?: StateCode;       // for campaign
+  policyId?: string;             // for propose_policy
+  targetPlayerId?: string;       // for attack_ad, coalition_talk
+}
+
+/** Result of a single resolved action. */
+export interface ActionResult {
+  playerId: string;
+  action: PlayerAction;
+  success: boolean;
+  description: string;
+  seatsCaptured?: number;
+  approvalChange?: number;
+  fundsChange?: number;
+  policyPassed?: boolean;
+}
+
+export interface ActionCost {
+  funds: number;
+  description: string;
+}
+
+// ============================================================
+// POLICIES (replaces Bills)
+// ============================================================
+
+export type PolicyCategory =
+  | 'taxation'
+  | 'healthcare'
+  | 'education'
+  | 'housing'
+  | 'climate'
+  | 'defence'
+  | 'infrastructure'
+  | 'welfare'
+  | 'immigration'
+  | 'trade';
+
+export interface PolicyEffect {
+  target: string;     // economic variable or sector name
+  immediate: number;  // one-time impact when activated
+  perPeriod: number;  // ongoing impact per round
+  duration: number;   // how many rounds the effect lasts
+  delay: number;      // rounds before activation
+  uncertainty: number; // 0-1: random variance factor
+}
+
+export interface Policy {
+  id: string;
+  name: string;
+  shortName: string;
+  description: string;
+  category: PolicyCategory;
+  stanceTable: {
+    progressive: IdeologyStance;
+    conservative: IdeologyStance;
+    market: IdeologyStance;
+    interventionist: IdeologyStance;
+  };
+  budgetCost: number;             // annual budget impact (negative = spending, positive = revenue)
+  economicEffects: PolicyEffect[];
+  voterImpacts: { groupId: string; impact: number }[];
+  implementationRounds: number;   // rounds before effects begin
+  isLandmark: boolean;
+}
+
+/** A policy currently in effect. */
+export interface ActivePolicy {
+  policy: Policy;
+  proposerId: string;
+  roundPassed: number;
+  roundsRemaining: number;
+}
+
+/** Result of an automatic policy vote. */
+export interface PolicyVoteResult {
+  policyId: string;
+  policyName: string;
+  proposerId: string;
+  passed: boolean;
+  supportSeats: number;
+  opposeSeats: number;
+  totalSeats: number;
+}
 
 // ============================================================
 // SEAT MAP TYPES
@@ -48,15 +142,14 @@ export interface Seat {
   state: StateCode;
   x: number;
   y: number;
-  chamberRow: number;   // Row index in chamber layout
-  chamberCol: number;   // Column index in chamber layout
-  chamberSide: 'left' | 'right' | 'crossbench'; // Which side of the chamber
+  chamberRow: number;
+  chamberCol: number;
+  chamberSide: 'left' | 'right' | 'crossbench';
   ideology: SeatIdeology;
   ownerPlayerId: string | null;
-  margin: number; // 0-100, how safe/marginal the seat is (lower = more marginal)
+  margin: number;            // 0-100, lower = more marginal
   lastCampaignedBy: string | null;
   contested: boolean;
-  // Geographic coordinates for Australia map view
   mapX: number;
   mapY: number;
 }
@@ -86,29 +179,7 @@ export const PARTY_COLORS = [
 export type PartyColorId = typeof PARTY_COLORS[number]['id'];
 
 // ============================================================
-// BILLS (replace policy cards)
-// ============================================================
-
-export interface Bill {
-  id: string;
-  name: string;
-  shortName: string;
-  description: string;
-  issue: Issue;
-  stanceTable: {
-    progressive: IdeologyStance;
-    conservative: IdeologyStance;
-    market: IdeologyStance;
-    interventionist: IdeologyStance;
-  };
-  budgetImpact: number; // negative = costs money, positive = revenue
-  approvalImpact: number; // how it affects proposer approval if passed
-  pCapReward: number;
-  isLandmark: boolean;
-}
-
-// ============================================================
-// POLITICAL EVENTS (replace wildcard cards)
+// POLITICAL EVENTS
 // ============================================================
 
 export interface PoliticalEvent {
@@ -121,39 +192,58 @@ export interface PoliticalEvent {
 }
 
 export interface EventEffect {
-  target: 'leader' | 'trailer' | 'all' | 'random' | 'proposer';
+  target: 'leader' | 'trailer' | 'all' | 'random' | 'government';
   type: 'approval' | 'funds' | 'seats';
   amount: number;
   condition?: string;
 }
 
 // ============================================================
-// PLAYER ACTION
+// AI
 // ============================================================
 
-export interface PlayerAction {
-  type: ActionType;
-  playerId: string;
-  targetSeatId?: SeatId;
-  targetPlayerId?: string;
-  fundsSpent?: number;
-  result?: ActionResult;
-  timestamp: number;
-}
+export type AIStrategy = 'campaigner' | 'policy_wonk' | 'populist' | 'pragmatist';
+export type AIDifficulty = 'easy' | 'normal' | 'hard';
 
-export interface ActionResult {
-  success: boolean;
-  message: string;
-  seatCaptured?: boolean;
-  approvalChange?: number;
-  fundsChange?: number;
-  pCapChange?: number;
-}
+// ============================================================
+// PLAYER STATE
+// ============================================================
 
-export interface ActionCost {
-  ap: number;
+export interface Player {
+  id: string;
+  name: string;
+  playerName: string;
+  colorId: PartyColorId;
+  color: string;
+
+  socialIdeology: SocialIdeology;
+  economicIdeology: EconomicIdeology;
+
+  seats: number;
   funds: number;
-  description: string;
+  approval: number;       // -100 to 100
+
+  isAI: boolean;
+  aiStrategy?: AIStrategy;
+
+  connected: boolean;
+  isHost: boolean;
+
+  // Simultaneous play
+  submittedActions: boolean;
+
+  // Scoring
+  policyScore: number;       // accumulated ideology alignment from passed policies
+  governmentRounds: number;  // rounds spent as government leader
+
+  // Campaign tracking: accumulated campaign effort per state
+  campaignInfluence: Record<StateCode, number>;
+
+  // Stats
+  totalSeatsWon: number;
+  totalSeatsLost: number;
+  policiesProposed: number;
+  policiesPassed: number;
 }
 
 // ============================================================
@@ -171,117 +261,55 @@ export interface ChatMessage {
 }
 
 // ============================================================
-// HISTORY SNAPSHOT
-// ============================================================
-
-export interface HistorySnapshot {
-  round: number;
-  timestamp: number;
-  activeIssue: Issue;
-  seatCounts: Record<string, number>;
-  approvalRatings: Record<string, number>;
-  fundBalances: Record<string, number>;
-  pCapTotals: Record<string, number>;
-  billResult: BillResult | null;
-  eventOccurred: string | null;
-  actionsPerformed: PlayerAction[];
-}
-
-export interface BillResult {
-  billId: string;
-  billName: string;
-  proposerId: string;
-  passed: boolean;
-  yesWeight: number;
-  noWeight: number;
-  voterBreakdown: { playerId: string; vote: 'aye' | 'no'; seatWeight: number }[];
-}
-
-// ============================================================
-// PLAYER STATE
-// ============================================================
-
-export interface Player {
-  id: string;
-  name: string;
-  playerName: string;
-  colorId: PartyColorId;
-  color: string;
-  symbolId: string;
-
-  socialIdeology: SocialIdeology;
-  economicIdeology: EconomicIdeology;
-
-  seats: number;
-  funds: number;
-  approval: number; // -100 to 100
-  pcap: number;
-  actionPoints: number;
-  maxActionPoints: number;
-
-  connected: boolean;
-  isHost: boolean;
-
-  // Round tracking
-  actionsThisRound: PlayerAction[];
-  hasProposed: boolean;
-  hasVoted: boolean;
-
-  // Stats
-  totalSeatsWon: number;
-  totalSeatsLost: number;
-  billsProposed: number;
-  billsPassed: number;
-  campaignsRun: number;
-}
-
-// ============================================================
-// PENDING LEGISLATION
-// ============================================================
-
-export interface PendingLegislation {
-  bill: Bill;
-  proposerId: string;
-  votes: LegislationVote[];
-  amendments: string[];
-}
-
-export interface LegislationVote {
-  playerId: string;
-  vote: 'aye' | 'no';
-  seatWeight: number;
-}
-
-// ============================================================
-// ECONOMIC STATE (from white paper economic domain)
+// ECONOMIC STATE
 // ============================================================
 
 export interface EconomicStateData {
-  // Primary indicators
-  gdpGrowth: number;        // [-10, 15] % annual, eq 2.5
-  unemployment: number;     // [0, 30] % labor force, eq 5.0
-  inflation: number;        // [-5, 30] % annual, eq 2.0
-  publicDebt: number;       // [0, 300] % of GDP, eq 60
-  budgetBalance: number;    // [-15, 10] % of GDP, eq 0
-  // Secondary indicators
-  consumerConfidence: number; // [0, 100], eq 50
-  businessConfidence: number; // [0, 100], eq 50
-  interestRate: number;       // [0, 20] %, eq 3.0
-  // Sector health indices [0, 100], eq 50
+  gdpGrowth: number;
+  unemployment: number;
+  inflation: number;
+  publicDebt: number;
+  budgetBalance: number;
+  consumerConfidence: number;
+  businessConfidence: number;
+  interestRate: number;
   sectors: Record<string, number>;
 }
 
 // ============================================================
-// VOTER GROUPS (from white paper voter domain)
+// VOTER GROUPS
 // ============================================================
 
 export interface VoterGroupState {
   id: string;
   name: string;
-  population: number;       // share of electorate [0, 1]
-  satisfaction: number;     // [0, 100]
+  population: number;
+  satisfaction: number;
   leaningPartyId: string | null;
   topConcerns: { variable: string; satisfaction: number }[];
+}
+
+// ============================================================
+// SCORES
+// ============================================================
+
+export interface PlayerScore {
+  playerId: string;
+  seats: number;
+  policyAlignment: number;
+  economicPerformance: number;
+  total: number;
+}
+
+// ============================================================
+// ELECTION
+// ============================================================
+
+export interface ElectionResult {
+  round: number;
+  seatChanges: { seatId: SeatId; oldOwner: string | null; newOwner: string | null }[];
+  governmentLeaderId: string | null;
+  nationalSwing: Record<string, number>;
 }
 
 // ============================================================
@@ -293,79 +321,74 @@ export interface GameState {
   seed: string;
   phase: Phase;
   round: number;
-  maxRounds: number;
+  totalRounds: number;
 
   players: Player[];
-  turnOrder: string[];
-  currentPlayerIndex: number;
-  speakerIndex: number;
 
   // Board
   totalSeats: number;
   seats: Record<SeatId, Seat>;
   stateControl: Record<StateCode, StateControl>;
-  activeIssue: Issue;
 
-  // Budget tracking
-  nationalBudget: number;
-  budgetSurplus: boolean;
+  // Policy system
+  policyMenu: Policy[];             // all available policies
+  activePolicies: ActivePolicy[];   // currently in effect
+  policyHistory: PolicyVoteResult[];
 
-  // Economy (white paper model)
+  // Simultaneous actions
+  roundActions: Record<string, PlayerAction[]>;  // playerId -> submitted actions
+  lastRoundResults: ActionResult[];
+
+  // Economy
   economy: EconomicStateData;
+  economyHistory: EconomicStateData[];
   voterGroups: VoterGroupState[];
 
-  // Legislation
-  availableBills: Bill[];
-  pendingLegislation: PendingLegislation | null;
-  passedBills: Bill[];
-  failedBills: Bill[];
+  // Government
+  governmentLeaderId: string | null;
+  nextElectionRound: number;
+  electionCycle: number;
+  electionHistory: ElectionResult[];
 
   // Events
   currentEvent: PoliticalEvent | null;
   pastEvents: PoliticalEvent[];
 
-  // Round tracking
-  playersActed: string[];
-  roundActions: PlayerAction[];
-
-  // Event log
+  // Log
   eventLog: GameEvent[];
   chatMessages: ChatMessage[];
-  history: HistorySnapshot[];
 
   // Game over
   winner: string | null;
-  finalScores: Record<string, number> | null;
+  finalScores: PlayerScore[] | null;
 
   // Lobby
   takenColors: PartyColorId[];
 }
 
 // ============================================================
-// EVENTS
+// EVENTS (log entries)
 // ============================================================
 
 export type GameEvent =
-  | { type: 'game_started'; timestamp: number; seed: string; config: string }
-  | { type: 'player_joined'; timestamp: number; playerId: string; playerName: string; partyName: string; colorId: PartyColorId }
-  | { type: 'round_started'; timestamp: number; round: number; activeIssue: Issue }
-  | { type: 'budget_distributed'; timestamp: number; amounts: Record<string, number> }
-  | { type: 'action_performed'; timestamp: number; action: PlayerAction }
+  | { type: 'game_started'; timestamp: number; seed: string }
+  | { type: 'player_joined'; timestamp: number; playerId: string; playerName: string; colorId: PartyColorId }
+  | { type: 'round_started'; timestamp: number; round: number }
+  | { type: 'actions_submitted'; timestamp: number; playerId: string; actionCount: number }
+  | { type: 'action_resolved'; timestamp: number; result: ActionResult }
+  | { type: 'policy_voted'; timestamp: number; result: PolicyVoteResult }
   | { type: 'seat_captured'; timestamp: number; seatId: SeatId; seatName: string; fromPlayerId: string | null; toPlayerId: string }
   | { type: 'seat_lost'; timestamp: number; seatId: SeatId; seatName: string; fromPlayerId: string; reason: string }
-  | { type: 'bill_proposed'; timestamp: number; playerId: string; billId: string }
-  | { type: 'vote_cast'; timestamp: number; playerId: string; vote: 'aye' | 'no'; seatWeight: number }
-  | { type: 'bill_resolved'; timestamp: number; billId: string; passed: boolean; yesWeight: number; noWeight: number }
-  | { type: 'pcap_awarded'; timestamp: number; playerId: string; amount: number; reason: string }
+  | { type: 'election_held'; timestamp: number; result: ElectionResult }
+  | { type: 'government_formed'; timestamp: number; leaderId: string; seats: number }
   | { type: 'event_occurred'; timestamp: number; eventId: string; eventName: string }
   | { type: 'approval_changed'; timestamp: number; playerId: string; delta: number; newApproval: number; reason: string }
   | { type: 'funds_changed'; timestamp: number; playerId: string; delta: number; newFunds: number; reason: string }
-  | { type: 'issue_changed'; timestamp: number; oldIssue: Issue; newIssue: Issue; reason: string }
   | { type: 'state_control_changed'; timestamp: number; state: StateCode; oldController: string | null; newController: string | null }
+  | { type: 'economic_update'; timestamp: number; economy: EconomicStateData }
   | { type: 'chat_message'; timestamp: number; senderId: string; recipientId: string | null; content: string }
-  | { type: 'game_ended'; timestamp: number; winner: string; scores: Record<string, number> }
-  | { type: 'phase_changed'; timestamp: number; fromPhase: Phase; toPhase: Phase }
-  | { type: 'economic_update'; timestamp: number; economy: EconomicStateData };
+  | { type: 'game_ended'; timestamp: number; winner: string; scores: PlayerScore[] }
+  | { type: 'phase_changed'; timestamp: number; fromPhase: Phase; toPhase: Phase };
 
 // ============================================================
 // GAME CONFIGURATION
@@ -373,28 +396,30 @@ export type GameEvent =
 
 export interface GameConfig {
   totalSeats: number;
-  maxRounds: number;
-  actionPointsPerRound: number;
+  totalRounds: number;          // total rounds in game
+  electionCycle: number;        // rounds between elections (default 4)
+  actionsPerRound: number;      // actions each player gets per round (default 3)
+
   startingFunds: number;
   startingApproval: number;
   incomePerSeat: number;
-  campaignBaseCost: number;
-  campaignBaseChance: number;
+
+  campaignCost: number;
   attackAdCost: number;
   mediaBlitzCost: number;
-  porkBarrelCost: number;
   fundraiseAmount: number;
-  mandateValue: number;
-  pmValue: number;
-  billPoolSize: number;
-  majorityThreshold: number; // seats for instant win
+  coalitionTalkCost: number;
+
+  aiPlayerCount: number;
+  aiDifficulty: AIDifficulty;
+
+  majorityThreshold: number;    // seats for government (76)
+
   enableEvents: boolean;
   enableChat: boolean;
-  enableEconomy: boolean;      // enable economic simulation
-  enableVoterGroups: boolean;  // enable voter group dynamics
-  seatIdeologyMode: 'random' | 'realistic';
-  stateControlValue: number;
-  economicVolatility: number;  // 0-2 scale (1 = default)
+  enableEconomy: boolean;
+  enableVoterGroups: boolean;
+  economicVolatility: number;
 }
 
 // ============================================================
@@ -402,19 +427,26 @@ export interface GameConfig {
 // ============================================================
 
 export interface ClientToServerEvents {
-  'join_room': (data: { roomId: string; playerName: string; partyName: string; colorId?: PartyColorId; symbolId?: string; socialIdeology?: SocialIdeology; economicIdeology?: EconomicIdeology }) => void;
-  'create_room': (data: { playerName: string; partyName: string; colorId?: PartyColorId; symbolId?: string; socialIdeology?: SocialIdeology; economicIdeology?: EconomicIdeology; configOverrides?: Partial<GameConfig> }) => void;
+  'create_room': (data: {
+    playerName: string;
+    partyName: string;
+    colorId?: PartyColorId;
+    socialIdeology?: SocialIdeology;
+    economicIdeology?: EconomicIdeology;
+    configOverrides?: Partial<GameConfig>;
+  }) => void;
+  'join_room': (data: {
+    roomId: string;
+    playerName: string;
+    partyName: string;
+    colorId?: PartyColorId;
+    socialIdeology?: SocialIdeology;
+    economicIdeology?: EconomicIdeology;
+  }) => void;
   'start_game': () => void;
-  'perform_action': (data: { actionType: ActionType; targetSeatId?: string; targetPlayerId?: string; fundsSpent?: number }) => void;
-  'end_turn': () => void;
-  'propose_bill': (data: { billId: string }) => void;
-  'skip_proposal': () => void;
-  'cast_vote': (data: { vote: 'aye' | 'no' }) => void;
-  'acknowledge_event': () => void;
-  'acknowledge_result': () => void;
+  'submit_actions': (data: { actions: PlayerAction[] }) => void;
   'update_config': (data: { config: Partial<GameConfig> }) => void;
   'request_state': () => void;
-  'export_game': () => void;
   'send_chat': (data: { content: string; recipientId: string | null }) => void;
   'force_advance_phase': () => void;
   'restore_session': (data: { roomId: string; playerId: string }) => void;
@@ -425,7 +457,6 @@ export interface ServerToClientEvents {
   'room_joined': (data: { roomId: string; playerId: string }) => void;
   'state_update': (data: { state: GameState; config: GameConfig }) => void;
   'error': (data: { message: string }) => void;
-  'game_exported': (data: { eventLog: GameEvent[]; config: GameConfig; seed: string; chatLog: ChatMessage[]; history: HistorySnapshot[] }) => void;
   'player_disconnected': (data: { playerId: string }) => void;
   'player_reconnected': (data: { playerId: string }) => void;
   'chat_message': (data: { message: ChatMessage }) => void;

@@ -3,177 +3,247 @@ import {
   GameState,
   GameConfig,
   Player,
-  Seat,
-  SeatId,
-  ActionType,
-  Phase,
-  Bill,
-  PoliticalEvent,
   PlayerAction,
-  GameEvent,
-  Issue,
+  ActionType,
+  ActionResult,
+  Policy,
+  PolicyCategory,
+  PlayerScore,
+  SeatId,
+  StateCode,
   EconomicStateData,
   VoterGroupState,
+  GameEvent,
+  ElectionResult,
+  PoliticalEvent,
+  StateControl,
 } from '../types';
 import { Chamber } from './Chamber';
 import { AustraliaMapView } from './AustraliaMapView';
 
 // ============================================================
-// THE HOUSE - Main Game Board Component
+// THE HOUSE - Simultaneous Play Game Board
 // ============================================================
 
 interface GameBoardProps {
   gameState: GameState;
   config: GameConfig;
   playerId: string;
-  onAction: (actionType: ActionType, targetSeatId?: string, targetPlayerId?: string, fundsSpent?: number) => void;
-  onEndTurn: () => void;
-  onProposeBill: (billId: string) => void;
-  onSkipProposal: () => void;
-  onCastVote: (vote: 'aye' | 'no') => void;
-  onAcknowledgeEvent: () => void;
-  onAcknowledgeResult: () => void;
+  onSubmitActions: (actions: PlayerAction[]) => void;
   onSendChat: (content: string, recipientId: string | null) => void;
   onForceAdvance: () => void;
 }
 
-// ---- Action definitions ----
+// ---- Constants ----
 
-interface ActionDef {
-  type: ActionType;
-  label: string;
-  apCost: number;
-  fundsCost: number | null; // null = free, number = config-driven
-  description: string;
-  icon: string;
-  needsTarget: 'seat' | 'player' | null;
-}
+const ALL_STATES: StateCode[] = ['NSW', 'VIC', 'QLD', 'WA', 'SA', 'TAS', 'ACT', 'NT'];
 
-function getActionDefs(config: GameConfig): ActionDef[] {
-  return [
-    {
-      type: 'campaign',
-      label: 'CAMPAIGN',
-      apCost: 1,
-      fundsCost: config.campaignBaseCost,
-      description: 'Deploy resources to win a seat',
-      icon: '\u2691', // flag
-      needsTarget: 'seat',
-    },
-    {
-      type: 'policy_speech',
-      label: 'POLICY SPEECH',
-      apCost: 1,
-      fundsCost: 0,
-      description: 'Rally the base, boost approval',
-      icon: '\u2606', // star
-      needsTarget: null,
-    },
-    {
-      type: 'attack_ad',
-      label: 'ATTACK AD',
-      apCost: 1,
-      fundsCost: config.attackAdCost,
-      description: "Target opponent's reputation",
-      icon: '\u2620', // skull
-      needsTarget: 'player',
-    },
-    {
-      type: 'fundraise',
-      label: 'FUNDRAISE',
-      apCost: 1,
-      fundsCost: 0,
-      description: 'Shore up the war chest',
-      icon: '$',
-      needsTarget: null,
-    },
-    {
-      type: 'media_blitz',
-      label: 'MEDIA BLITZ',
-      apCost: 1,
-      fundsCost: config.mediaBlitzCost,
-      description: 'Dominate the news cycle',
-      icon: '\u260A', // ascending node (newspaper-like)
-      needsTarget: null,
-    },
-    {
-      type: 'pork_barrel',
-      label: 'PORK BARREL',
-      apCost: 1,
-      fundsCost: config.porkBarrelCost,
-      description: 'Lock down marginal seats',
-      icon: '\u2302', // house
-      needsTarget: null,
-    },
-  ];
-}
-
-// ---- Phase ordering for the top bar ----
-
-const PHASE_SEQUENCE: { key: Phase; label: string }[] = [
-  { key: 'budget', label: 'Budget' },
-  { key: 'action', label: 'Action' },
-  { key: 'legislation_propose', label: 'Legislation' },
-  { key: 'event', label: 'Event' },
+const POLICY_CATEGORIES: PolicyCategory[] = [
+  'taxation', 'healthcare', 'education', 'housing', 'climate',
+  'defence', 'infrastructure', 'welfare', 'immigration', 'trade',
 ];
 
-function phaseIndex(phase: Phase): number {
-  if (phase === 'legislation_vote' || phase === 'legislation_result') return 2;
-  const idx = PHASE_SEQUENCE.findIndex((p) => p.key === phase);
-  return idx >= 0 ? idx : -1;
-}
+const ACTION_LABELS: Record<ActionType, string> = {
+  campaign: 'CAMPAIGN',
+  propose_policy: 'PROPOSE POLICY',
+  attack_ad: 'ATTACK AD',
+  fundraise: 'FUNDRAISE',
+  media_blitz: 'MEDIA BLITZ',
+  coalition_talk: 'COALITION TALK',
+};
+
+const ACTION_ICONS: Record<ActionType, string> = {
+  campaign: '\u2691',
+  propose_policy: '\u2696',
+  attack_ad: '\u2620',
+  fundraise: '$',
+  media_blitz: '\u260A',
+  coalition_talk: '\u2637',
+};
+
+const ACTION_DESCRIPTIONS: Record<ActionType, string> = {
+  campaign: 'Build influence in a state',
+  propose_policy: 'Propose a policy for vote',
+  attack_ad: "Damage an opponent's approval",
+  fundraise: 'Gain funds for your war chest',
+  media_blitz: 'Boost your approval rating',
+  coalition_talk: 'Build relationship with a player',
+};
+
+type CenterTab = 'chamber' | 'map' | 'economy';
+
+// ---- Styling constants ----
+
+const S = {
+  bgPrimary: '#1a3c2a',
+  bgPanel: 'rgba(10, 25, 16, 0.85)',
+  bgPanelLight: 'rgba(20, 40, 28, 0.7)',
+  parchment: '#f5f0e1',
+  brass: '#c5a55a',
+  brassLight: '#d4b86a',
+  brassDim: '#8a7a40',
+  textPrimary: '#f5f0e1',
+  textSecondary: '#b8b0a0',
+  textMuted: '#706858',
+  borderSubtle: 'rgba(197, 165, 90, 0.2)',
+  borderBrass: 'rgba(197, 165, 90, 0.4)',
+  ayeGreen: '#4caf50',
+  noRed: '#e53935',
+  gold: '#daa520',
+  warning: '#ff9800',
+  fontMono: "'IBM Plex Mono', 'Courier New', monospace",
+} as const;
 
 // ---- Helpers ----
 
-function issueClass(issue: Issue): string {
-  return `issue-${issue}`;
-}
-
-function formatIssue(issue: Issue): string {
-  return issue.charAt(0).toUpperCase() + issue.slice(1);
-}
-
-function formatEventMessage(evt: GameEvent, players: Player[]): string {
-  const playerName = (id: string) => players.find((p) => p.id === id)?.name ?? 'Unknown';
-  switch (evt.type) {
-    case 'seat_captured':
-      return `${playerName(evt.toPlayerId)} captured ${evt.seatName}`;
-    case 'seat_lost':
-      return `${playerName(evt.fromPlayerId)} lost ${evt.seatName}`;
-    case 'bill_resolved':
-      return `Bill ${evt.passed ? 'PASSED' : 'DEFEATED'} (${evt.yesWeight}-${evt.noWeight})`;
-    case 'action_performed': {
-      const a = evt.action;
-      const msg = a.result?.message ?? a.type.replace('_', ' ');
-      return `${playerName(a.playerId)}: ${msg}`;
-    }
-    case 'event_occurred':
-      return `Event: ${evt.eventName}`;
-    case 'round_started':
-      return `Round ${evt.round} \u2014 Issue: ${formatIssue(evt.activeIssue)}`;
-    case 'approval_changed':
-      return `${playerName(evt.playerId)} approval ${evt.delta > 0 ? '+' : ''}${evt.delta} (${evt.reason})`;
-    case 'state_control_changed':
-      return `${evt.state} control changed to ${evt.newController ? playerName(evt.newController) : 'none'}`;
-    case 'phase_changed':
-      return `Phase: ${evt.toPhase.replace('_', ' ')}`;
-    case 'game_ended':
-      return `Game Over! ${playerName(evt.winner)} wins!`;
-    default:
-      return '';
+function getActionCost(type: ActionType, config: GameConfig): number {
+  switch (type) {
+    case 'campaign': return config.campaignCost;
+    case 'attack_ad': return config.attackAdCost;
+    case 'media_blitz': return config.mediaBlitzCost;
+    case 'coalition_talk': return config.coalitionTalkCost;
+    case 'fundraise': return 0;
+    case 'propose_policy': return 0;
+    default: return 0;
   }
 }
 
-function stanceLabel(stance: 'favoured' | 'neutral' | 'opposed'): string {
-  if (stance === 'favoured') return '+';
-  if (stance === 'opposed') return '\u2212'; // minus
-  return '\u00B7'; // middle dot
+function formatEventMessage(evt: GameEvent, players: Player[]): string {
+  const pName = (id: string) => players.find((p) => p.id === id)?.name ?? 'Unknown';
+  switch (evt.type) {
+    case 'game_started': return 'Game started';
+    case 'round_started': return `Round ${evt.round} begins`;
+    case 'actions_submitted': return `${pName(evt.playerId)} submitted actions`;
+    case 'action_resolved': return `${pName(evt.result.playerId)}: ${evt.result.description}`;
+    case 'policy_voted': return `${evt.result.policyName} ${evt.result.passed ? 'PASSED' : 'DEFEATED'} (${evt.result.supportSeats}-${evt.result.opposeSeats})`;
+    case 'seat_captured': return `${pName(evt.toPlayerId)} captured ${evt.seatName}`;
+    case 'seat_lost': return `${pName(evt.fromPlayerId)} lost ${evt.seatName}`;
+    case 'election_held': return `Election held - ${evt.result.seatChanges.length} seats changed`;
+    case 'government_formed': return `${pName(evt.leaderId)} forms government (${evt.seats} seats)`;
+    case 'event_occurred': return `Event: ${evt.eventName}`;
+    case 'approval_changed': return `${pName(evt.playerId)} approval ${evt.delta > 0 ? '+' : ''}${evt.delta} (${evt.reason})`;
+    case 'funds_changed': return `${pName(evt.playerId)} funds ${evt.delta > 0 ? '+' : ''}${evt.delta} (${evt.reason})`;
+    case 'state_control_changed': return `${evt.state} control: ${evt.newController ? pName(evt.newController) : 'contested'}`;
+    case 'phase_changed': return `Phase: ${evt.toPhase}`;
+    case 'game_ended': return `Game Over! ${pName(evt.winner)} wins!`;
+    default: return '';
+  }
 }
 
 function stanceColor(stance: 'favoured' | 'neutral' | 'opposed'): string {
-  if (stance === 'favoured') return 'var(--aye-green)';
-  if (stance === 'opposed') return 'var(--no-red)';
-  return 'var(--text-muted)';
+  if (stance === 'favoured') return S.ayeGreen;
+  if (stance === 'opposed') return S.noRed;
+  return S.textMuted;
+}
+
+function stanceDot(stance: 'favoured' | 'neutral' | 'opposed'): string {
+  if (stance === 'favoured') return '\u25CF';
+  if (stance === 'opposed') return '\u25CF';
+  return '\u25CB';
+}
+
+function categoryLabel(cat: PolicyCategory): string {
+  return cat.charAt(0).toUpperCase() + cat.slice(1);
+}
+
+function approvalColor(approval: number): string {
+  if (approval >= 30) return S.ayeGreen;
+  if (approval >= 0) return S.brass;
+  return S.noRed;
+}
+
+function indicatorColor(value: number, good: 'high' | 'low' | 'zero'): string {
+  if (good === 'high') {
+    if (value > 3) return S.ayeGreen;
+    if (value < 0) return S.noRed;
+    return S.parchment;
+  }
+  if (good === 'low') {
+    if (value < 4) return S.ayeGreen;
+    if (value > 8) return S.noRed;
+    return S.parchment;
+  }
+  // zero
+  if (Math.abs(value) < 2) return S.ayeGreen;
+  if (Math.abs(value) > 5) return S.noRed;
+  return S.parchment;
+}
+
+function deltaArrow(curr: number, prev: number | undefined): { arrow: string; color: string } {
+  if (prev === undefined) return { arrow: '', color: S.textMuted };
+  const d = curr - prev;
+  if (Math.abs(d) < 0.01) return { arrow: '\u2192', color: S.textMuted };
+  if (d > 0) return { arrow: '\u2191', color: S.ayeGreen };
+  return { arrow: '\u2193', color: S.noRed };
+}
+
+// ---- SVG Sparkline helper ----
+
+function Sparkline({ data, width = 80, height = 24, color = S.brass }: {
+  data: number[];
+  width?: number;
+  height?: number;
+  color?: string;
+}) {
+  if (data.length < 2) return null;
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const range = max - min || 1;
+  const points = data.map((v, i) => {
+    const x = (i / (data.length - 1)) * width;
+    const y = height - ((v - min) / range) * (height - 2) - 1;
+    return `${x},${y}`;
+  }).join(' ');
+
+  return (
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ display: 'block' }}>
+      <polyline
+        points={points}
+        fill="none"
+        stroke={color}
+        strokeWidth={1.5}
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+// ============================================================
+// ACTION SLOT - individual action slot in planning panel
+// ============================================================
+
+interface ActionSlotState {
+  type: ActionType | null;
+  targetState: StateCode | null;
+  policyId: string | null;
+  targetPlayerId: string | null;
+}
+
+function emptySlot(): ActionSlotState {
+  return { type: null, targetState: null, policyId: null, targetPlayerId: null };
+}
+
+function isSlotComplete(slot: ActionSlotState): boolean {
+  if (!slot.type) return false;
+  switch (slot.type) {
+    case 'campaign': return slot.targetState !== null;
+    case 'propose_policy': return slot.policyId !== null;
+    case 'attack_ad': return slot.targetPlayerId !== null;
+    case 'coalition_talk': return slot.targetPlayerId !== null;
+    case 'fundraise': return true;
+    case 'media_blitz': return true;
+    default: return false;
+  }
+}
+
+function slotToAction(slot: ActionSlotState): PlayerAction | null {
+  if (!slot.type || !isSlotComplete(slot)) return null;
+  const action: PlayerAction = { type: slot.type };
+  if (slot.targetState) action.targetState = slot.targetState;
+  if (slot.policyId) action.policyId = slot.policyId;
+  if (slot.targetPlayerId) action.targetPlayerId = slot.targetPlayerId;
+  return action;
 }
 
 // ============================================================
@@ -184,22 +254,19 @@ export const GameBoard: React.FC<GameBoardProps> = ({
   gameState,
   config,
   playerId,
-  onAction,
-  onEndTurn,
-  onProposeBill,
-  onSkipProposal,
-  onCastVote,
-  onAcknowledgeEvent,
-  onAcknowledgeResult,
+  onSubmitActions,
   onSendChat,
   onForceAdvance,
 }) => {
   // ---- Local state ----
-  const [selectedAction, setSelectedAction] = useState<ActionType | null>(null);
-  const [selectedSeatId, setSelectedSeatId] = useState<SeatId | null>(null);
-  const [selectedTargetPlayer, setSelectedTargetPlayer] = useState<string | null>(null);
-  const [campaignSpend, setCampaignSpend] = useState<number>(0);
-  const [viewMode, setViewMode] = useState<'chamber' | 'map' | 'economy'>('chamber');
+  const [centerTab, setCenterTab] = useState<CenterTab>('chamber');
+  const [actionSlots, setActionSlots] = useState<ActionSlotState[]>(() =>
+    Array.from({ length: config.actionsPerRound }, () => emptySlot())
+  );
+  const [policyBrowserOpen, setPolicyBrowserOpen] = useState<number | null>(null);
+  const [policyCategoryFilter, setPolicyCategoryFilter] = useState<PolicyCategory | 'all'>('all');
+  const [policySearch, setPolicySearch] = useState('');
+  const [gameOverDismissed, setGameOverDismissed] = useState(false);
 
   // ---- Derived data ----
   const currentPlayer = useMemo(
@@ -207,39 +274,44 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     [gameState.players, playerId],
   );
 
-  const isMyTurn = gameState.turnOrder[gameState.currentPlayerIndex] === playerId;
-  const activePlayerName = useMemo(() => {
-    const id = gameState.turnOrder[gameState.currentPlayerIndex];
-    return gameState.players.find((p) => p.id === id)?.name ?? 'Unknown';
-  }, [gameState.turnOrder, gameState.currentPlayerIndex, gameState.players]);
-
-  const speakerId = gameState.turnOrder[gameState.speakerIndex];
-  const speakerPlayer = useMemo(
-    () => gameState.players.find((p) => p.id === speakerId) ?? null,
-    [gameState.players, speakerId],
-  );
-  const iAmSpeaker = speakerId === playerId;
-
-  const actionDefs = useMemo(() => getActionDefs(config), [config]);
-
-  const seats = useMemo(() => Object.values(gameState.seats), [gameState.seats]);
-
-  // Targetable seats: opponent-held or unclaimed seats (for campaign)
-  const targetableSeatIds = useMemo<SeatId[]>(() => {
-    if (selectedAction !== 'campaign') return [];
-    return seats
-      .filter((s) => s.ownerPlayerId !== playerId)
-      .map((s) => s.id);
-  }, [selectedAction, seats, playerId]);
-
-  // Other players (for attack ad targeting)
   const otherPlayers = useMemo(
     () => gameState.players.filter((p) => p.id !== playerId),
     [gameState.players, playerId],
   );
 
-  // Current phase index for phase bar
-  const currentPhaseIdx = phaseIndex(gameState.phase);
+  const sortedPlayers = useMemo(
+    () => [...gameState.players].sort((a, b) => b.seats - a.seats),
+    [gameState.players],
+  );
+
+  const isGovernmentLeader = gameState.governmentLeaderId === playerId;
+
+  const activePolicyIds = useMemo(
+    () => new Set(gameState.activePolicies.map((ap) => ap.policy.id)),
+    [gameState.activePolicies],
+  );
+
+  const myActivePolicies = useMemo(
+    () => gameState.activePolicies.filter((ap) => ap.proposerId === playerId),
+    [gameState.activePolicies, playerId],
+  );
+
+  const roundsUntilElection = gameState.nextElectionRound - gameState.round;
+
+  // Cost tally for current action slots
+  const totalCost = useMemo(() => {
+    return actionSlots.reduce((sum, slot) => {
+      if (!slot.type) return sum;
+      return sum + getActionCost(slot.type, config);
+    }, 0);
+  }, [actionSlots, config]);
+
+  const allSlotsFilled = useMemo(() => {
+    return actionSlots.every((s) => isSlotComplete(s));
+  }, [actionSlots]);
+
+  const canAfford = currentPlayer ? currentPlayer.funds >= totalCost : false;
+  const hasSubmitted = currentPlayer?.submittedActions ?? false;
 
   // Recent events for ticker
   const recentEvents = useMemo(() => {
@@ -248,105 +320,103 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         const msg = formatEventMessage(e, gameState.players);
         return msg.length > 0;
       })
-      .slice(-5)
+      .slice(-8)
       .reverse();
   }, [gameState.eventLog, gameState.players]);
 
-  // Budget amounts (from recent budget_distributed event)
-  const budgetAmounts = useMemo(() => {
-    const evt = [...gameState.eventLog].reverse().find((e) => e.type === 'budget_distributed');
-    if (evt && evt.type === 'budget_distributed') return evt.amounts;
-    return null;
-  }, [gameState.eventLog]);
+  // Economy history arrays for sparklines
+  const gdpHistory = useMemo(() => gameState.economyHistory.map((e) => e.gdpGrowth), [gameState.economyHistory]);
+  const unemploymentHistory = useMemo(() => gameState.economyHistory.map((e) => e.unemployment), [gameState.economyHistory]);
+  const inflationHistory = useMemo(() => gameState.economyHistory.map((e) => e.inflation), [gameState.economyHistory]);
+
+  const prevEconomy = gameState.economyHistory.length >= 2
+    ? gameState.economyHistory[gameState.economyHistory.length - 2]
+    : undefined;
+
+  // Filtered policies for browser
+  const filteredPolicies = useMemo(() => {
+    let list = gameState.policyMenu;
+    if (policyCategoryFilter !== 'all') {
+      list = list.filter((p) => p.category === policyCategoryFilter);
+    }
+    if (policySearch.trim()) {
+      const q = policySearch.toLowerCase().trim();
+      list = list.filter(
+        (p) =>
+          p.name.toLowerCase().includes(q) ||
+          p.shortName.toLowerCase().includes(q) ||
+          p.description.toLowerCase().includes(q),
+      );
+    }
+    return list;
+  }, [gameState.policyMenu, policyCategoryFilter, policySearch]);
 
   // ---- Action handlers ----
 
-  const handleActionTileClick = useCallback(
-    (actionType: ActionType) => {
-      if (!isMyTurn || !currentPlayer) return;
-      const def = actionDefs.find((d) => d.type === actionType);
-      if (!def) return;
+  const updateSlot = useCallback((index: number, updates: Partial<ActionSlotState>) => {
+    setActionSlots((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], ...updates };
+      return next;
+    });
+  }, []);
 
-      // Check AP
-      if (currentPlayer.actionPoints < def.apCost) return;
-
-      // Check funds
-      const cost = def.fundsCost ?? 0;
-      if (cost > 0 && currentPlayer.funds < cost) return;
-
-      if (selectedAction === actionType) {
-        // Deselect
-        setSelectedAction(null);
-        setSelectedSeatId(null);
-        setSelectedTargetPlayer(null);
-        setCampaignSpend(0);
-        return;
-      }
-
-      setSelectedAction(actionType);
-      setSelectedSeatId(null);
-      setSelectedTargetPlayer(null);
-      setCampaignSpend(cost);
-
-      // If action needs no target, fire immediately
-      if (!def.needsTarget) {
-        onAction(actionType, undefined, undefined, cost > 0 ? cost : undefined);
-        setSelectedAction(null);
-        setCampaignSpend(0);
-      }
-    },
-    [isMyTurn, currentPlayer, actionDefs, selectedAction, onAction],
-  );
-
-  const handleSeatClick = useCallback(
-    (seatId: SeatId) => {
-      if (selectedAction === 'campaign' && targetableSeatIds.includes(seatId)) {
-        setSelectedSeatId(seatId);
-        onAction('campaign', seatId, undefined, campaignSpend > 0 ? campaignSpend : undefined);
-        setSelectedAction(null);
-        setSelectedSeatId(null);
-        setCampaignSpend(0);
-      }
-    },
-    [selectedAction, targetableSeatIds, campaignSpend, onAction],
-  );
-
-  const handleTargetPlayerClick = useCallback(
-    (targetId: string) => {
-      if (selectedAction === 'attack_ad') {
-        setSelectedTargetPlayer(targetId);
-        const def = actionDefs.find((d) => d.type === 'attack_ad');
-        const cost = def?.fundsCost ?? 0;
-        onAction('attack_ad', undefined, targetId, cost > 0 ? cost : undefined);
-        setSelectedAction(null);
-        setSelectedTargetPlayer(null);
-      }
-    },
-    [selectedAction, actionDefs, onAction],
-  );
-
-  // ---- Render helpers ----
-
-  const renderApPips = (current: number, max: number) => {
-    const pips: React.ReactNode[] = [];
-    for (let i = 0; i < max; i++) {
-      pips.push(
-        <span
-          key={i}
-          style={{
-            display: 'inline-block',
-            width: 10,
-            height: 10,
-            borderRadius: '50%',
-            marginRight: 3,
-            background: i < current ? 'var(--brass-light)' : 'var(--bg-secondary)',
-            border: '1px solid var(--border-subtle)',
-          }}
-        />,
-      );
+  const clearSlot = useCallback((index: number) => {
+    setActionSlots((prev) => {
+      const next = [...prev];
+      next[index] = emptySlot();
+      return next;
+    });
+    if (policyBrowserOpen === index) {
+      setPolicyBrowserOpen(null);
     }
-    return <div style={{ display: 'flex', alignItems: 'center' }}>{pips}</div>;
-  };
+  }, [policyBrowserOpen]);
+
+  const handleActionTypeChange = useCallback((index: number, type: ActionType | '') => {
+    if (type === '') {
+      clearSlot(index);
+      return;
+    }
+    setActionSlots((prev) => {
+      const next = [...prev];
+      next[index] = { type: type as ActionType, targetState: null, policyId: null, targetPlayerId: null };
+      return next;
+    });
+    if (type === 'propose_policy') {
+      setPolicyBrowserOpen(index);
+    } else if (policyBrowserOpen === index) {
+      setPolicyBrowserOpen(null);
+    }
+  }, [clearSlot, policyBrowserOpen]);
+
+  const handlePolicySelect = useCallback((index: number, policyId: string) => {
+    updateSlot(index, { policyId });
+    setPolicyBrowserOpen(null);
+  }, [updateSlot]);
+
+  const handleSubmit = useCallback(() => {
+    const actions: PlayerAction[] = [];
+    for (const slot of actionSlots) {
+      const a = slotToAction(slot);
+      if (a) actions.push(a);
+    }
+    if (actions.length === config.actionsPerRound) {
+      onSubmitActions(actions);
+    }
+  }, [actionSlots, config.actionsPerRound, onSubmitActions]);
+
+  // Reset action slots when round changes or phase goes to planning
+  const [lastRound, setLastRound] = useState(gameState.round);
+  if (gameState.round !== lastRound) {
+    setLastRound(gameState.round);
+    setActionSlots(Array.from({ length: config.actionsPerRound }, () => emptySlot()));
+    setPolicyBrowserOpen(null);
+  }
+
+  // ---- Chamber/Map click handler (no-op for now, but required by components) ----
+  const handleSeatClick = useCallback((_seatId: SeatId) => {
+    // Seat clicks are handled in the action slots for campaign targeting
+  }, []);
 
   // ============================================================
   // RENDER
@@ -359,249 +429,255 @@ export const GameBoard: React.FC<GameBoardProps> = ({
         flexDirection: 'column',
         height: '100vh',
         overflow: 'hidden',
-        background: 'var(--bg-primary)',
-        color: 'var(--text-primary)',
+        background: S.bgPrimary,
+        color: S.textPrimary,
+        fontFamily: S.fontMono,
       }}
     >
-      {/* ============================================================
-          TOP BAR - Phase indicator + round info
-          ============================================================ */}
-      <div className="phase-bar" style={{ flexShrink: 0 }}>
-        {PHASE_SEQUENCE.map((ps, idx) => {
-          let cls = 'phase-step';
-          if (idx === currentPhaseIdx) cls += ' active';
-          else if (idx < currentPhaseIdx) cls += ' completed';
-          return (
-            <div key={ps.key} className={cls}>
-              {idx < currentPhaseIdx && '\u2713 '}
-              {ps.label}
-            </div>
-          );
-        })}
-
-        {/* Round number */}
-        <div
-          className="phase-step"
-          style={{
-            flex: '0 0 auto',
-            padding: '0 16px',
-            borderRight: 'none',
-            color: 'var(--brass-light)',
-            fontWeight: 600,
-          }}
-        >
-          Round {gameState.round}/{gameState.maxRounds}
-        </div>
-
-        {/* Active issue badge */}
-        <div
-          className="phase-step"
-          style={{ flex: '0 0 auto', padding: '0 12px', borderRight: 'none' }}
-        >
-          <span
-            className={`bill-card-issue ${issueClass(gameState.activeIssue)}`}
-            style={{ fontSize: '0.6rem' }}
-          >
-            {formatIssue(gameState.activeIssue)}
-          </span>
-        </div>
-
-        {/* Force advance (host) */}
-        {currentPlayer?.isHost && gameState.phase !== 'game_over' && gameState.phase !== 'waiting' && (
-          <div
-            className="phase-step"
-            style={{ flex: '0 0 auto', padding: '0 8px', borderRight: 'none', cursor: 'pointer' }}
-            onClick={onForceAdvance}
-            title="Force advance phase"
-          >
-            <span style={{ color: 'var(--warning)', fontSize: '0.7rem' }}>{'\u25B6'} Skip</span>
-          </div>
-        )}
-      </div>
-
       {/* ============================================================
           MAIN AREA - Three columns
           ============================================================ */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        {/* ---- LEFT COLUMN: Player Dashboard ---- */}
+
+        {/* ======== LEFT PANEL: Player Dashboard (250px) ======== */}
         <div
           style={{
-            width: 260,
+            width: 250,
             flexShrink: 0,
             overflowY: 'auto',
-            borderRight: '1px solid var(--border-subtle)',
+            borderRight: `1px solid ${S.borderSubtle}`,
+            background: S.bgPanel,
             display: 'flex',
             flexDirection: 'column',
-            gap: 0,
           }}
         >
-          {/* My stats panel */}
-          <div className="panel" style={{ margin: 0, borderLeft: 'none', borderRight: 'none', borderTop: 'none' }}>
-            <div className="panel-header">
-              {currentPlayer?.name ?? 'You'}
-              {currentPlayer && (
-                <span
+          {/* -- My Party Info -- */}
+          {currentPlayer && (
+            <div style={{ padding: '14px 16px 10px', borderBottom: `1px solid ${S.borderSubtle}` }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <div
                   style={{
-                    display: 'inline-block',
-                    width: 10,
-                    height: 10,
-                    borderRadius: 2,
+                    width: 14,
+                    height: 14,
+                    borderRadius: 3,
                     backgroundColor: currentPlayer.color,
-                    marginLeft: 8,
-                    verticalAlign: 'middle',
+                    flexShrink: 0,
+                    border: '1px solid rgba(255,255,255,0.2)',
                   }}
                 />
-              )}
-            </div>
-            {currentPlayer && (
-              <div style={{ padding: '12px 16px' }}>
-                {/* Seats - large number */}
-                <div className="stat-block" style={{ marginBottom: 8 }}>
-                  <div className="stat-value" style={{ fontSize: '2rem' }}>
-                    {currentPlayer.seats}
-                  </div>
-                  <div className="stat-label">Seats</div>
-                </div>
-
-                {/* Approval rating */}
-                <div style={{ marginBottom: 10 }}>
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'baseline',
-                      marginBottom: 3,
-                    }}
-                  >
-                    <span className="stat-label" style={{ margin: 0 }}>
-                      Approval
-                    </span>
-                    <span className="font-mono" style={{ color: 'var(--parchment)', fontSize: '0.9rem', fontWeight: 600 }}>
-                      {currentPlayer.approval}%
-                    </span>
-                  </div>
-                  <div className="approval-bar">
-                    <div
-                      className="approval-fill"
-                      style={{
-                        width: `${Math.min(100, Math.max(0, currentPlayer.approval))}%`,
-                        background:
-                          currentPlayer.approval >= 60
-                            ? 'var(--aye-green)'
-                            : currentPlayer.approval >= 40
-                              ? 'var(--brass)'
-                              : 'var(--no-red)',
-                      }}
-                    />
-                  </div>
-                </div>
-
-                {/* Funds + PCap row */}
-                <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-                  <div className="stat-block panel-inset" style={{ flex: 1, borderRadius: 2 }}>
-                    <div className="stat-value" style={{ fontSize: '1.1rem' }}>
-                      ${currentPlayer.funds}
-                    </div>
-                    <div className="stat-label">Funds</div>
-                  </div>
-                  <div className="stat-block panel-inset" style={{ flex: 1, borderRadius: 2 }}>
-                    <div className="stat-value" style={{ fontSize: '1.1rem', color: 'var(--gold)' }}>
-                      {currentPlayer.pcap}
-                    </div>
-                    <div className="stat-label">PCap</div>
-                  </div>
-                </div>
-
-                {/* Action Points */}
-                <div style={{ marginBottom: 4 }}>
-                  <div className="stat-label" style={{ marginBottom: 4 }}>
-                    Action Points
-                  </div>
-                  {renderApPips(currentPlayer.actionPoints, currentPlayer.maxActionPoints)}
+                <div style={{ fontSize: '0.95rem', fontWeight: 700, color: S.parchment, letterSpacing: '0.04em' }}>
+                  {currentPlayer.name}
                 </div>
               </div>
-            )}
+              <div style={{ fontSize: '0.6rem', color: S.textMuted, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 2 }}>
+                {currentPlayer.playerName}
+              </div>
+              <div style={{ fontSize: '0.6rem', color: S.textSecondary }}>
+                {currentPlayer.socialIdeology === 'progressive' ? 'Progressive' : 'Conservative'}
+                {' / '}
+                {currentPlayer.economicIdeology === 'market' ? 'Market' : 'Interventionist'}
+              </div>
+
+              {/* Government badge */}
+              {gameState.governmentLeaderId && (
+                <div style={{
+                  marginTop: 8,
+                  padding: '4px 8px',
+                  fontSize: '0.6rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.12em',
+                  textAlign: 'center',
+                  background: isGovernmentLeader ? 'rgba(218,165,32,0.15)' : 'rgba(255,255,255,0.04)',
+                  border: `1px solid ${isGovernmentLeader ? S.gold : S.borderSubtle}`,
+                  color: isGovernmentLeader ? S.gold : S.textMuted,
+                }}>
+                  {isGovernmentLeader ? '\u2655 Government Leader' : 'Opposition'}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* -- Big Resource Numbers -- */}
+          {currentPlayer && (
+            <div style={{ padding: '12px 16px', borderBottom: `1px solid ${S.borderSubtle}` }}>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                {/* Seats */}
+                <div style={{ flex: 1, textAlign: 'center', padding: '8px 4px', background: 'rgba(0,0,0,0.2)', borderRadius: 3 }}>
+                  <div style={{ fontSize: '1.8rem', fontWeight: 800, color: S.parchment, lineHeight: 1 }}>
+                    {currentPlayer.seats}
+                  </div>
+                  <div style={{ fontSize: '0.55rem', color: S.textMuted, textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: 4 }}>
+                    Seats
+                  </div>
+                </div>
+                {/* Funds */}
+                <div style={{ flex: 1, textAlign: 'center', padding: '8px 4px', background: 'rgba(0,0,0,0.2)', borderRadius: 3 }}>
+                  <div style={{ fontSize: '1.8rem', fontWeight: 800, color: S.brass, lineHeight: 1 }}>
+                    ${currentPlayer.funds}
+                  </div>
+                  <div style={{ fontSize: '0.55rem', color: S.textMuted, textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: 4 }}>
+                    Funds
+                  </div>
+                </div>
+              </div>
+              {/* Approval */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <span style={{ fontSize: '0.6rem', color: S.textMuted, textTransform: 'uppercase', letterSpacing: '0.1em' }}>Approval</span>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 700, color: approvalColor(currentPlayer.approval) }}>
+                    {currentPlayer.approval > 0 ? '+' : ''}{currentPlayer.approval}
+                  </span>
+                </div>
+                <div style={{ height: 6, background: 'rgba(0,0,0,0.3)', borderRadius: 3, overflow: 'hidden' }}>
+                  <div style={{
+                    width: `${Math.max(0, Math.min(100, (currentPlayer.approval + 100) / 2))}%`,
+                    height: '100%',
+                    background: approvalColor(currentPlayer.approval),
+                    borderRadius: 3,
+                    transition: 'width 0.5s',
+                  }} />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* -- Scoreboard -- */}
+          <div style={{ padding: '10px 0', borderBottom: `1px solid ${S.borderSubtle}` }}>
+            <div style={{
+              padding: '0 16px 6px',
+              fontSize: '0.6rem',
+              color: S.brass,
+              textTransform: 'uppercase',
+              letterSpacing: '0.12em',
+              fontWeight: 600,
+            }}>
+              Scoreboard
+            </div>
+            {sortedPlayers.map((p, idx) => {
+              const isMe = p.id === playerId;
+              const isLeader = p.id === gameState.governmentLeaderId;
+              return (
+                <div
+                  key={p.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '5px 16px',
+                    background: isMe ? 'rgba(245,240,225,0.04)' : 'transparent',
+                    borderLeft: isMe ? `3px solid ${S.brass}` : '3px solid transparent',
+                  }}
+                >
+                  <span style={{ fontSize: '0.6rem', color: S.textMuted, width: 14, textAlign: 'right' }}>
+                    {idx + 1}.
+                  </span>
+                  <div
+                    style={{
+                      width: 10,
+                      height: 10,
+                      borderRadius: 2,
+                      backgroundColor: p.color,
+                      flexShrink: 0,
+                    }}
+                  />
+                  <div style={{
+                    flex: 1,
+                    fontSize: '0.72rem',
+                    color: isMe ? S.parchment : S.textPrimary,
+                    fontWeight: isMe ? 600 : 400,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}>
+                    {p.name}
+                    {isLeader && <span style={{ color: S.gold, marginLeft: 4, fontSize: '0.6rem' }}>{'\u2655'}</span>}
+                    {!p.connected && <span style={{ color: S.noRed, marginLeft: 4, fontSize: '0.55rem' }}>(DC)</span>}
+                    {p.isAI && <span style={{ color: S.textMuted, marginLeft: 4, fontSize: '0.55rem' }}>(AI)</span>}
+                  </div>
+                  <span style={{ fontSize: '0.72rem', fontWeight: 700, color: S.parchment, minWidth: 20, textAlign: 'right' }}>
+                    {p.seats}
+                  </span>
+                </div>
+              );
+            })}
           </div>
 
-          {/* All players summary */}
-          <div className="panel" style={{ flex: 1, margin: 0, borderLeft: 'none', borderRight: 'none', borderTop: 'none' }}>
-            <div className="panel-header">All Parties</div>
-            <div style={{ padding: '8px 0' }}>
-              {gameState.players.map((p) => {
-                const isActive = gameState.turnOrder[gameState.currentPlayerIndex] === p.id;
-                const isMe = p.id === playerId;
-                return (
-                  <div
-                    key={p.id}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 8,
-                      padding: '6px 12px',
-                      background: isActive
-                        ? 'rgba(184,134,11,0.08)'
-                        : isMe
-                          ? 'rgba(255,255,255,0.03)'
-                          : 'transparent',
-                      borderLeft: isActive ? '3px solid var(--brass-light)' : '3px solid transparent',
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: 12,
-                        height: 12,
-                        borderRadius: 2,
-                        backgroundColor: p.color,
-                        flexShrink: 0,
-                        border: isMe ? '1px solid rgba(255,255,255,0.4)' : '1px solid rgba(0,0,0,0.3)',
-                      }}
-                    />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div
-                        className="font-serif"
-                        style={{
-                          fontSize: '0.8rem',
-                          color: isMe ? 'var(--text-bright)' : 'var(--text-primary)',
-                          fontWeight: isMe ? 600 : 400,
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                        }}
-                      >
-                        {p.name}
-                        {p.id === speakerId && (
-                          <span
-                            style={{ color: 'var(--gold)', marginLeft: 4, fontSize: '0.65rem' }}
-                            title="Speaker"
-                          >
-                            {'\u2655'}
-                          </span>
-                        )}
-                        {!p.connected && (
-                          <span
-                            style={{ color: 'var(--no-red)', marginLeft: 4, fontSize: '0.6rem' }}
-                          >
-                            (DC)
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <div
-                      className="font-mono"
-                      style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', textAlign: 'right' }}
-                    >
-                      <span style={{ fontWeight: 600, color: 'var(--parchment)' }}>{p.seats}</span>
-                      <span style={{ margin: '0 3px', color: 'var(--text-muted)' }}>/</span>
-                      <span>{p.approval}%</span>
-                    </div>
-                  </div>
-                );
-              })}
+          {/* -- Round / Election Info -- */}
+          <div style={{ padding: '10px 16px', borderBottom: `1px solid ${S.borderSubtle}` }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+              <span style={{ fontSize: '0.6rem', color: S.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Round</span>
+              <span style={{ fontSize: '0.8rem', fontWeight: 700, color: S.brass }}>
+                {gameState.round} / {gameState.totalRounds}
+              </span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: '0.6rem', color: S.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Next Election</span>
+              <span style={{ fontSize: '0.8rem', fontWeight: 700, color: roundsUntilElection <= 1 ? S.warning : S.textSecondary }}>
+                {roundsUntilElection <= 0 ? 'NOW' : `in ${roundsUntilElection} round${roundsUntilElection !== 1 ? 's' : ''}`}
+              </span>
             </div>
           </div>
+
+          {/* -- Active Policies (mine) -- */}
+          <div style={{ flex: 1, padding: '10px 0', overflowY: 'auto' }}>
+            <div style={{
+              padding: '0 16px 6px',
+              fontSize: '0.6rem',
+              color: S.brass,
+              textTransform: 'uppercase',
+              letterSpacing: '0.12em',
+              fontWeight: 600,
+            }}>
+              Your Active Policies
+            </div>
+            {myActivePolicies.length === 0 && (
+              <div style={{ padding: '8px 16px', fontSize: '0.7rem', color: S.textMuted, fontStyle: 'italic' }}>
+                No active policies yet.
+              </div>
+            )}
+            {myActivePolicies.map((ap) => (
+              <div key={ap.policy.id} style={{
+                padding: '6px 16px',
+                borderBottom: `1px solid rgba(255,255,255,0.03)`,
+              }}>
+                <div style={{ fontSize: '0.7rem', color: S.parchment, fontWeight: 600 }}>
+                  {ap.policy.shortName}
+                  {ap.policy.isLandmark && (
+                    <span style={{ color: S.gold, marginLeft: 4, fontSize: '0.6rem' }}>{'\u2605'}</span>
+                  )}
+                </div>
+                <div style={{ fontSize: '0.55rem', color: S.textMuted }}>
+                  {ap.roundsRemaining > 0 ? `${ap.roundsRemaining} rounds remaining` : 'Permanent'}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Force Advance button for host */}
+          {currentPlayer?.isHost && gameState.phase !== 'game_over' && gameState.phase !== 'waiting' && (
+            <div style={{ padding: '8px 16px', borderTop: `1px solid ${S.borderSubtle}` }}>
+              <button
+                onClick={onForceAdvance}
+                style={{
+                  width: '100%',
+                  padding: '6px 0',
+                  background: 'rgba(255,152,0,0.1)',
+                  border: `1px solid ${S.warning}`,
+                  color: S.warning,
+                  fontSize: '0.6rem',
+                  fontFamily: S.fontMono,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.1em',
+                  cursor: 'pointer',
+                }}
+              >
+                {'\u25B6'} Force Advance
+              </button>
+            </div>
+          )}
         </div>
 
-        {/* ---- CENTER: Chamber / Map / Economy ---- */}
+        {/* ======== CENTER PANEL: Tabs (flex) ======== */}
         <div
           style={{
             flex: 1,
@@ -611,28 +687,30 @@ export const GameBoard: React.FC<GameBoardProps> = ({
             position: 'relative',
           }}
         >
-          {/* View toggle bar */}
+          {/* Tab bar */}
           <div style={{
-            display: 'flex', gap: 0, flexShrink: 0,
-            borderBottom: '1px solid var(--border-subtle)',
+            display: 'flex',
+            flexShrink: 0,
+            borderBottom: `1px solid ${S.borderSubtle}`,
+            background: S.bgPanel,
           }}>
             {([
-              { key: 'chamber', label: 'Chamber' },
-              { key: 'map', label: 'Map' },
-              { key: 'economy', label: 'Economy' },
-            ] as const).map(tab => (
+              { key: 'chamber' as CenterTab, label: 'Chamber' },
+              { key: 'map' as CenterTab, label: 'Map' },
+              { key: 'economy' as CenterTab, label: 'Economy' },
+            ]).map((tab) => (
               <button
                 key={tab.key}
-                onClick={() => setViewMode(tab.key)}
+                onClick={() => setCenterTab(tab.key)}
                 style={{
                   flex: 1,
-                  padding: '6px 0',
-                  background: viewMode === tab.key ? 'rgba(184,134,11,0.1)' : 'transparent',
+                  padding: '8px 0',
+                  background: centerTab === tab.key ? 'rgba(197,165,90,0.1)' : 'transparent',
                   border: 'none',
-                  borderBottom: viewMode === tab.key ? '2px solid var(--brass-gold)' : '2px solid transparent',
-                  color: viewMode === tab.key ? 'var(--brass-light)' : 'var(--text-muted)',
+                  borderBottom: centerTab === tab.key ? `2px solid ${S.brass}` : '2px solid transparent',
+                  color: centerTab === tab.key ? S.brassLight : S.textMuted,
                   fontSize: '0.7rem',
-                  fontFamily: "'IBM Plex Mono', monospace",
+                  fontFamily: S.fontMono,
                   textTransform: 'uppercase',
                   letterSpacing: '0.12em',
                   cursor: 'pointer',
@@ -643,136 +721,110 @@ export const GameBoard: React.FC<GameBoardProps> = ({
             ))}
           </div>
 
+          {/* Tab content */}
           <div style={{ flex: 1, overflow: 'auto' }}>
-            {/* Chamber view */}
-            {viewMode === 'chamber' && (
+            {/* Chamber tab */}
+            {centerTab === 'chamber' && (
               <Chamber
                 gameState={gameState}
                 playerId={playerId}
-                selectedSeatId={selectedSeatId}
-                targetableSeatIds={targetableSeatIds}
+                selectedSeatId={null}
                 onSeatClick={handleSeatClick}
               />
             )}
 
-            {/* Map view */}
-            {viewMode === 'map' && (
+            {/* Map tab */}
+            {centerTab === 'map' && (
               <AustraliaMapView
                 gameState={gameState}
                 playerId={playerId}
-                selectedSeatId={selectedSeatId}
-                targetableSeatIds={targetableSeatIds}
+                selectedSeatId={null}
                 onSeatClick={handleSeatClick}
               />
             )}
 
-            {/* Economy dashboard view */}
-            {viewMode === 'economy' && (
-              <EconomyDashboard
+            {/* Economy tab */}
+            {centerTab === 'economy' && (
+              <EconomyTab
                 economy={gameState.economy}
+                economyHistory={gameState.economyHistory}
+                prevEconomy={prevEconomy}
+                gdpHistory={gdpHistory}
+                unemploymentHistory={unemploymentHistory}
+                inflationHistory={inflationHistory}
                 voterGroups={gameState.voterGroups}
                 players={gameState.players}
               />
             )}
           </div>
-
-          {/* Instruction overlay on chamber when selecting targets */}
-          {selectedAction === 'campaign' && viewMode !== 'economy' && (
-            <div
-              style={{
-                position: 'absolute',
-                top: 44,
-                left: '50%',
-                transform: 'translateX(-50%)',
-                background: 'var(--wood-dark)',
-                border: '1px solid var(--brass-dim)',
-                padding: '6px 16px',
-                fontSize: '0.75rem',
-                color: 'var(--brass-light)',
-                zIndex: 10,
-                fontFamily: "'IBM Plex Mono', monospace",
-                textTransform: 'uppercase',
-                letterSpacing: '0.08em',
-              }}
-            >
-              {'\u25C9'} Select a seat to campaign in
-            </div>
-          )}
         </div>
 
-        {/* ---- RIGHT COLUMN: Context Panel ---- */}
+        {/* ======== RIGHT PANEL: Action Panel (320px) ======== */}
         <div
           style={{
-            width: 280,
+            width: 320,
             flexShrink: 0,
             overflowY: 'auto',
-            borderLeft: '1px solid var(--border-subtle)',
+            borderLeft: `1px solid ${S.borderSubtle}`,
+            background: S.bgPanel,
+            display: 'flex',
+            flexDirection: 'column',
           }}
         >
-          {/* Budget phase */}
-          {gameState.phase === 'budget' && (
-            <BudgetPanel
-              players={gameState.players}
-              budgetAmounts={budgetAmounts}
-              config={config}
-            />
-          )}
-
-          {/* Action phase */}
-          {gameState.phase === 'action' && (
-            <ActionPanel
+          {/* Planning Phase */}
+          {gameState.phase === 'planning' && (
+            <PlanningPanel
               currentPlayer={currentPlayer}
-              isMyTurn={isMyTurn}
-              activePlayerName={activePlayerName}
-              actionDefs={actionDefs}
-              selectedAction={selectedAction}
-              selectedTargetPlayer={selectedTargetPlayer}
+              config={config}
+              actionSlots={actionSlots}
+              totalCost={totalCost}
+              canAfford={canAfford}
+              allSlotsFilled={allSlotsFilled}
+              hasSubmitted={hasSubmitted}
+              players={gameState.players}
               otherPlayers={otherPlayers}
-              onActionTileClick={handleActionTileClick}
-              onTargetPlayerClick={handleTargetPlayerClick}
-              onEndTurn={onEndTurn}
-            />
-          )}
-
-          {/* Legislation: Propose */}
-          {gameState.phase === 'legislation_propose' && (
-            <ProposalPanel
-              bills={gameState.availableBills}
-              iAmSpeaker={iAmSpeaker}
-              speakerName={speakerPlayer?.name ?? 'the Speaker'}
-              onProposeBill={onProposeBill}
-              onSkipProposal={onSkipProposal}
-            />
-          )}
-
-          {/* Legislation: Vote */}
-          {gameState.phase === 'legislation_vote' && gameState.pendingLegislation && (
-            <VotePanel
-              pending={gameState.pendingLegislation}
-              players={gameState.players}
               playerId={playerId}
-              onCastVote={onCastVote}
+              round={gameState.round}
+              policyMenu={gameState.policyMenu}
+              activePolicyIds={activePolicyIds}
+              filteredPolicies={filteredPolicies}
+              policyBrowserOpen={policyBrowserOpen}
+              policyCategoryFilter={policyCategoryFilter}
+              policySearch={policySearch}
+              onActionTypeChange={handleActionTypeChange}
+              onUpdateSlot={updateSlot}
+              onClearSlot={clearSlot}
+              onPolicySelect={handlePolicySelect}
+              onSetPolicyBrowserOpen={setPolicyBrowserOpen}
+              onSetPolicyCategoryFilter={setPolicyCategoryFilter}
+              onSetPolicySearch={setPolicySearch}
+              onSubmit={handleSubmit}
             />
           )}
 
-          {/* Legislation: Result */}
-          {gameState.phase === 'legislation_result' && (
-            <ResultPanel
-              pending={gameState.pendingLegislation}
+          {/* Resolution Phase */}
+          {gameState.phase === 'resolution' && (
+            <ResolutionPanel
+              results={gameState.lastRoundResults}
+              policyHistory={gameState.policyHistory}
               players={gameState.players}
-              onAcknowledgeResult={onAcknowledgeResult}
+              economy={gameState.economy}
+              prevEconomy={prevEconomy}
+              currentEvent={gameState.currentEvent}
             />
           )}
 
-          {/* Event phase */}
-          {gameState.phase === 'event' && gameState.currentEvent && (
-            <EventPanel
-              event={gameState.currentEvent}
-              onAcknowledge={onAcknowledgeEvent}
+          {/* Election Phase */}
+          {gameState.phase === 'election' && (
+            <ElectionPanel
+              electionHistory={gameState.electionHistory}
+              players={gameState.players}
+              governmentLeaderId={gameState.governmentLeaderId}
+              stateControl={gameState.stateControl}
             />
           )}
 
-          {/* Game over */}
+          {/* Game Over Phase */}
           {gameState.phase === 'game_over' && (
             <GameOverPanel
               players={gameState.players}
@@ -782,13 +834,12 @@ export const GameBoard: React.FC<GameBoardProps> = ({
             />
           )}
 
-          {/* Waiting / fallback */}
+          {/* Waiting Phase */}
           {gameState.phase === 'waiting' && (
-            <div className="panel" style={{ margin: 0, border: 'none' }}>
-              <div className="panel-header">Waiting</div>
-              <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-muted)' }}>
-                <div style={{ fontSize: '2rem', marginBottom: 8 }}>{'\u23F3'}</div>
-                <div className="font-serif">Waiting for the game to begin...</div>
+            <div style={{ padding: 24, textAlign: 'center' }}>
+              <div style={{ fontSize: '2rem', marginBottom: 12 }}>{'\u23F3'}</div>
+              <div style={{ fontSize: '0.85rem', color: S.textMuted }}>
+                Waiting for the game to begin...
               </div>
             </div>
           )}
@@ -796,24 +847,44 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       </div>
 
       {/* ============================================================
-          BOTTOM BAR - Event ticker / feed
+          BOTTOM BAR - Event log ticker
           ============================================================ */}
-      <div className="ticker" style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 16 }}>
-        <span style={{ fontWeight: 600, color: 'var(--brass)', flexShrink: 0, letterSpacing: '0.12em' }}>
-          {'\u25CF'} FEED
+      <div style={{
+        flexShrink: 0,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 16,
+        padding: '6px 16px',
+        background: 'rgba(0,0,0,0.3)',
+        borderTop: `1px solid ${S.borderSubtle}`,
+        overflow: 'hidden',
+      }}>
+        <span style={{
+          fontWeight: 700,
+          color: S.brass,
+          flexShrink: 0,
+          letterSpacing: '0.12em',
+          fontSize: '0.6rem',
+          textTransform: 'uppercase',
+        }}>
+          {'\u25CF'} Feed
         </span>
-        <div style={{ display: 'flex', gap: 24, overflow: 'hidden' }}>
+        <div style={{ display: 'flex', gap: 24, overflow: 'hidden', flex: 1 }}>
           {recentEvents.length === 0 && (
-            <span style={{ color: 'var(--text-muted)' }}>No events yet.</span>
+            <span style={{ color: S.textMuted, fontSize: '0.7rem' }}>No events yet.</span>
           )}
           {recentEvents.map((evt, idx) => (
             <span
               key={`${evt.timestamp}-${idx}`}
-              style={{ color: idx === 0 ? 'var(--parchment)' : 'var(--text-secondary)', whiteSpace: 'nowrap' }}
+              style={{
+                color: idx === 0 ? S.parchment : S.textSecondary,
+                whiteSpace: 'nowrap',
+                fontSize: '0.7rem',
+              }}
             >
               {formatEventMessage(evt, gameState.players)}
               {idx < recentEvents.length - 1 && (
-                <span style={{ color: 'var(--text-muted)', margin: '0 0 0 24px' }}>{'\u2022'}</span>
+                <span style={{ color: S.textMuted, margin: '0 0 0 24px' }}>{'\u2022'}</span>
               )}
             </span>
           ))}
@@ -823,12 +894,13 @@ export const GameBoard: React.FC<GameBoardProps> = ({
       {/* ============================================================
           GAME OVER OVERLAY
           ============================================================ */}
-      {gameState.phase === 'game_over' && gameState.winner && (
+      {gameState.phase === 'game_over' && gameState.winner && !gameOverDismissed && (
         <GameOverOverlay
           players={gameState.players}
           winnerId={gameState.winner}
           finalScores={gameState.finalScores}
           playerId={playerId}
+          onDismiss={() => setGameOverDismissed(true)}
         />
       )}
     </div>
@@ -836,725 +908,1180 @@ export const GameBoard: React.FC<GameBoardProps> = ({
 };
 
 // ============================================================
-// SUB-COMPONENTS
+// PLANNING PANEL
 // ============================================================
 
-// ---- Budget Panel ----
-
-const BudgetPanel: React.FC<{
-  players: Player[];
-  budgetAmounts: Record<string, number> | null;
-  config: GameConfig;
-}> = ({ players, budgetAmounts, config }) => (
-  <div className="panel" style={{ margin: 0, border: 'none' }}>
-    <div className="panel-header">{'\u00A7'} Budget Phase</div>
-    <div style={{ padding: 16 }}>
-      <div
-        className="font-serif"
-        style={{ color: 'var(--text-secondary)', marginBottom: 12, fontSize: '0.85rem' }}
-      >
-        Collecting revenue... Each seat generates ${config.incomePerSeat}.
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {players.map((p) => {
-          const income = budgetAmounts?.[p.id] ?? p.seats * config.incomePerSeat;
-          return (
-            <div
-              key={p.id}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '6px 8px',
-                background: 'rgba(0,0,0,0.15)',
-                borderLeft: `3px solid ${p.color}`,
-              }}
-            >
-              <span className="font-serif" style={{ fontSize: '0.8rem', color: 'var(--text-primary)' }}>
-                {p.name}
-              </span>
-              <span
-                className="font-mono"
-                style={{ fontSize: '0.8rem', color: 'var(--aye-green)', fontWeight: 600 }}
-              >
-                +${income}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  </div>
-);
-
-// ---- Action Panel ----
-
-const ActionPanel: React.FC<{
+const PlanningPanel: React.FC<{
   currentPlayer: Player | null;
-  isMyTurn: boolean;
-  activePlayerName: string;
-  actionDefs: ActionDef[];
-  selectedAction: ActionType | null;
-  selectedTargetPlayer: string | null;
+  config: GameConfig;
+  actionSlots: ActionSlotState[];
+  totalCost: number;
+  canAfford: boolean;
+  allSlotsFilled: boolean;
+  hasSubmitted: boolean;
+  players: Player[];
   otherPlayers: Player[];
-  onActionTileClick: (type: ActionType) => void;
-  onTargetPlayerClick: (id: string) => void;
-  onEndTurn: () => void;
+  playerId: string;
+  round: number;
+  policyMenu: Policy[];
+  activePolicyIds: Set<string>;
+  filteredPolicies: Policy[];
+  policyBrowserOpen: number | null;
+  policyCategoryFilter: PolicyCategory | 'all';
+  policySearch: string;
+  onActionTypeChange: (index: number, type: ActionType | '') => void;
+  onUpdateSlot: (index: number, updates: Partial<ActionSlotState>) => void;
+  onClearSlot: (index: number) => void;
+  onPolicySelect: (index: number, policyId: string) => void;
+  onSetPolicyBrowserOpen: (index: number | null) => void;
+  onSetPolicyCategoryFilter: (cat: PolicyCategory | 'all') => void;
+  onSetPolicySearch: (q: string) => void;
+  onSubmit: () => void;
 }> = ({
   currentPlayer,
-  isMyTurn,
-  activePlayerName,
-  actionDefs,
-  selectedAction,
-  selectedTargetPlayer,
+  config,
+  actionSlots,
+  totalCost,
+  canAfford,
+  allSlotsFilled,
+  hasSubmitted,
+  players,
   otherPlayers,
-  onActionTileClick,
-  onTargetPlayerClick,
-  onEndTurn,
-}) => (
-  <div className="panel" style={{ margin: 0, border: 'none', display: 'flex', flexDirection: 'column', height: '100%' }}>
-    <div className="panel-header">
-      {'\u2694'} Actions
-    </div>
-    <div style={{ padding: '8px 10px', flex: 1, overflowY: 'auto' }}>
-      {/* Turn indicator */}
-      <div
-        className="panel-inset font-mono"
-        style={{
-          padding: '6px 10px',
-          marginBottom: 10,
-          fontSize: '0.7rem',
-          textAlign: 'center',
-          color: isMyTurn ? 'var(--brass-light)' : 'var(--text-muted)',
+  playerId,
+  round,
+  policyMenu,
+  activePolicyIds,
+  filteredPolicies,
+  policyBrowserOpen,
+  policyCategoryFilter,
+  policySearch,
+  onActionTypeChange,
+  onUpdateSlot,
+  onClearSlot,
+  onPolicySelect,
+  onSetPolicyBrowserOpen,
+  onSetPolicyCategoryFilter,
+  onSetPolicySearch,
+  onSubmit,
+}) => {
+  const allActionTypes: ActionType[] = ['campaign', 'propose_policy', 'attack_ad', 'fundraise', 'media_blitz', 'coalition_talk'];
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {/* Header */}
+      <div style={{
+        padding: '12px 16px',
+        borderBottom: `1px solid ${S.borderSubtle}`,
+        textAlign: 'center',
+      }}>
+        <div style={{
+          fontSize: '0.75rem',
+          fontWeight: 700,
+          color: S.brass,
           textTransform: 'uppercase',
-          letterSpacing: '0.1em',
-        }}
-      >
-        {isMyTurn ? '\u25B6 Your Turn' : `Waiting for ${activePlayerName}...`}
+          letterSpacing: '0.12em',
+        }}>
+          Round {round} - Plan Your Actions
+        </div>
+        {currentPlayer && (
+          <div style={{ fontSize: '0.6rem', color: S.textMuted, marginTop: 4 }}>
+            Budget: ${currentPlayer.funds} available
+          </div>
+        )}
       </div>
 
-      {/* Action tiles grid */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {actionDefs.map((def) => {
-          const canAffordAP = currentPlayer ? currentPlayer.actionPoints >= def.apCost : false;
-          const cost = def.fundsCost ?? 0;
-          const canAffordFunds = currentPlayer ? currentPlayer.funds >= cost : false;
-          const disabled = !isMyTurn || !canAffordAP || (cost > 0 && !canAffordFunds);
-          const isSelected = selectedAction === def.type;
-
-          return (
-            <div
-              key={def.type}
-              className={`action-tile${disabled ? ' disabled' : ''}${isSelected ? ' selected' : ''}`}
-              onClick={() => !disabled && onActionTileClick(def.type)}
-              style={{ padding: '10px 12px' }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
-                  <div
-                    className="font-display"
-                    style={{
-                      fontWeight: 700,
-                      fontSize: '0.75rem',
-                      color: isSelected ? 'var(--gold)' : 'var(--parchment)',
-                      letterSpacing: '0.04em',
-                    }}
-                  >
-                    <span style={{ marginRight: 6 }}>{def.icon}</span>
-                    {def.label}
-                  </div>
-                  <div
-                    className="font-serif"
-                    style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: 2 }}
-                  >
-                    {def.description}
-                  </div>
+      {/* Action slots */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '8px 12px' }}>
+        {hasSubmitted ? (
+          <div style={{ padding: '20px 0', textAlign: 'center' }}>
+            <div style={{ fontSize: '1.5rem', marginBottom: 8 }}>{'\u2713'}</div>
+            <div style={{ fontSize: '0.8rem', color: S.ayeGreen, fontWeight: 600, marginBottom: 16 }}>
+              Actions Submitted
+            </div>
+            {/* Who has submitted */}
+            <div style={{ fontSize: '0.6rem', color: S.textMuted, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>
+              Waiting for players...
+            </div>
+            {players.map((p) => (
+              <div key={p.id} style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '4px 12px',
+                justifyContent: 'center',
+              }}>
+                <div style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: p.color }} />
+                <span style={{ fontSize: '0.7rem', color: S.textSecondary }}>{p.name}</span>
+                <span style={{
+                  fontSize: '0.6rem',
+                  color: p.submittedActions ? S.ayeGreen : S.textMuted,
+                  fontWeight: 600,
+                }}>
+                  {p.submittedActions ? '\u2713' : '\u23F3'}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <>
+            {actionSlots.map((slot, idx) => (
+              <div key={idx} style={{
+                marginBottom: 10,
+                padding: '10px 12px',
+                background: 'rgba(0,0,0,0.2)',
+                border: `1px solid ${slot.type ? S.borderBrass : S.borderSubtle}`,
+                borderRadius: 3,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <span style={{ fontSize: '0.6rem', color: S.brass, textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 600 }}>
+                    Action {idx + 1}
+                  </span>
+                  {slot.type && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: '0.6rem', color: S.textMuted }}>
+                        Cost: ${getActionCost(slot.type, config)}
+                      </span>
+                      <button
+                        onClick={() => onClearSlot(idx)}
+                        style={{
+                          background: 'none',
+                          border: `1px solid ${S.noRed}`,
+                          color: S.noRed,
+                          fontSize: '0.55rem',
+                          padding: '2px 6px',
+                          cursor: 'pointer',
+                          fontFamily: S.fontMono,
+                          borderRadius: 2,
+                        }}
+                      >
+                        X
+                      </button>
+                    </div>
+                  )}
                 </div>
-                <div
-                  className="font-mono"
+
+                {/* Action type selector */}
+                <select
+                  value={slot.type ?? ''}
+                  onChange={(e) => onActionTypeChange(idx, e.target.value as ActionType | '')}
                   style={{
-                    textAlign: 'right',
-                    fontSize: '0.6rem',
-                    color: 'var(--text-muted)',
-                    flexShrink: 0,
-                    marginLeft: 8,
+                    width: '100%',
+                    padding: '6px 8px',
+                    background: 'rgba(0,0,0,0.3)',
+                    border: `1px solid ${S.borderSubtle}`,
+                    color: S.parchment,
+                    fontSize: '0.72rem',
+                    fontFamily: S.fontMono,
+                    borderRadius: 2,
+                    cursor: 'pointer',
+                    marginBottom: slot.type ? 8 : 0,
                   }}
                 >
-                  <div>{def.apCost} AP</div>
-                  <div>{cost > 0 ? `$${cost}` : 'Free'}</div>
+                  <option value="">-- Select Action --</option>
+                  {allActionTypes.map((at) => (
+                    <option key={at} value={at}>
+                      {ACTION_ICONS[at]} {ACTION_LABELS[at]} (${getActionCost(at, config)})
+                    </option>
+                  ))}
+                </select>
+
+                {/* Type-specific controls */}
+                {slot.type === 'campaign' && (
+                  <div>
+                    <div style={{ fontSize: '0.6rem', color: S.textMuted, marginBottom: 4 }}>
+                      {ACTION_DESCRIPTIONS.campaign}
+                    </div>
+                    <select
+                      value={slot.targetState ?? ''}
+                      onChange={(e) => onUpdateSlot(idx, { targetState: e.target.value as StateCode })}
+                      style={{
+                        width: '100%',
+                        padding: '6px 8px',
+                        background: 'rgba(0,0,0,0.3)',
+                        border: `1px solid ${S.borderSubtle}`,
+                        color: S.parchment,
+                        fontSize: '0.72rem',
+                        fontFamily: S.fontMono,
+                        borderRadius: 2,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <option value="">-- Select State --</option>
+                      {ALL_STATES.map((st) => (
+                        <option key={st} value={st}>{st}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {slot.type === 'propose_policy' && (
+                  <div>
+                    <div style={{ fontSize: '0.6rem', color: S.textMuted, marginBottom: 4 }}>
+                      {ACTION_DESCRIPTIONS.propose_policy}
+                    </div>
+                    {slot.policyId ? (
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '6px 8px',
+                        background: 'rgba(197,165,90,0.1)',
+                        border: `1px solid ${S.borderBrass}`,
+                        borderRadius: 2,
+                      }}>
+                        <span style={{ fontSize: '0.72rem', color: S.parchment }}>
+                          {policyMenu.find((p) => p.id === slot.policyId)?.shortName ?? slot.policyId}
+                        </span>
+                        <button
+                          onClick={() => onSetPolicyBrowserOpen(idx)}
+                          style={{
+                            background: 'none',
+                            border: `1px solid ${S.brassDim}`,
+                            color: S.brass,
+                            fontSize: '0.55rem',
+                            padding: '2px 6px',
+                            cursor: 'pointer',
+                            fontFamily: S.fontMono,
+                            borderRadius: 2,
+                          }}
+                        >
+                          Change
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => onSetPolicyBrowserOpen(idx)}
+                        style={{
+                          width: '100%',
+                          padding: '8px 0',
+                          background: 'rgba(0,0,0,0.2)',
+                          border: `1px dashed ${S.borderBrass}`,
+                          color: S.brass,
+                          fontSize: '0.7rem',
+                          fontFamily: S.fontMono,
+                          cursor: 'pointer',
+                          borderRadius: 2,
+                        }}
+                      >
+                        Browse Policies...
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {slot.type === 'attack_ad' && (
+                  <div>
+                    <div style={{ fontSize: '0.6rem', color: S.textMuted, marginBottom: 4 }}>
+                      {ACTION_DESCRIPTIONS.attack_ad}
+                    </div>
+                    <select
+                      value={slot.targetPlayerId ?? ''}
+                      onChange={(e) => onUpdateSlot(idx, { targetPlayerId: e.target.value })}
+                      style={{
+                        width: '100%',
+                        padding: '6px 8px',
+                        background: 'rgba(0,0,0,0.3)',
+                        border: `1px solid ${S.borderSubtle}`,
+                        color: S.parchment,
+                        fontSize: '0.72rem',
+                        fontFamily: S.fontMono,
+                        borderRadius: 2,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <option value="">-- Select Target --</option>
+                      {otherPlayers.map((p) => (
+                        <option key={p.id} value={p.id}>{p.name} ({p.seats} seats)</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {slot.type === 'coalition_talk' && (
+                  <div>
+                    <div style={{ fontSize: '0.6rem', color: S.textMuted, marginBottom: 4 }}>
+                      {ACTION_DESCRIPTIONS.coalition_talk}
+                    </div>
+                    <select
+                      value={slot.targetPlayerId ?? ''}
+                      onChange={(e) => onUpdateSlot(idx, { targetPlayerId: e.target.value })}
+                      style={{
+                        width: '100%',
+                        padding: '6px 8px',
+                        background: 'rgba(0,0,0,0.3)',
+                        border: `1px solid ${S.borderSubtle}`,
+                        color: S.parchment,
+                        fontSize: '0.72rem',
+                        fontFamily: S.fontMono,
+                        borderRadius: 2,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <option value="">-- Select Player --</option>
+                      {otherPlayers.map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {slot.type === 'fundraise' && (
+                  <div style={{ fontSize: '0.6rem', color: S.textMuted }}>
+                    {ACTION_DESCRIPTIONS.fundraise}. Gain ${config.fundraiseAmount}.
+                  </div>
+                )}
+
+                {slot.type === 'media_blitz' && (
+                  <div style={{ fontSize: '0.6rem', color: S.textMuted }}>
+                    {ACTION_DESCRIPTIONS.media_blitz}
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {/* Policy Browser (shown inline when open) */}
+            {policyBrowserOpen !== null && (
+              <PolicyBrowser
+                policies={filteredPolicies}
+                activePolicyIds={activePolicyIds}
+                categoryFilter={policyCategoryFilter}
+                searchQuery={policySearch}
+                slotIndex={policyBrowserOpen}
+                onSelect={onPolicySelect}
+                onClose={() => onSetPolicyBrowserOpen(null)}
+                onSetCategoryFilter={onSetPolicyCategoryFilter}
+                onSetSearch={onSetPolicySearch}
+              />
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Submit bar */}
+      {!hasSubmitted && (
+        <div style={{ padding: '10px 12px', borderTop: `1px solid ${S.borderSubtle}` }}>
+          {/* Cost tally */}
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            marginBottom: 8,
+            fontSize: '0.65rem',
+          }}>
+            <span style={{ color: S.textMuted }}>Total Cost:</span>
+            <span style={{ color: canAfford ? S.parchment : S.noRed, fontWeight: 700 }}>
+              ${totalCost}
+              {!canAfford && ' (insufficient funds)'}
+            </span>
+          </div>
+          <button
+            onClick={onSubmit}
+            disabled={!allSlotsFilled || !canAfford}
+            style={{
+              width: '100%',
+              padding: '10px 0',
+              background: allSlotsFilled && canAfford ? S.brass : 'rgba(100,90,70,0.3)',
+              border: `1px solid ${allSlotsFilled && canAfford ? S.brassLight : S.brassDim}`,
+              color: allSlotsFilled && canAfford ? '#1a1a1a' : S.textMuted,
+              fontSize: '0.8rem',
+              fontWeight: 800,
+              fontFamily: S.fontMono,
+              textTransform: 'uppercase',
+              letterSpacing: '0.12em',
+              cursor: allSlotsFilled && canAfford ? 'pointer' : 'not-allowed',
+              borderRadius: 3,
+              transition: 'all 0.15s',
+            }}
+          >
+            Submit Actions
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ============================================================
+// POLICY BROWSER
+// ============================================================
+
+const PolicyBrowser: React.FC<{
+  policies: Policy[];
+  activePolicyIds: Set<string>;
+  categoryFilter: PolicyCategory | 'all';
+  searchQuery: string;
+  slotIndex: number;
+  onSelect: (index: number, policyId: string) => void;
+  onClose: () => void;
+  onSetCategoryFilter: (cat: PolicyCategory | 'all') => void;
+  onSetSearch: (q: string) => void;
+}> = ({
+  policies,
+  activePolicyIds,
+  categoryFilter,
+  searchQuery,
+  slotIndex,
+  onSelect,
+  onClose,
+  onSetCategoryFilter,
+  onSetSearch,
+}) => {
+  return (
+    <div style={{
+      marginTop: 8,
+      background: 'rgba(0,0,0,0.3)',
+      border: `1px solid ${S.borderBrass}`,
+      borderRadius: 3,
+      padding: '10px',
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <span style={{ fontSize: '0.7rem', color: S.brass, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+          Policy Browser
+        </span>
+        <button
+          onClick={onClose}
+          style={{
+            background: 'none',
+            border: `1px solid ${S.textMuted}`,
+            color: S.textMuted,
+            fontSize: '0.55rem',
+            padding: '2px 6px',
+            cursor: 'pointer',
+            fontFamily: S.fontMono,
+            borderRadius: 2,
+          }}
+        >
+          Close
+        </button>
+      </div>
+
+      {/* Search bar */}
+      <input
+        type="text"
+        value={searchQuery}
+        onChange={(e) => onSetSearch(e.target.value)}
+        placeholder="Search policies..."
+        style={{
+          width: '100%',
+          padding: '6px 8px',
+          background: 'rgba(0,0,0,0.3)',
+          border: `1px solid ${S.borderSubtle}`,
+          color: S.parchment,
+          fontSize: '0.7rem',
+          fontFamily: S.fontMono,
+          borderRadius: 2,
+          marginBottom: 8,
+          boxSizing: 'border-box',
+        }}
+      />
+
+      {/* Category tabs */}
+      <div style={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: 3,
+        marginBottom: 8,
+      }}>
+        <button
+          onClick={() => onSetCategoryFilter('all')}
+          style={{
+            padding: '3px 6px',
+            background: categoryFilter === 'all' ? 'rgba(197,165,90,0.2)' : 'transparent',
+            border: `1px solid ${categoryFilter === 'all' ? S.brass : S.borderSubtle}`,
+            color: categoryFilter === 'all' ? S.brass : S.textMuted,
+            fontSize: '0.5rem',
+            fontFamily: S.fontMono,
+            textTransform: 'uppercase',
+            letterSpacing: '0.08em',
+            cursor: 'pointer',
+            borderRadius: 2,
+          }}
+        >
+          All
+        </button>
+        {POLICY_CATEGORIES.map((cat) => (
+          <button
+            key={cat}
+            onClick={() => onSetCategoryFilter(cat)}
+            style={{
+              padding: '3px 6px',
+              background: categoryFilter === cat ? 'rgba(197,165,90,0.2)' : 'transparent',
+              border: `1px solid ${categoryFilter === cat ? S.brass : S.borderSubtle}`,
+              color: categoryFilter === cat ? S.brass : S.textMuted,
+              fontSize: '0.5rem',
+              fontFamily: S.fontMono,
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+              cursor: 'pointer',
+              borderRadius: 2,
+            }}
+          >
+            {categoryLabel(cat)}
+          </button>
+        ))}
+      </div>
+
+      {/* Policy list */}
+      <div style={{ maxHeight: 300, overflowY: 'auto' }}>
+        {policies.length === 0 && (
+          <div style={{ padding: 12, textAlign: 'center', color: S.textMuted, fontSize: '0.7rem' }}>
+            No policies match your search.
+          </div>
+        )}
+        {policies.map((policy) => {
+          const isActive = activePolicyIds.has(policy.id);
+          return (
+            <div
+              key={policy.id}
+              onClick={() => !isActive && onSelect(slotIndex, policy.id)}
+              style={{
+                padding: '8px 10px',
+                marginBottom: 4,
+                background: isActive ? 'rgba(100,100,100,0.1)' : 'rgba(0,0,0,0.15)',
+                border: `1px solid ${isActive ? S.textMuted : S.borderSubtle}`,
+                borderRadius: 2,
+                cursor: isActive ? 'not-allowed' : 'pointer',
+                opacity: isActive ? 0.5 : 1,
+                transition: 'background 0.1s',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 3 }}>
+                <div>
+                  <span style={{ fontSize: '0.72rem', fontWeight: 600, color: S.parchment }}>
+                    {policy.name}
+                  </span>
+                  {policy.isLandmark && (
+                    <span style={{ color: S.gold, marginLeft: 6, fontSize: '0.6rem' }}>{'\u2605'} Landmark</span>
+                  )}
+                  {isActive && (
+                    <span style={{
+                      marginLeft: 6,
+                      fontSize: '0.5rem',
+                      color: S.textMuted,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.08em',
+                      background: 'rgba(255,255,255,0.06)',
+                      padding: '1px 4px',
+                      borderRadius: 2,
+                    }}>
+                      Already Active
+                    </span>
+                  )}
+                </div>
+                <span style={{
+                  fontSize: '0.55rem',
+                  color: S.brass,
+                  padding: '1px 4px',
+                  background: 'rgba(197,165,90,0.15)',
+                  borderRadius: 2,
+                  textTransform: 'uppercase',
+                  whiteSpace: 'nowrap',
+                }}>
+                  {categoryLabel(policy.category)}
+                </span>
+              </div>
+              <div style={{ fontSize: '0.62rem', color: S.textSecondary, marginBottom: 4 }}>
+                {policy.description}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {/* Cost */}
+                <span style={{ fontSize: '0.55rem', color: S.textMuted }}>
+                  Budget: {policy.budgetCost > 0 ? `+$${policy.budgetCost}` : `-$${Math.abs(policy.budgetCost)}`}
+                </span>
+                {/* Ideology alignment dots */}
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {(
+                    [
+                      ['P', policy.stanceTable.progressive],
+                      ['C', policy.stanceTable.conservative],
+                      ['M', policy.stanceTable.market],
+                      ['I', policy.stanceTable.interventionist],
+                    ] as [string, 'favoured' | 'neutral' | 'opposed'][]
+                  ).map(([label, stance]) => (
+                    <span
+                      key={label}
+                      title={`${label === 'P' ? 'Progressive' : label === 'C' ? 'Conservative' : label === 'M' ? 'Market' : 'Interventionist'}: ${stance}`}
+                      style={{
+                        fontSize: '0.55rem',
+                        color: stanceColor(stance),
+                      }}
+                    >
+                      {label}:{stanceDot(stance)}
+                    </span>
+                  ))}
                 </div>
               </div>
             </div>
           );
         })}
       </div>
-
-      {/* Attack ad target selection */}
-      {selectedAction === 'attack_ad' && (
-        <div style={{ marginTop: 10 }}>
-          <div
-            className="font-mono"
-            style={{
-              fontSize: '0.65rem',
-              textTransform: 'uppercase',
-              letterSpacing: '0.1em',
-              color: 'var(--brass-light)',
-              marginBottom: 6,
-            }}
-          >
-            Select Target Party
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {otherPlayers.map((p) => (
-              <div
-                key={p.id}
-                onClick={() => onTargetPlayerClick(p.id)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  padding: '8px 10px',
-                  cursor: 'pointer',
-                  background:
-                    selectedTargetPlayer === p.id
-                      ? 'rgba(184,134,11,0.12)'
-                      : 'rgba(0,0,0,0.15)',
-                  border:
-                    selectedTargetPlayer === p.id
-                      ? '1px solid var(--gold)'
-                      : '1px solid var(--border-subtle)',
-                  transition: 'all 0.12s',
-                }}
-              >
-                <div
-                  style={{
-                    width: 14,
-                    height: 14,
-                    borderRadius: 2,
-                    backgroundColor: p.color,
-                  }}
-                />
-                <span className="font-serif" style={{ fontSize: '0.8rem', color: 'var(--text-primary)' }}>
-                  {p.name}
-                </span>
-                <span className="font-mono" style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
-                  {p.approval}% appr.
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
+  );
+};
 
-    {/* End Turn button */}
-    {isMyTurn && (
-      <div style={{ padding: '10px 10px 12px' }}>
-        <button
-          className="btn-brass"
-          style={{ width: '100%', textAlign: 'center' }}
-          onClick={onEndTurn}
-        >
-          End Turn
-        </button>
+// ============================================================
+// RESOLUTION PANEL
+// ============================================================
+
+const ResolutionPanel: React.FC<{
+  results: ActionResult[];
+  policyHistory: { policyId: string; policyName: string; proposerId: string; passed: boolean; supportSeats: number; opposeSeats: number; totalSeats: number }[];
+  players: Player[];
+  economy: EconomicStateData;
+  prevEconomy: EconomicStateData | undefined;
+  currentEvent: PoliticalEvent | null;
+}> = ({ results, policyHistory, players, economy, prevEconomy, currentEvent }) => {
+  const playerName = (id: string) => players.find((p) => p.id === id)?.name ?? 'Unknown';
+  const playerColor = (id: string) => players.find((p) => p.id === id)?.color ?? '#666';
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div style={{
+        padding: '12px 16px',
+        borderBottom: `1px solid ${S.borderSubtle}`,
+        textAlign: 'center',
+      }}>
+        <div style={{
+          fontSize: '0.75rem',
+          fontWeight: 700,
+          color: S.brass,
+          textTransform: 'uppercase',
+          letterSpacing: '0.12em',
+        }}>
+          Resolution
+        </div>
       </div>
-    )}
-  </div>
-);
 
-// ---- Proposal Panel ----
-
-const ProposalPanel: React.FC<{
-  bills: Bill[];
-  iAmSpeaker: boolean;
-  speakerName: string;
-  onProposeBill: (billId: string) => void;
-  onSkipProposal: () => void;
-}> = ({ bills, iAmSpeaker, speakerName, onProposeBill, onSkipProposal }) => (
-  <div className="panel" style={{ margin: 0, border: 'none' }}>
-    <div className="panel-header">{'\u2696'} Legislation</div>
-    <div style={{ padding: 12 }}>
-      {!iAmSpeaker ? (
-        <div
-          className="font-serif"
-          style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: '20px 8px' }}
-        >
-          <div style={{ fontSize: '1.5rem', marginBottom: 8 }}>{'\u2696'}</div>
-          Waiting for <strong style={{ color: 'var(--parchment)' }}>{speakerName}</strong> to propose
-          a bill...
-        </div>
-      ) : (
-        <>
-          <div
-            className="font-mono"
-            style={{
-              fontSize: '0.65rem',
-              textTransform: 'uppercase',
-              letterSpacing: '0.1em',
-              color: 'var(--brass-light)',
-              marginBottom: 10,
-            }}
-          >
-            You are the Speaker. Choose a bill:
+      <div style={{ flex: 1, overflowY: 'auto', padding: '8px 12px' }}>
+        {/* Current Event */}
+        {currentEvent && (
+          <div style={{
+            marginBottom: 12,
+            padding: '10px 12px',
+            background: 'rgba(255,152,0,0.08)',
+            border: `1px solid rgba(255,152,0,0.3)`,
+            borderRadius: 3,
+          }}>
+            <div style={{ fontSize: '0.55rem', color: S.warning, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4 }}>
+              {'\u26A0'} Event: {currentEvent.category}
+            </div>
+            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: S.parchment, marginBottom: 4 }}>
+              {currentEvent.headline}
+            </div>
+            <div style={{ fontSize: '0.65rem', color: S.textSecondary }}>
+              {currentEvent.description}
+            </div>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {bills.map((bill) => (
-              <BillCard key={bill.id} bill={bill} onClick={() => onProposeBill(bill.id)} />
-            ))}
-          </div>
-          <button
-            className="btn-wood"
-            style={{ width: '100%', marginTop: 10, textAlign: 'center' }}
-            onClick={onSkipProposal}
-          >
-            Skip Proposal
-          </button>
-        </>
-      )}
-    </div>
-  </div>
-);
+        )}
 
-// ---- Bill Card ----
-
-const BillCard: React.FC<{ bill: Bill; onClick: () => void }> = ({ bill, onClick }) => (
-  <div
-    className={`bill-card${bill.isLandmark ? ' landmark' : ''}`}
-    style={{ cursor: 'pointer' }}
-    onClick={onClick}
-  >
-    <div className="bill-card-title">{bill.name}</div>
-    <div style={{ marginBottom: 6 }}>
-      <span className={`bill-card-issue ${issueClass(bill.issue)}`}>{formatIssue(bill.issue)}</span>
-    </div>
-    <div className="font-serif" style={{ fontSize: '0.78rem', color: 'var(--ink-light)', marginBottom: 8 }}>
-      {bill.description}
-    </div>
-    {/* Stance indicators */}
-    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
-      {(
-        [
-          ['Prog', bill.stanceTable.progressive],
-          ['Cons', bill.stanceTable.conservative],
-          ['Mkt', bill.stanceTable.market],
-          ['Int', bill.stanceTable.interventionist],
-        ] as [string, 'favoured' | 'neutral' | 'opposed'][]
-      ).map(([label, stance]) => (
-        <span
-          key={label}
-          style={{
+        {/* Action Results */}
+        <div style={{ marginBottom: 12 }}>
+          <div style={{
             fontSize: '0.6rem',
-            fontFamily: "'IBM Plex Mono', monospace",
-            color: stanceColor(stance),
-            letterSpacing: '0.05em',
-          }}
-        >
-          {label}: {stanceLabel(stance)}
-        </span>
-      ))}
-    </div>
-    {/* PCap reward */}
-    {bill.pCapReward > 0 && (
-      <div
-        className="font-mono"
-        style={{ fontSize: '0.65rem', color: 'var(--gold)' }}
-      >
-        +{bill.pCapReward} PCap
-        {bill.isLandmark && (
-          <span style={{ marginLeft: 6, color: 'var(--brass-light)' }}>{'\u2605'} Landmark</span>
-        )}
-      </div>
-    )}
-  </div>
-);
-
-// ---- Vote Panel ----
-
-const VotePanel: React.FC<{
-  pending: NonNullable<GameState['pendingLegislation']>;
-  players: Player[];
-  playerId: string;
-  onCastVote: (vote: 'aye' | 'no') => void;
-}> = ({ pending, players, playerId, onCastVote }) => {
-  const hasVoted = pending.votes.some((v) => v.playerId === playerId);
-  const ayeWeight = pending.votes
-    .filter((v) => v.vote === 'aye')
-    .reduce((s, v) => s + v.seatWeight, 0);
-  const noWeight = pending.votes
-    .filter((v) => v.vote === 'no')
-    .reduce((s, v) => s + v.seatWeight, 0);
-
-  return (
-    <div className="panel" style={{ margin: 0, border: 'none' }}>
-      <div className="panel-header">{'\u2696'} Division</div>
-      <div style={{ padding: 12 }}>
-        {/* Bill details */}
-        <div
-          className="bill-card"
-          style={{ marginBottom: 12, cursor: 'default' }}
-        >
-          <div className="bill-card-title">{pending.bill.name}</div>
-          <div style={{ marginBottom: 4 }}>
-            <span className={`bill-card-issue ${issueClass(pending.bill.issue)}`}>
-              {formatIssue(pending.bill.issue)}
-            </span>
-          </div>
-          <div className="font-serif" style={{ fontSize: '0.78rem', color: 'var(--ink-light)' }}>
-            {pending.bill.description}
-          </div>
-        </div>
-
-        {/* Vote tally */}
-        <div
-          className="panel-inset"
-          style={{ padding: 10, marginBottom: 12, textAlign: 'center' }}
-        >
-          <div
-            className="font-mono"
-            style={{
-              display: 'flex',
-              justifyContent: 'center',
-              gap: 20,
-              fontSize: '1.1rem',
-              fontWeight: 600,
-            }}
-          >
-            <span style={{ color: 'var(--aye-green)' }}>AYE {ayeWeight}</span>
-            <span style={{ color: 'var(--text-muted)' }}>{'\u2014'}</span>
-            <span style={{ color: 'var(--no-red)' }}>NO {noWeight}</span>
-          </div>
-          <div
-            className="font-mono"
-            style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginTop: 4 }}
-          >
-            {pending.votes.length}/{players.length} voted
-          </div>
-        </div>
-
-        {/* Who has voted */}
-        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 12 }}>
-          {players.map((p) => {
-            const vote = pending.votes.find((v) => v.playerId === p.id);
-            return (
-              <div
-                key={p.id}
-                title={`${p.name}${vote ? `: ${vote.vote.toUpperCase()}` : ': pending'}`}
-                style={{
-                  width: 22,
-                  height: 22,
-                  borderRadius: 2,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '0.6rem',
-                  fontWeight: 700,
-                  fontFamily: "'IBM Plex Mono', monospace",
-                  background: vote
-                    ? vote.vote === 'aye'
-                      ? 'var(--aye-green)'
-                      : 'var(--no-red)'
-                    : p.color,
-                  color: '#fff',
-                  border: '1px solid rgba(0,0,0,0.3)',
-                }}
-              >
-                {vote ? (vote.vote === 'aye' ? 'Y' : 'N') : '?'}
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Vote buttons */}
-        {!hasVoted ? (
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button
-              className="btn-aye"
-              style={{ flex: 1 }}
-              onClick={() => onCastVote('aye')}
-            >
-              AYE
-            </button>
-            <button
-              className="btn-no"
-              style={{ flex: 1 }}
-              onClick={() => onCastVote('no')}
-            >
-              NO
-            </button>
-          </div>
-        ) : (
-          <div
-            className="font-mono"
-            style={{
-              textAlign: 'center',
-              padding: '10px 0',
-              color: 'var(--text-muted)',
-              fontSize: '0.7rem',
-              textTransform: 'uppercase',
-              letterSpacing: '0.1em',
-            }}
-          >
-            {'\u2713'} Vote recorded. Awaiting others...
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-// ---- Result Panel ----
-
-const ResultPanel: React.FC<{
-  pending: GameState['pendingLegislation'];
-  players: Player[];
-  onAcknowledgeResult: () => void;
-}> = ({ pending, players, onAcknowledgeResult }) => {
-  if (!pending) return null;
-
-  const ayeWeight = pending.votes
-    .filter((v) => v.vote === 'aye')
-    .reduce((s, v) => s + v.seatWeight, 0);
-  const noWeight = pending.votes
-    .filter((v) => v.vote === 'no')
-    .reduce((s, v) => s + v.seatWeight, 0);
-  const passed = ayeWeight > noWeight;
-
-  return (
-    <div className="panel" style={{ margin: 0, border: 'none' }}>
-      <div className="panel-header">{'\u2696'} Result</div>
-      <div style={{ padding: 16, textAlign: 'center' }}>
-        <div
-          className="font-display"
-          style={{
-            fontSize: '1.8rem',
-            fontWeight: 900,
-            color: passed ? 'var(--aye-green)' : 'var(--no-red)',
-            marginBottom: 8,
+            color: S.brass,
             textTransform: 'uppercase',
-            letterSpacing: '0.05em',
-          }}
-        >
-          {passed ? 'PASSED' : 'DEFEATED'}
-        </div>
-        <div className="font-display" style={{ fontSize: '0.95rem', color: 'var(--parchment)', marginBottom: 12 }}>
-          {pending.bill.name}
-        </div>
-        <div
-          className="font-mono"
-          style={{
-            fontSize: '1rem',
+            letterSpacing: '0.1em',
+            marginBottom: 6,
             fontWeight: 600,
-            marginBottom: 16,
-          }}
-        >
-          <span style={{ color: 'var(--aye-green)' }}>AYE {ayeWeight}</span>
-          <span style={{ color: 'var(--text-muted)', margin: '0 12px' }}>{'\u2014'}</span>
-          <span style={{ color: 'var(--no-red)' }}>NO {noWeight}</span>
-        </div>
-
-        {/* Vote breakdown */}
-        <div style={{ marginBottom: 16 }}>
-          {pending.votes.map((v) => {
-            const player = players.find((p) => p.id === v.playerId);
-            return (
-              <div
-                key={v.playerId}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '4px 8px',
-                  fontSize: '0.75rem',
-                  borderBottom: '1px solid rgba(255,255,255,0.04)',
-                }}
-              >
-                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span
-                    style={{
-                      width: 10,
-                      height: 10,
-                      borderRadius: 2,
-                      backgroundColor: player?.color ?? '#666',
-                      display: 'inline-block',
-                    }}
-                  />
-                  <span className="font-serif" style={{ color: 'var(--text-primary)' }}>
-                    {player?.name ?? 'Unknown'}
-                  </span>
+          }}>
+            Action Results
+          </div>
+          {results.length === 0 && (
+            <div style={{ padding: 8, fontSize: '0.7rem', color: S.textMuted, textAlign: 'center' }}>
+              Resolving actions...
+            </div>
+          )}
+          {results.map((r, idx) => (
+            <div key={idx} style={{
+              padding: '8px 10px',
+              marginBottom: 4,
+              background: 'rgba(0,0,0,0.15)',
+              borderLeft: `3px solid ${playerColor(r.playerId)}`,
+              borderRadius: 2,
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
+                <span style={{ fontSize: '0.7rem', fontWeight: 600, color: S.parchment }}>
+                  {playerName(r.playerId)}
                 </span>
-                <span
-                  className="font-mono"
-                  style={{
-                    fontWeight: 600,
-                    color: v.vote === 'aye' ? 'var(--aye-green)' : 'var(--no-red)',
-                  }}
-                >
-                  {v.vote.toUpperCase()} ({v.seatWeight})
+                <span style={{
+                  fontSize: '0.55rem',
+                  color: r.success ? S.ayeGreen : S.noRed,
+                  textTransform: 'uppercase',
+                  fontWeight: 600,
+                }}>
+                  {r.success ? 'Success' : 'Failed'}
                 </span>
               </div>
-            );
-          })}
-        </div>
-
-        <button
-          className="btn-brass"
-          style={{ width: '100%', textAlign: 'center' }}
-          onClick={onAcknowledgeResult}
-        >
-          Continue
-        </button>
-      </div>
-    </div>
-  );
-};
-
-// ---- Event Panel ----
-
-const EventPanel: React.FC<{
-  event: PoliticalEvent;
-  onAcknowledge: () => void;
-}> = ({ event, onAcknowledge }) => (
-  <div className="panel" style={{ margin: 0, border: 'none' }}>
-    <div className="panel-header">{'\u26A0'} Event</div>
-    <div style={{ padding: 12 }}>
-      <div className="event-banner" style={{ marginBottom: 12 }}>
-        <div className="event-category">{event.category}</div>
-        <div className="event-headline" style={{ marginTop: 4 }}>{event.headline}</div>
-      </div>
-      <div
-        className="font-serif"
-        style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 12, lineHeight: 1.5 }}
-      >
-        {event.description}
-      </div>
-
-      {/* Effects */}
-      {event.effects.length > 0 && (
-        <div
-          className="panel-inset"
-          style={{ padding: 10, marginBottom: 12 }}
-        >
-          <div
-            className="font-mono"
-            style={{
-              fontSize: '0.6rem',
-              textTransform: 'uppercase',
-              letterSpacing: '0.12em',
-              color: 'var(--brass-light)',
-              marginBottom: 6,
-            }}
-          >
-            Effects
-          </div>
-          {event.effects.map((eff, idx) => (
-            <div
-              key={idx}
-              className="font-mono"
-              style={{
-                fontSize: '0.7rem',
-                color: eff.amount >= 0 ? 'var(--aye-green)' : 'var(--no-red)',
-                marginBottom: 3,
-              }}
-            >
-              {eff.target}: {eff.type} {eff.amount > 0 ? '+' : ''}
-              {eff.amount}
+              <div style={{ fontSize: '0.6rem', color: S.textMuted, marginBottom: 2 }}>
+                {ACTION_LABELS[r.action.type]}
+              </div>
+              <div style={{ fontSize: '0.65rem', color: S.textSecondary }}>
+                {r.description}
+              </div>
+              {/* Effects */}
+              <div style={{ display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
+                {r.seatsCaptured !== undefined && r.seatsCaptured > 0 && (
+                  <span style={{ fontSize: '0.55rem', color: S.ayeGreen }}>+{r.seatsCaptured} seats</span>
+                )}
+                {r.approvalChange !== undefined && r.approvalChange !== 0 && (
+                  <span style={{ fontSize: '0.55rem', color: r.approvalChange > 0 ? S.ayeGreen : S.noRed }}>
+                    {r.approvalChange > 0 ? '+' : ''}{r.approvalChange} approval
+                  </span>
+                )}
+                {r.fundsChange !== undefined && r.fundsChange !== 0 && (
+                  <span style={{ fontSize: '0.55rem', color: r.fundsChange > 0 ? S.ayeGreen : S.noRed }}>
+                    {r.fundsChange > 0 ? '+' : ''}${r.fundsChange}
+                  </span>
+                )}
+                {r.policyPassed !== undefined && (
+                  <span style={{ fontSize: '0.55rem', color: r.policyPassed ? S.ayeGreen : S.noRed }}>
+                    Policy {r.policyPassed ? 'Passed' : 'Defeated'}
+                  </span>
+                )}
+              </div>
             </div>
           ))}
         </div>
-      )}
 
-      <button
-        className="btn-brass"
-        style={{ width: '100%', textAlign: 'center' }}
-        onClick={onAcknowledge}
-      >
-        Acknowledge
-      </button>
+        {/* Policy vote results from this round */}
+        {policyHistory.length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={{
+              fontSize: '0.6rem',
+              color: S.brass,
+              textTransform: 'uppercase',
+              letterSpacing: '0.1em',
+              marginBottom: 6,
+              fontWeight: 600,
+            }}>
+              Policy Votes
+            </div>
+            {policyHistory.slice(-3).map((pv, idx) => (
+              <div key={idx} style={{
+                padding: '6px 10px',
+                marginBottom: 3,
+                background: 'rgba(0,0,0,0.1)',
+                borderRadius: 2,
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}>
+                <span style={{ fontSize: '0.7rem', color: S.parchment }}>{pv.policyName}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: '0.6rem', color: S.ayeGreen }}>Y:{pv.supportSeats}</span>
+                  <span style={{ fontSize: '0.6rem', color: S.noRed }}>N:{pv.opposeSeats}</span>
+                  <span style={{
+                    fontSize: '0.55rem',
+                    fontWeight: 700,
+                    color: pv.passed ? S.ayeGreen : S.noRed,
+                  }}>
+                    {pv.passed ? 'PASSED' : 'DEFEATED'}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Economy change summary */}
+        {prevEconomy && (
+          <div>
+            <div style={{
+              fontSize: '0.6rem',
+              color: S.brass,
+              textTransform: 'uppercase',
+              letterSpacing: '0.1em',
+              marginBottom: 6,
+              fontWeight: 600,
+            }}>
+              Economy Changes
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+              {([
+                ['GDP', economy.gdpGrowth, prevEconomy.gdpGrowth, '%'],
+                ['Jobs', economy.unemployment, prevEconomy.unemployment, '%'],
+                ['Inflation', economy.inflation, prevEconomy.inflation, '%'],
+                ['Debt', economy.publicDebt, prevEconomy.publicDebt, '%'],
+              ] as [string, number, number, string][]).map(([label, curr, prev, unit]) => {
+                const d = curr - prev;
+                return (
+                  <div key={label} style={{
+                    padding: '4px 8px',
+                    background: 'rgba(0,0,0,0.1)',
+                    borderRadius: 2,
+                  }}>
+                    <div style={{ fontSize: '0.55rem', color: S.textMuted }}>{label}</div>
+                    <div style={{ fontSize: '0.72rem', fontWeight: 600, color: S.parchment }}>
+                      {curr.toFixed(1)}{unit}
+                      <span style={{
+                        fontSize: '0.55rem',
+                        marginLeft: 4,
+                        color: Math.abs(d) < 0.01 ? S.textMuted : d > 0 ? S.ayeGreen : S.noRed,
+                      }}>
+                        {d > 0 ? '+' : ''}{d.toFixed(1)}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
-// ---- Game Over Panel (sidebar) ----
+// ============================================================
+// ELECTION PANEL
+// ============================================================
+
+const ElectionPanel: React.FC<{
+  electionHistory: ElectionResult[];
+  players: Player[];
+  governmentLeaderId: string | null;
+  stateControl: Record<StateCode, StateControl>;
+}> = ({ electionHistory, players, governmentLeaderId, stateControl }) => {
+  const latestElection = electionHistory.length > 0 ? electionHistory[electionHistory.length - 1] : null;
+  const playerName = (id: string | null) => (id ? players.find((p) => p.id === id)?.name ?? 'Unknown' : 'None');
+  const playerColor = (id: string | null) => (id ? players.find((p) => p.id === id)?.color ?? '#666' : '#444');
+  const leader = governmentLeaderId ? players.find((p) => p.id === governmentLeaderId) : null;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div style={{
+        padding: '12px 16px',
+        borderBottom: `1px solid ${S.borderSubtle}`,
+        textAlign: 'center',
+      }}>
+        <div style={{
+          fontSize: '0.75rem',
+          fontWeight: 700,
+          color: S.gold,
+          textTransform: 'uppercase',
+          letterSpacing: '0.12em',
+        }}>
+          {'\u2617'} Election Results
+        </div>
+      </div>
+
+      <div style={{ flex: 1, overflowY: 'auto', padding: '12px' }}>
+        {/* Government formation */}
+        {leader && (
+          <div style={{
+            padding: '16px',
+            marginBottom: 12,
+            background: 'rgba(218,165,32,0.1)',
+            border: `1px solid ${S.gold}`,
+            borderRadius: 3,
+            textAlign: 'center',
+          }}>
+            <div style={{ fontSize: '0.6rem', color: S.gold, textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 8 }}>
+              Government Formed
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 4 }}>
+              <div style={{ width: 16, height: 16, borderRadius: 3, backgroundColor: leader.color }} />
+              <span style={{ fontSize: '1rem', fontWeight: 800, color: S.parchment }}>
+                {leader.name}
+              </span>
+            </div>
+            <div style={{ fontSize: '0.8rem', color: S.brass }}>
+              {leader.seats} seats
+            </div>
+          </div>
+        )}
+
+        {/* Seat changes */}
+        {latestElection && latestElection.seatChanges.length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={{
+              fontSize: '0.6rem',
+              color: S.brass,
+              textTransform: 'uppercase',
+              letterSpacing: '0.1em',
+              marginBottom: 6,
+              fontWeight: 600,
+            }}>
+              Seat Changes ({latestElection.seatChanges.length})
+            </div>
+            <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+              {latestElection.seatChanges.map((sc, idx) => (
+                <div key={idx} style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '4px 8px',
+                  borderBottom: `1px solid rgba(255,255,255,0.03)`,
+                  fontSize: '0.65rem',
+                }}>
+                  <div style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: playerColor(sc.oldOwner) }} />
+                  <span style={{ color: S.textMuted }}>{'\u2192'}</span>
+                  <div style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: playerColor(sc.newOwner) }} />
+                  <span style={{ color: S.textSecondary, flex: 1 }}>{sc.seatId}</span>
+                  <span style={{ color: S.textMuted }}>{playerName(sc.newOwner)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* National swing */}
+        {latestElection && latestElection.nationalSwing && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={{
+              fontSize: '0.6rem',
+              color: S.brass,
+              textTransform: 'uppercase',
+              letterSpacing: '0.1em',
+              marginBottom: 6,
+              fontWeight: 600,
+            }}>
+              National Swing
+            </div>
+            {Object.entries(latestElection.nationalSwing).map(([pid, swing]) => {
+              const p = players.find((pl) => pl.id === pid);
+              if (!p) return null;
+              return (
+                <div key={pid} style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '4px 8px',
+                  borderBottom: `1px solid rgba(255,255,255,0.03)`,
+                }}>
+                  <div style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: p.color }} />
+                  <span style={{ flex: 1, fontSize: '0.7rem', color: S.textPrimary }}>{p.name}</span>
+                  <span style={{
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    color: swing > 0 ? S.ayeGreen : swing < 0 ? S.noRed : S.textMuted,
+                  }}>
+                    {swing > 0 ? '+' : ''}{swing.toFixed(1)}%
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* State control */}
+        <div>
+          <div style={{
+            fontSize: '0.6rem',
+            color: S.brass,
+            textTransform: 'uppercase',
+            letterSpacing: '0.1em',
+            marginBottom: 6,
+            fontWeight: 600,
+          }}>
+            State Control
+          </div>
+          {ALL_STATES.map((st) => {
+            const sc = stateControl[st];
+            if (!sc) return null;
+            return (
+              <div key={st} style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '4px 8px',
+                borderBottom: `1px solid rgba(255,255,255,0.03)`,
+              }}>
+                <span style={{ fontSize: '0.7rem', fontWeight: 600, color: S.parchment, width: 30 }}>{st}</span>
+                <div style={{
+                  flex: 1,
+                  height: 6,
+                  background: 'rgba(0,0,0,0.3)',
+                  borderRadius: 3,
+                  overflow: 'hidden',
+                }}>
+                  <div style={{
+                    width: sc.totalSeats > 0 ? `${(sc.seatCount / sc.totalSeats) * 100}%` : '0%',
+                    height: '100%',
+                    background: playerColor(sc.controllerId),
+                    borderRadius: 3,
+                    transition: 'width 0.5s',
+                  }} />
+                </div>
+                <span style={{ fontSize: '0.6rem', color: S.textSecondary, minWidth: 30, textAlign: 'right' }}>
+                  {sc.seatCount}/{sc.totalSeats}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ============================================================
+// GAME OVER PANEL (sidebar)
+// ============================================================
 
 const GameOverPanel: React.FC<{
   players: Player[];
   winnerId: string | null;
-  finalScores: Record<string, number> | null;
+  finalScores: PlayerScore[] | null;
   playerId: string;
 }> = ({ players, winnerId, finalScores, playerId }) => {
-  const sorted = [...players].sort(
-    (a, b) => (finalScores?.[b.id] ?? b.pcap) - (finalScores?.[a.id] ?? a.pcap),
-  );
   const winner = players.find((p) => p.id === winnerId);
 
+  const sortedScores = useMemo(() => {
+    if (finalScores) {
+      return [...finalScores].sort((a, b) => b.total - a.total);
+    }
+    return [...players].sort((a, b) => b.seats - a.seats).map((p) => ({
+      playerId: p.id,
+      seats: p.seats,
+      policyAlignment: p.policyScore,
+      economicPerformance: 0,
+      total: p.seats,
+    }));
+  }, [finalScores, players]);
+
   return (
-    <div className="panel" style={{ margin: 0, border: 'none' }}>
-      <div className="panel-header">{'\u2605'} Final Results</div>
-      <div style={{ padding: 12 }}>
-        <div style={{ textAlign: 'center', marginBottom: 12 }}>
-          <div className="font-display" style={{ fontSize: '1.1rem', color: 'var(--gold)', fontWeight: 700 }}>
-            {winner?.name ?? 'Unknown'} Wins!
-          </div>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div style={{
+        padding: '16px',
+        borderBottom: `1px solid ${S.borderSubtle}`,
+        textAlign: 'center',
+      }}>
+        <div style={{
+          fontSize: '0.85rem',
+          fontWeight: 900,
+          color: S.gold,
+          textTransform: 'uppercase',
+          letterSpacing: '0.12em',
+          marginBottom: 4,
+        }}>
+          {'\u2605'} Final Results
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {sorted.map((p, rank) => (
+        {winner && (
+          <div style={{ fontSize: '1rem', fontWeight: 700, color: winner.color }}>
+            {winner.name} Wins!
+          </div>
+        )}
+      </div>
+
+      <div style={{ flex: 1, overflowY: 'auto', padding: '12px' }}>
+        {/* Score breakdown */}
+        <div style={{
+          fontSize: '0.6rem',
+          color: S.brass,
+          textTransform: 'uppercase',
+          letterSpacing: '0.1em',
+          marginBottom: 6,
+          fontWeight: 600,
+        }}>
+          Final Standings
+        </div>
+
+        {/* Header row */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: '24px 1fr 40px 40px 40px 48px',
+          gap: 4,
+          padding: '4px 8px',
+          fontSize: '0.5rem',
+          color: S.textMuted,
+          textTransform: 'uppercase',
+          letterSpacing: '0.08em',
+          borderBottom: `1px solid ${S.borderSubtle}`,
+          marginBottom: 4,
+        }}>
+          <span>#</span>
+          <span>Party</span>
+          <span style={{ textAlign: 'right' }}>Seats</span>
+          <span style={{ textAlign: 'right' }}>Policy</span>
+          <span style={{ textAlign: 'right' }}>Econ</span>
+          <span style={{ textAlign: 'right' }}>Total</span>
+        </div>
+
+        {sortedScores.map((score, rank) => {
+          const p = players.find((pl) => pl.id === score.playerId);
+          if (!p) return null;
+          const isMe = p.id === playerId;
+          return (
             <div
-              key={p.id}
+              key={score.playerId}
               style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
+                display: 'grid',
+                gridTemplateColumns: '24px 1fr 40px 40px 40px 48px',
+                gap: 4,
                 padding: '6px 8px',
-                background:
-                  rank === 0
-                    ? 'rgba(218,165,32,0.1)'
-                    : p.id === playerId
-                      ? 'rgba(255,255,255,0.04)'
-                      : 'transparent',
-                borderLeft: `3px solid ${p.color}`,
+                alignItems: 'center',
+                background: rank === 0
+                  ? 'rgba(218,165,32,0.1)'
+                  : isMe
+                    ? 'rgba(245,240,225,0.04)'
+                    : 'transparent',
+                borderBottom: `1px solid rgba(255,255,255,0.03)`,
               }}
             >
-              <span
-                className="font-mono"
-                style={{ width: 18, textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-muted)' }}
-              >
-                {rank + 1}.
+              <span style={{
+                fontSize: rank === 0 ? '0.85rem' : '0.65rem',
+                color: rank === 0 ? S.gold : S.textMuted,
+                fontWeight: 700,
+              }}>
+                {rank === 0 ? '\u2655' : `${rank + 1}.`}
               </span>
-              <span className="font-serif" style={{ flex: 1, fontSize: '0.8rem', color: 'var(--text-primary)' }}>
-                {p.name}
-              </span>
-              <span className="font-mono" style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--parchment)' }}>
-                {finalScores?.[p.id] ?? p.pcap}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden' }}>
+                <div style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: p.color, flexShrink: 0 }} />
+                <span style={{
+                  fontSize: '0.72rem',
+                  color: isMe ? S.parchment : S.textPrimary,
+                  fontWeight: isMe ? 600 : 400,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}>
+                  {p.name}
+                  {isMe && <span style={{ color: S.textMuted, fontSize: '0.55rem', marginLeft: 3 }}>(you)</span>}
+                </span>
+              </div>
+              <span style={{ fontSize: '0.7rem', color: S.textSecondary, textAlign: 'right' }}>{score.seats}</span>
+              <span style={{ fontSize: '0.7rem', color: S.textSecondary, textAlign: 'right' }}>{score.policyAlignment.toFixed(0)}</span>
+              <span style={{ fontSize: '0.7rem', color: S.textSecondary, textAlign: 'right' }}>{score.economicPerformance.toFixed(0)}</span>
+              <span style={{ fontSize: '0.8rem', fontWeight: 800, color: S.parchment, textAlign: 'right' }}>
+                {score.total.toFixed(0)}
               </span>
             </div>
-          ))}
-        </div>
+          );
+        })}
       </div>
     </div>
   );
 };
 
-// ---- Game Over Overlay (fullscreen) ----
+// ============================================================
+// GAME OVER OVERLAY (fullscreen)
+// ============================================================
 
 const GameOverOverlay: React.FC<{
   players: Player[];
   winnerId: string | null;
-  finalScores: Record<string, number> | null;
+  finalScores: PlayerScore[] | null;
   playerId: string;
-}> = ({ players, winnerId, finalScores, playerId }) => {
-  const [dismissed, setDismissed] = useState(false);
+  onDismiss: () => void;
+}> = ({ players, winnerId, finalScores, playerId, onDismiss }) => {
   const winner = players.find((p) => p.id === winnerId);
   const isMe = winnerId === playerId;
 
-  const sorted = [...players].sort(
-    (a, b) => (finalScores?.[b.id] ?? b.pcap) - (finalScores?.[a.id] ?? a.pcap),
-  );
-
-  if (dismissed) return null;
+  const sortedScores = useMemo(() => {
+    if (finalScores) {
+      return [...finalScores].sort((a, b) => b.total - a.total);
+    }
+    return [...players].sort((a, b) => b.seats - a.seats).map((p) => ({
+      playerId: p.id,
+      seats: p.seats,
+      policyAlignment: p.policyScore,
+      economicPerformance: 0,
+      total: p.seats,
+    }));
+  }, [finalScores, players]);
 
   return (
     <div
-      className="game-over-overlay"
       style={{
         position: 'fixed',
         top: 0,
@@ -1565,115 +2092,133 @@ const GameOverOverlay: React.FC<{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
+        background: 'rgba(0,0,0,0.75)',
+        backdropFilter: 'blur(4px)',
       }}
-      onClick={() => setDismissed(true)}
+      onClick={onDismiss}
     >
       <div
-        className="animate-in"
         style={{
-          maxWidth: 500,
+          maxWidth: 520,
           width: '90%',
           textAlign: 'center',
+          background: S.bgPrimary,
+          border: `2px solid ${S.gold}`,
+          borderRadius: 6,
+          padding: '32px 24px',
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="game-over-title" style={{ marginBottom: 8 }}>
+        <div style={{
+          fontSize: '2.2rem',
+          fontWeight: 900,
+          color: isMe ? S.gold : S.parchment,
+          textTransform: 'uppercase',
+          letterSpacing: '0.05em',
+          marginBottom: 8,
+        }}>
           {isMe ? 'Victory!' : 'Game Over'}
         </div>
-        <div
-          className="font-display"
-          style={{
+        {winner && (
+          <div style={{
             fontSize: '1.3rem',
-            color: winner?.color ?? 'var(--parchment)',
             fontWeight: 600,
+            color: winner.color,
             marginBottom: 24,
-          }}
-        >
-          {winner?.name ?? 'Unknown'} has formed government.
-        </div>
+          }}>
+            {winner.name} has formed government.
+          </div>
+        )}
 
-        <div
-          className="panel-wood"
-          style={{ padding: 20, textAlign: 'left', marginBottom: 16 }}
-        >
-          <div
-            className="font-mono"
-            style={{
-              fontSize: '0.65rem',
-              textTransform: 'uppercase',
-              letterSpacing: '0.12em',
-              color: 'var(--brass-light)',
-              marginBottom: 10,
-              textAlign: 'center',
-            }}
-          >
+        {/* Final standings */}
+        <div style={{
+          background: 'rgba(0,0,0,0.3)',
+          border: `1px solid ${S.borderBrass}`,
+          borderRadius: 4,
+          padding: '16px',
+          textAlign: 'left',
+          marginBottom: 20,
+        }}>
+          <div style={{
+            fontSize: '0.65rem',
+            color: S.brass,
+            textTransform: 'uppercase',
+            letterSpacing: '0.12em',
+            marginBottom: 10,
+            textAlign: 'center',
+            fontWeight: 600,
+          }}>
             Final Standings
           </div>
-          {sorted.map((p, rank) => (
-            <div
-              key={p.id}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                padding: '8px 6px',
-                borderBottom: rank < sorted.length - 1 ? '1px solid rgba(255,255,255,0.06)' : 'none',
-              }}
-            >
-              <span
-                className="font-display"
+          {sortedScores.map((score, rank) => {
+            const p = players.find((pl) => pl.id === score.playerId);
+            if (!p) return null;
+            const isCurrentPlayer = p.id === playerId;
+            return (
+              <div
+                key={score.playerId}
                 style={{
-                  fontSize: rank === 0 ? '1.4rem' : '1rem',
-                  fontWeight: 700,
-                  color: rank === 0 ? 'var(--gold)' : 'var(--text-muted)',
-                  width: 28,
-                  textAlign: 'center',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '8px 6px',
+                  borderBottom: rank < sortedScores.length - 1 ? '1px solid rgba(255,255,255,0.06)' : 'none',
                 }}
               >
-                {rank === 0 ? '\u2655' : `${rank + 1}.`}
-              </span>
-              <span
-                style={{
+                <span style={{
+                  fontSize: rank === 0 ? '1.4rem' : '1rem',
+                  fontWeight: 700,
+                  color: rank === 0 ? S.gold : S.textMuted,
+                  width: 28,
+                  textAlign: 'center',
+                }}>
+                  {rank === 0 ? '\u2655' : `${rank + 1}.`}
+                </span>
+                <span style={{
                   width: 14,
                   height: 14,
                   borderRadius: 2,
                   backgroundColor: p.color,
+                  display: 'inline-block',
                   flexShrink: 0,
-                }}
-              />
-              <span
-                className="font-serif"
-                style={{
+                }} />
+                <span style={{
                   flex: 1,
                   fontSize: '0.9rem',
-                  color: 'var(--text-primary)',
-                  fontWeight: p.id === playerId ? 600 : 400,
-                }}
-              >
-                {p.name}
-                {p.id === playerId && (
-                  <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem', marginLeft: 4 }}>
-                    (you)
-                  </span>
-                )}
-              </span>
-              <span className="font-mono" style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                {p.seats} seats
-              </span>
-              <span
-                className="font-mono"
-                style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--parchment)' }}
-              >
-                {finalScores?.[p.id] ?? p.pcap}
-              </span>
-            </div>
-          ))}
+                  color: S.textPrimary,
+                  fontWeight: isCurrentPlayer ? 600 : 400,
+                }}>
+                  {p.name}
+                  {isCurrentPlayer && (
+                    <span style={{ color: S.textMuted, fontSize: '0.7rem', marginLeft: 4 }}>(you)</span>
+                  )}
+                </span>
+                <span style={{ fontSize: '0.75rem', color: S.textSecondary }}>
+                  {score.seats} seats
+                </span>
+                <span style={{ fontSize: '0.9rem', fontWeight: 700, color: S.parchment }}>
+                  {score.total.toFixed(0)}
+                </span>
+              </div>
+            );
+          })}
         </div>
 
         <button
-          className="btn-brass"
-          style={{ padding: '10px 32px' }}
-          onClick={() => setDismissed(true)}
+          onClick={onDismiss}
+          style={{
+            padding: '10px 32px',
+            background: S.brass,
+            border: `1px solid ${S.brassLight}`,
+            color: '#1a1a1a',
+            fontSize: '0.85rem',
+            fontWeight: 800,
+            fontFamily: S.fontMono,
+            textTransform: 'uppercase',
+            letterSpacing: '0.1em',
+            cursor: 'pointer',
+            borderRadius: 3,
+          }}
         >
           Dismiss
         </button>
@@ -1682,7 +2227,9 @@ const GameOverOverlay: React.FC<{
   );
 };
 
-// ---- Economy Dashboard (center panel view) ----
+// ============================================================
+// ECONOMY TAB (center panel)
+// ============================================================
 
 const SECTOR_LABELS: Record<string, string> = {
   manufacturing: 'Manufacturing', services: 'Services', finance: 'Finance',
@@ -1690,127 +2237,210 @@ const SECTOR_LABELS: Record<string, string> = {
   housing: 'Housing', energy: 'Energy', agriculture: 'Agriculture',
 };
 
-const EconomyDashboard: React.FC<{
+const EconomyTab: React.FC<{
   economy: EconomicStateData;
+  economyHistory: EconomicStateData[];
+  prevEconomy: EconomicStateData | undefined;
+  gdpHistory: number[];
+  unemploymentHistory: number[];
+  inflationHistory: number[];
   voterGroups: VoterGroupState[];
   players: Player[];
-}> = ({ economy, voterGroups, players }) => {
-  const indicator = (label: string, value: number, unit: string, good: 'high' | 'low' | 'zero', precision = 1) => {
-    let color = 'var(--text-primary)';
-    if (good === 'high' && value > 3) color = 'var(--aye-green)';
-    else if (good === 'high' && value < 0) color = 'var(--no-red)';
-    else if (good === 'low' && value < 4) color = 'var(--aye-green)';
-    else if (good === 'low' && value > 8) color = 'var(--no-red)';
-    else if (good === 'zero' && Math.abs(value) < 2) color = 'var(--aye-green)';
-    else if (good === 'zero' && value < -5) color = 'var(--no-red)';
-
-    return (
-      <div style={{ padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-        <div className="font-mono" style={{ fontSize: '0.6rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-          {label}
-        </div>
-        <div className="font-display" style={{ fontSize: '1.1rem', fontWeight: 600, color }}>
-          {value.toFixed(precision)}{unit}
-        </div>
-      </div>
-    );
-  };
-
-  const sectorBar = (name: string, health: number) => {
-    const pct = Math.max(0, Math.min(100, health));
-    const color = pct > 60 ? 'var(--aye-green)' : pct > 35 ? 'var(--brass-gold)' : 'var(--no-red)';
-    return (
-      <div key={name} style={{ marginBottom: 4 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 1 }}>
-          <span className="font-mono" style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>
-            {SECTOR_LABELS[name] || name}
-          </span>
-          <span className="font-mono" style={{ fontSize: '0.6rem', color }}>{pct.toFixed(0)}</span>
-        </div>
-        <div style={{ height: 4, background: 'var(--bg-secondary)', borderRadius: 2 }}>
-          <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 2, transition: 'width 0.5s' }} />
-        </div>
-      </div>
-    );
-  };
-
+}> = ({ economy, economyHistory, prevEconomy, gdpHistory, unemploymentHistory, inflationHistory, voterGroups, players }) => {
   const playerName = (id: string | null) => {
     if (!id) return 'None';
-    return players.find(p => p.id === id)?.name || 'Unknown';
+    return players.find((p) => p.id === id)?.name ?? 'Unknown';
+  };
+  const playerColor = (id: string | null) => {
+    if (!id) return '#444';
+    return players.find((p) => p.id === id)?.color ?? '#444';
   };
 
   return (
     <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {/* Macro indicators */}
-      <div className="panel" style={{ margin: 0 }}>
-        <div className="panel-header">Economic Indicators</div>
-        <div style={{ padding: '8px 16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
-          {indicator('GDP Growth', economy.gdpGrowth, '%', 'high')}
-          {indicator('Unemployment', economy.unemployment, '%', 'low')}
-          {indicator('Inflation', economy.inflation, '%', 'low')}
-          {indicator('Interest Rate', economy.interestRate, '%', 'low')}
-          {indicator('Budget Balance', economy.budgetBalance, '% GDP', 'zero')}
-          {indicator('Public Debt', economy.publicDebt, '% GDP', 'low', 0)}
-        </div>
-        <div style={{ padding: '4px 16px 8px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
-          {indicator('Consumer Conf.', economy.consumerConfidence, '', 'high', 0)}
-          {indicator('Business Conf.', economy.businessConfidence, '', 'high', 0)}
-        </div>
-      </div>
-
-      {/* Sectors */}
-      <div className="panel" style={{ margin: 0 }}>
-        <div className="panel-header">Sector Health</div>
-        <div style={{ padding: '8px 16px' }}>
-          {Object.entries(economy.sectors).map(([name, health]) => sectorBar(name, health))}
-        </div>
-      </div>
-
-      {/* Voter groups */}
-      {voterGroups.length > 0 && (
-        <div className="panel" style={{ margin: 0 }}>
-          <div className="panel-header">Voter Groups</div>
-          <div style={{ padding: '8px 16px' }}>
-            {voterGroups.map(group => {
-              const satisfactionColor = group.satisfaction > 60 ? 'var(--aye-green)' : group.satisfaction > 35 ? 'var(--brass-gold)' : 'var(--no-red)';
-              return (
-                <div key={group.id} style={{ padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span className="font-serif" style={{ fontSize: '0.8rem', color: 'var(--text-primary)' }}>
-                      {group.name}
-                    </span>
-                    <span className="font-mono" style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
-                      {(group.population * 100).toFixed(0)}%
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 3 }}>
-                    <div style={{ flex: 1, height: 4, background: 'var(--bg-secondary)', borderRadius: 2 }}>
-                      <div style={{
-                        width: `${group.satisfaction}%`,
-                        height: '100%',
-                        background: satisfactionColor,
-                        borderRadius: 2,
-                        transition: 'width 0.5s',
-                      }} />
-                    </div>
-                    <span className="font-mono" style={{ fontSize: '0.6rem', color: satisfactionColor, width: 24, textAlign: 'right' }}>
-                      {group.satisfaction.toFixed(0)}
-                    </span>
-                  </div>
-                  {group.leaningPartyId && (
-                    <div className="font-mono" style={{ fontSize: '0.55rem', color: 'var(--text-muted)', marginTop: 2 }}>
-                      Leaning: {playerName(group.leaningPartyId)}
-                    </div>
-                  )}
-                  {group.topConcerns.length > 0 && (
-                    <div className="font-mono" style={{ fontSize: '0.55rem', color: 'var(--text-muted)', marginTop: 1 }}>
-                      Concerns: {group.topConcerns.slice(0, 2).map(c => c.variable).join(', ')}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+      {/* Sparklines row */}
+      <div style={{
+        display: 'flex',
+        gap: 12,
+        padding: '12px',
+        background: S.bgPanel,
+        border: `1px solid ${S.borderSubtle}`,
+        borderRadius: 4,
+      }}>
+        {([
+          { label: 'GDP Growth', data: gdpHistory, color: S.ayeGreen },
+          { label: 'Unemployment', data: unemploymentHistory, color: S.noRed },
+          { label: 'Inflation', data: inflationHistory, color: S.warning },
+        ]).map((sp) => (
+          <div key={sp.label} style={{ flex: 1, textAlign: 'center' }}>
+            <div style={{ fontSize: '0.55rem', color: S.textMuted, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 4 }}>
+              {sp.label}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <Sparkline data={sp.data} color={sp.color} width={100} height={28} />
+            </div>
           </div>
+        ))}
+      </div>
+
+      {/* Big indicators grid */}
+      <div style={{
+        padding: '12px',
+        background: S.bgPanel,
+        border: `1px solid ${S.borderSubtle}`,
+        borderRadius: 4,
+      }}>
+        <div style={{
+          fontSize: '0.6rem',
+          color: S.brass,
+          textTransform: 'uppercase',
+          letterSpacing: '0.12em',
+          marginBottom: 10,
+          fontWeight: 600,
+        }}>
+          Economic Indicators
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10 }}>
+          {([
+            { label: 'GDP Growth', value: economy.gdpGrowth, prev: prevEconomy?.gdpGrowth, unit: '%', good: 'high' as const, precision: 1 },
+            { label: 'Unemployment', value: economy.unemployment, prev: prevEconomy?.unemployment, unit: '%', good: 'low' as const, precision: 1 },
+            { label: 'Inflation', value: economy.inflation, prev: prevEconomy?.inflation, unit: '%', good: 'low' as const, precision: 1 },
+            { label: 'Interest Rate', value: economy.interestRate, prev: prevEconomy?.interestRate, unit: '%', good: 'low' as const, precision: 1 },
+            { label: 'Budget Bal.', value: economy.budgetBalance, prev: prevEconomy?.budgetBalance, unit: '% GDP', good: 'zero' as const, precision: 1 },
+            { label: 'Public Debt', value: economy.publicDebt, prev: prevEconomy?.publicDebt, unit: '% GDP', good: 'low' as const, precision: 0 },
+            { label: 'Consumer Conf.', value: economy.consumerConfidence, prev: prevEconomy?.consumerConfidence, unit: '', good: 'high' as const, precision: 0 },
+            { label: 'Business Conf.', value: economy.businessConfidence, prev: prevEconomy?.businessConfidence, unit: '', good: 'high' as const, precision: 0 },
+          ]).map((ind) => {
+            const da = deltaArrow(ind.value, ind.prev);
+            return (
+              <div key={ind.label} style={{ padding: '6px 0' }}>
+                <div style={{ fontSize: '0.52rem', color: S.textMuted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>
+                  {ind.label}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                  <span style={{ fontSize: '1.1rem', fontWeight: 700, color: indicatorColor(ind.value, ind.good) }}>
+                    {ind.value.toFixed(ind.precision)}{ind.unit}
+                  </span>
+                  <span style={{ fontSize: '0.7rem', color: da.color }}>{da.arrow}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Sector health bars */}
+      <div style={{
+        padding: '12px',
+        background: S.bgPanel,
+        border: `1px solid ${S.borderSubtle}`,
+        borderRadius: 4,
+      }}>
+        <div style={{
+          fontSize: '0.6rem',
+          color: S.brass,
+          textTransform: 'uppercase',
+          letterSpacing: '0.12em',
+          marginBottom: 10,
+          fontWeight: 600,
+        }}>
+          Sector Health
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px 16px' }}>
+          {Object.entries(economy.sectors).map(([name, health]) => {
+            const pct = Math.max(0, Math.min(100, health));
+            const barColor = pct > 60 ? S.ayeGreen : pct > 35 ? S.brass : S.noRed;
+            return (
+              <div key={name}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
+                  <span style={{ fontSize: '0.55rem', color: S.textMuted }}>{SECTOR_LABELS[name] || name}</span>
+                  <span style={{ fontSize: '0.55rem', color: barColor }}>{pct.toFixed(0)}</span>
+                </div>
+                <div style={{ height: 5, background: 'rgba(0,0,0,0.3)', borderRadius: 3 }}>
+                  <div style={{
+                    width: `${pct}%`,
+                    height: '100%',
+                    background: barColor,
+                    borderRadius: 3,
+                    transition: 'width 0.5s',
+                  }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Voter group satisfaction */}
+      {voterGroups.length > 0 && (
+        <div style={{
+          padding: '12px',
+          background: S.bgPanel,
+          border: `1px solid ${S.borderSubtle}`,
+          borderRadius: 4,
+        }}>
+          <div style={{
+            fontSize: '0.6rem',
+            color: S.brass,
+            textTransform: 'uppercase',
+            letterSpacing: '0.12em',
+            marginBottom: 10,
+            fontWeight: 600,
+          }}>
+            Voter Groups
+          </div>
+          {voterGroups.map((group) => {
+            const satisfactionColor = group.satisfaction > 60 ? S.ayeGreen : group.satisfaction > 35 ? S.brass : S.noRed;
+            return (
+              <div key={group.id} style={{
+                padding: '8px 0',
+                borderBottom: `1px solid rgba(255,255,255,0.04)`,
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                  <span style={{ fontSize: '0.78rem', color: S.textPrimary }}>
+                    {group.name}
+                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: '0.55rem', color: S.textMuted }}>
+                      Pop: {(group.population * 100).toFixed(0)}%
+                    </span>
+                    {group.leaningPartyId && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                        <div style={{
+                          width: 6,
+                          height: 6,
+                          borderRadius: 1,
+                          backgroundColor: playerColor(group.leaningPartyId),
+                        }} />
+                        <span style={{ fontSize: '0.5rem', color: S.textMuted }}>
+                          {playerName(group.leaningPartyId)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ flex: 1, height: 5, background: 'rgba(0,0,0,0.3)', borderRadius: 3 }}>
+                    <div style={{
+                      width: `${Math.max(0, Math.min(100, group.satisfaction))}%`,
+                      height: '100%',
+                      background: satisfactionColor,
+                      borderRadius: 3,
+                      transition: 'width 0.5s',
+                    }} />
+                  </div>
+                  <span style={{ fontSize: '0.6rem', color: satisfactionColor, width: 24, textAlign: 'right', fontWeight: 600 }}>
+                    {group.satisfaction.toFixed(0)}
+                  </span>
+                </div>
+                {group.topConcerns.length > 0 && (
+                  <div style={{ fontSize: '0.5rem', color: S.textMuted, marginTop: 3 }}>
+                    Concerns: {group.topConcerns.slice(0, 3).map((c) => c.variable).join(', ')}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

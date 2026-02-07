@@ -1,5 +1,5 @@
 import { GameEngine } from '../game/GameEngine';
-import { GameConfig, ChatMessage, PartyColorId, SocialIdeology, EconomicIdeology, ActionType } from '../types';
+import { GameConfig, ChatMessage, PartyColorId, SocialIdeology, EconomicIdeology, PlayerAction } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
 interface Room {
@@ -21,7 +21,6 @@ interface JoinResult {
 class RoomManager {
   private rooms: Map<string, Room> = new Map();
 
-  // Create room - returns roomId string
   createRoom(configOverrides?: Partial<GameConfig>): string {
     const roomId = this.generateRoomCode().toUpperCase();
     const engine = new GameEngine(roomId, configOverrides || {});
@@ -41,24 +40,18 @@ class RoomManager {
     return roomId;
   }
 
-  // Join room - returns { success, playerId?, error? }
   joinRoom(
     roomId: string,
     socketId: string,
     playerName: string,
     partyName: string,
     colorId?: PartyColorId,
-    symbolId?: string,
     socialIdeology?: SocialIdeology,
     economicIdeology?: EconomicIdeology
   ): JoinResult {
     const normalizedRoomId = roomId.toUpperCase();
-    console.log(`[RoomManager] joinRoom called: roomId=${normalizedRoomId}, socketId=${socketId}`);
-    console.log(`[RoomManager] Available rooms: ${Array.from(this.rooms.keys()).join(', ')}`);
-
     const room = this.rooms.get(normalizedRoomId);
     if (!room) {
-      console.log(`[RoomManager] Room ${normalizedRoomId} not found in ${this.rooms.size} rooms`);
       return { success: false, error: 'Room not found' };
     }
 
@@ -68,138 +61,63 @@ class RoomManager {
       playerName,
       partyName,
       colorId,
-      symbolId,
+      undefined,  // symbolId removed
       socialIdeology,
       economicIdeology
     );
 
     if (!player) {
-      console.log(`[RoomManager] Failed to add player to room ${normalizedRoomId}`);
       return { success: false, error: 'Failed to join - room may be full or game already started' };
     }
 
-    // Set host if first player
     if (!room.hostId) {
       room.hostId = playerId;
-      console.log(`[RoomManager] Set host to ${playerId}`);
     }
 
     room.socketToPlayer.set(socketId, playerId);
     room.playerToSocket.set(playerId, socketId);
     room.lastActivity = Date.now();
 
-    console.log(`[RoomManager] Player ${playerId} joined room ${normalizedRoomId} successfully`);
     return { success: true, playerId };
   }
 
-  // Get room
   getRoom(roomId: string): Room | undefined {
-    const normalizedId = roomId.toUpperCase();
-    const room = this.rooms.get(normalizedId);
-    if (!room) {
-      console.log(`[RoomManager] getRoom: ${normalizedId} not found. Available: ${Array.from(this.rooms.keys()).join(', ')}`);
-    }
-    return room;
+    return this.rooms.get(roomId.toUpperCase());
   }
 
-  // Get game state
   getState(roomId: string) {
     const room = this.rooms.get(roomId.toUpperCase());
-    if (!room) {
-      console.log(`[RoomManager] getState: room ${roomId} not found`);
-      return undefined;
-    }
-    return room.engine.getState();
+    return room?.engine.getState();
   }
 
-  // Get game config
   getConfig(roomId: string) {
     const room = this.rooms.get(roomId.toUpperCase());
     return room?.engine.getConfig();
   }
 
-  // Get available colors
   getAvailableColors(roomId: string): PartyColorId[] {
     const room = this.rooms.get(roomId.toUpperCase());
     return room?.engine.getAvailableColors() || [];
   }
 
-  // Get event log
   getEventLog(roomId: string) {
     const room = this.rooms.get(roomId.toUpperCase());
     return room?.engine.getEventLog();
   }
 
-  // Start game
   startGame(roomId: string): boolean {
     const room = this.rooms.get(roomId.toUpperCase());
     if (!room) return false;
     room.lastActivity = Date.now();
-    console.log(`[START_GAME] Starting game with ${room.engine.getState().players.length} players`);
     return room.engine.startGame();
   }
 
-  // Perform action
-  performAction(
-    roomId: string,
-    playerId: string,
-    actionType: ActionType,
-    targetSeatId?: string,
-    targetPlayerId?: string,
-    fundsSpent?: number
-  ): boolean {
+  // New: submit actions for simultaneous play
+  submitActions(roomId: string, playerId: string, actions: PlayerAction[]): boolean {
     const room = this.rooms.get(roomId.toUpperCase());
     if (!room) return false;
     room.lastActivity = Date.now();
-    return room.engine.performAction(playerId, actionType, targetSeatId, targetPlayerId, fundsSpent);
-  }
-
-  // End turn
-  endTurn(roomId: string, playerId: string): boolean {
-    const room = this.rooms.get(roomId.toUpperCase());
-    if (!room) return false;
-    room.lastActivity = Date.now();
-    return room.engine.endTurn(playerId);
-  }
-
-  // Propose bill
-  proposeBill(roomId: string, playerId: string, billId: string): boolean {
-    const room = this.rooms.get(roomId.toUpperCase());
-    if (!room) return false;
-    room.lastActivity = Date.now();
-    return room.engine.proposeBill(playerId, billId);
-  }
-
-  // Skip proposal
-  skipProposal(roomId: string, playerId: string): boolean {
-    const room = this.rooms.get(roomId.toUpperCase());
-    if (!room) return false;
-    room.lastActivity = Date.now();
-    return room.engine.skipProposal(playerId);
-  }
-
-  // Cast vote
-  castVote(roomId: string, playerId: string, vote: 'aye' | 'no'): boolean {
-    const room = this.rooms.get(roomId.toUpperCase());
-    if (!room) return false;
-    room.lastActivity = Date.now();
-    return room.engine.castVote(playerId, vote);
-  }
-
-  // Acknowledge legislation result
-  acknowledgeLegislationResult(roomId: string, playerId: string): boolean {
-    const room = this.rooms.get(roomId.toUpperCase());
-    if (!room) return false;
-    room.lastActivity = Date.now();
-    return room.engine.acknowledgeLegislationResult(playerId);
-  }
-
-  // Acknowledge event
-  acknowledgeEvent(roomId: string, playerId: string): boolean {
-    const room = this.rooms.get(roomId.toUpperCase());
-    if (!room) return false;
-    room.lastActivity = Date.now();
-    return room.engine.acknowledgeEvent(playerId);
+    return room.engine.submitActions(playerId, actions);
   }
 
   // Force advance phase (host only)
@@ -211,7 +129,6 @@ class RoomManager {
     return room.engine.forceAdvancePhase();
   }
 
-  // Update config
   updateConfig(roomId: string, config: Partial<GameConfig>): boolean {
     const room = this.rooms.get(roomId.toUpperCase());
     if (!room) return false;
@@ -220,7 +137,6 @@ class RoomManager {
     return true;
   }
 
-  // Add chat message
   addChatMessage(roomId: string, message: ChatMessage): void {
     const room = this.rooms.get(roomId.toUpperCase());
     if (!room) return;
@@ -228,13 +144,11 @@ class RoomManager {
     room.engine.addChatMessage(message);
   }
 
-  // Get socket ID for player
   getSocketIdForPlayer(roomId: string, playerId: string): string | undefined {
     const room = this.rooms.get(roomId.toUpperCase());
     return room?.playerToSocket.get(playerId);
   }
 
-  // Leave room
   leaveRoom(roomId: string, socketId: string): string | undefined {
     const room = this.rooms.get(roomId.toUpperCase());
     if (!room) return undefined;
@@ -246,21 +160,17 @@ class RoomManager {
     room.socketToPlayer.delete(socketId);
     room.playerToSocket.delete(playerId);
 
-    // Clean up empty rooms
     if (room.socketToPlayer.size === 0) {
       this.rooms.delete(roomId.toUpperCase());
-      console.log(`[RoomManager] Deleted empty room ${roomId}`);
     }
 
     return playerId;
   }
 
-  // Get room count
   getRoomCount(): number {
     return this.rooms.size;
   }
 
-  // Get room list (for API)
   getRoomList() {
     return Array.from(this.rooms.values()).map(room => ({
       id: room.id,
@@ -270,7 +180,6 @@ class RoomManager {
     }));
   }
 
-  // Cleanup stale rooms (no activity for 2 hours)
   cleanupStaleRooms(): number {
     const staleThreshold = Date.now() - (2 * 60 * 60 * 1000);
     let cleaned = 0;
@@ -285,7 +194,6 @@ class RoomManager {
     return cleaned;
   }
 
-  // Generate room code
   private generateRoomCode(): string {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     let code = '';
@@ -299,5 +207,4 @@ class RoomManager {
   }
 }
 
-// Export as singleton instance
 export const roomManager = new RoomManager();
